@@ -241,16 +241,25 @@ function reducer(state: AppState, action: Action): AppState {
       // loaded holdings. activeTournament is a UI-only summary; we clear it
       // because there's no cloud source of truth for it yet.
       const merged = { ...state, ...action.profile };
+      // Bankroll is a derived value — recompute it against live coin prices.
+      // The stored bankroll in DynamoDB is a stale snapshot from the moment
+      // saveProfile last ran, so loading it directly would cause a flash
+      // every time the subscription fires after a save.
+      const recomputedBankroll = merged.cash + merged.holdings.reduce((s, h) => {
+        const c = merged.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
       const recomputedNudges = computeCoachNudges(
         merged.holdings,
         merged.cash,
-        merged.bankroll,
+        recomputedBankroll,
         merged.coins,
         merged.stopLosses,
         merged.trades.length,
       );
       return {
         ...merged,
+        bankroll: recomputedBankroll,
         activeTournament: null,
         coachNudges: recomputedNudges,
         // dismissedNudgeIds preserved — login shouldn't un-dismiss nudges the
