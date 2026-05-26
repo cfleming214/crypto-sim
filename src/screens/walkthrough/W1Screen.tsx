@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { WalkthroughParamList } from '../../navigation/WalkthroughNavigator';
 import { Button } from '../../components/ui/Button';
@@ -21,7 +23,7 @@ export function W1Screen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.brand} />
+      <StatusBar style="light" backgroundColor={colors.brand} />
       <View style={{ flex: 1, padding: 28, justifyContent: 'flex-end', gap: 0 }}>
         <View style={{ flex: 1 }} />
 

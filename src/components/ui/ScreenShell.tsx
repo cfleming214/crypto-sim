@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, StatusBar, SafeAreaView, ViewStyle, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { ChevronLeft } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeContext';
@@ -42,7 +44,7 @@ export function ScreenShell({
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: bg }, style]}>
-      <StatusBar barStyle={isDark || brand ? 'light-content' : 'dark-content'} backgroundColor={bg} />
+      <StatusBar style={isDark || brand ? 'light' : 'dark'} backgroundColor={bg} />
 
       {/* Header */}
       {(eyebrow || title || rightActions || canGoBack) && (
