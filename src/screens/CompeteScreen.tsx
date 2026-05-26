@@ -210,6 +210,26 @@ export function CompeteScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Top traders entry point */}
+      <TouchableOpacity onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
+        <Card variant="tinted">
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Discover
+              </Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>
+                Top traders
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                Browse and copy the best performers
+              </Text>
+            </View>
+            <Text style={{ fontSize: 18, color: colors.ink3 }}>›</Text>
+          </View>
+        </Card>
+      </TouchableOpacity>
     </ScreenShell>
   );
 }

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -11,11 +11,9 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { fetchTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
 import { MoreHorizontal, Pause, X } from 'lucide-react-native';
 
-const TRADER_ID = 'degenking';
-const TRADER_HANDLE = '@degenking';
-const TRADER_NAME = 'Jordan K.';
 const TRADER_TAGS = ['Day trader', 'High risk', 'Memecoins'];
 
 // Simulated recent trades from the trader — shown as "mirrored" activity
@@ -102,33 +100,82 @@ export function CopyTradeScreen() {
   const { colors } = useTheme();
   const { state } = useApp();
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  const traderId = route.params?.traderId as string | undefined;
+
+  const [trader, setTrader] = useState<PublicTrader | null>(null);
+  const [loading, setLoading] = useState(true);
   const [paused, setPaused] = useState(false);
   const [allocation, setAllocation] = useState(2000);
   const [editOpen, setEditOpen] = useState(false);
 
+  useEffect(() => {
+    if (!traderId) { setLoading(false); return; }
+    fetchTrader(traderId).then(t => {
+      setTrader(t);
+      setLoading(false);
+    });
+  }, [traderId]);
+
   const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+  const traderHandle = trader ? `@${trader.handle}` : '@trader';
+  const traderName   = trader?.handle ?? '—';
 
   // Derive "mirrored positions" from state.holdings — any coin the trader also holds
   const traderSymbols = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'PEPE']);
   const mirroredHoldings = state.holdings.filter(h => traderSymbols.has(h.symbol));
 
-  const handleTogglePause = () => {
+  const handleTogglePause = async () => {
     const next = !paused;
     setPaused(next);
+    if (trader) {
+      if (next) await pauseMirror(trader.owner);
+      else await createOrUpdateMirror(trader.owner, allocation);
+    }
     Alert.alert(
       next ? 'Copy trading paused' : 'Copy trading resumed',
       next
-        ? `${TRADER_HANDLE}'s new trades will not be mirrored until you resume.`
-        : `You are now mirroring ${TRADER_HANDLE} with $${allocation.toLocaleString()}.`,
+        ? `${traderHandle}'s new trades will not be mirrored until you resume.`
+        : `You are now mirroring ${traderHandle} with $${allocation.toLocaleString()}.`,
       [{ text: 'OK' }],
     );
   };
+
+  const handleSaveAllocation = async (newAlloc: number) => {
+    setAllocation(newAlloc);
+    if (trader) await createOrUpdateMirror(trader.owner, newAlloc);
+  };
+
+  if (loading) {
+    return (
+      <ScreenShell title="Loading…">
+        <View style={{ paddingTop: 60, alignItems: 'center' }}>
+          <ActivityIndicator color={colors.brand} />
+        </View>
+      </ScreenShell>
+    );
+  }
+
+  if (!trader) {
+    return (
+      <ScreenShell title="Trader not found">
+        <Card variant="tinted">
+          <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>
+            Couldn't load this trader
+          </Text>
+          <Text style={{ color: colors.ink3, fontSize: 13 }}>
+            They may have removed their public profile. Go back to Top traders and pick another.
+          </Text>
+        </Card>
+      </ScreenShell>
+    );
+  }
 
   return (
     <>
       <ScreenShell
         eyebrow="Copy trade"
-        title={TRADER_HANDLE}
+        title={traderHandle}
         rightActions={
           <TouchableOpacity
             style={{ padding: 8 }}
@@ -140,14 +187,19 @@ export function CopyTradeScreen() {
       >
         {/* Profile head */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <Avatar initials="JK" size="lg" style={{ backgroundColor: '#E8DCC4' }} />
+          <Avatar
+            initials={traderName.slice(0, 2).toUpperCase()}
+            size="lg"
+            uri={trader.avatarUrl}
+            style={trader.avatarColor && !trader.avatarUrl ? { backgroundColor: trader.avatarColor } : undefined}
+          />
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontWeight: '700', fontSize: 16, color: colors.ink }}>{TRADER_NAME}</Text>
-              <Chip variant="up">Diamond II</Chip>
+              <Text style={{ fontWeight: '700', fontSize: 16, color: colors.ink }}>{traderName}</Text>
+              <Chip variant="up">{trader.league}</Chip>
             </View>
             <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-              14,210 followers · 92 copying · $48K AUM
+              {trader.tradeCount} trades · {trader.winRate.toFixed(0)}% win rate · ${Math.round(trader.bankroll).toLocaleString()} bankroll
             </Text>
           </View>
         </View>
@@ -190,7 +242,7 @@ export function CopyTradeScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <View style={{ width: 8, height: 2, backgroundColor: colors.up }} />
-                <Text style={{ fontSize: 11, color: colors.ink }}>{TRADER_HANDLE} +52%</Text>
+                <Text style={{ fontSize: 11, color: colors.ink }}>{traderHandle} {trader.pnlPct >= 0 ? '+' : ''}{trader.pnlPct.toFixed(1)}%</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <View style={{ width: 8, height: 2, backgroundColor: colors.ink3 }} />
@@ -228,7 +280,7 @@ export function CopyTradeScreen() {
         </Card>
 
         {/* Recent activity */}
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>{TRADER_HANDLE}'s recent trades</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>{traderHandle}'s recent trades</Text>
         <Card variant="noPad">
           {TRADER_RECENT_TRADES.map((t, i) => (
             <CardSection key={t.id} last={i === TRADER_RECENT_TRADES.length - 1}>
@@ -297,7 +349,7 @@ export function CopyTradeScreen() {
               if (paused) {
                 Alert.alert('Paused', 'Resume copy trading to mirror new positions.', [{ text: 'OK' }]);
               } else {
-                Alert.alert('Active mirror', `You are mirroring $${allocation.toLocaleString()} across ${TRADER_HANDLE}'s positions.\n\nYour funds are automatically allocated proportionally to their trades.`, [{ text: 'OK' }]);
+                Alert.alert('Active mirror', `You are mirroring $${allocation.toLocaleString()} across ${traderHandle}'s positions.\n\nYour funds are automatically allocated proportionally to their trades.`, [{ text: 'OK' }]);
               }
             }}
           >
@@ -309,7 +361,7 @@ export function CopyTradeScreen() {
       <EditMirrorModal
         visible={editOpen}
         allocation={allocation}
-        onSave={setAllocation}
+        onSave={handleSaveAllocation}
         onClose={() => setEditOpen(false)}
       />
     </>

@@ -81,6 +81,24 @@ const schema = a.schema({
     createdAt: a.string().required(),  // ISO timestamp
     dismissed: a.boolean(),
   }).authorization(allow => [allow.owner()]),
+
+  // PublicProfile is the discoverable face of a UserProfile — same owner
+  // writes it, but every authenticated user can read it for trader
+  // discovery / copy-trade. Kept in sync by the client whenever UserProfile
+  // changes (see portfolioService.saveProfile).
+  PublicProfile: a.model({
+    handle:      a.string().required(),
+    league:      a.string(),
+    bankroll:    a.float(),
+    pnlPct:      a.float(),       // (bankroll - 10000) / 10000 * 100
+    winRate:     a.float(),       // 0..100
+    tradeCount:  a.integer(),
+    avatarKey:   a.string(),
+    avatarColor: a.string(),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+    allow.owner(),
+  ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

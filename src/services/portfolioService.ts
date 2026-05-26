@@ -128,8 +128,183 @@ export async function saveProfile(state: AppState): Promise<void> {
     } else {
       await client.models.UserProfile.create(payload);
     }
+
+    // Mirror to PublicProfile so other authenticated users can discover this
+    // trader. Computed fields (pnlPct, winRate) are derived from local state.
+    const sellTrades = state.trades.filter(t => t.side === 'sell');
+    const winningSells = sellTrades.filter(t => {
+      const h = state.holdings.find(x => x.symbol === t.symbol);
+      return h ? t.price > h.avgCost : false;
+    }).length;
+    const winRate    = sellTrades.length > 0 ? (winningSells / sellTrades.length) * 100 : 0;
+    const pnlPct     = ((state.bankroll - 10000) / 10000) * 100;
+    const publicPayload = {
+      handle:      state.user.handle,
+      league:      state.user.league,
+      bankroll:    state.bankroll,
+      pnlPct,
+      winRate,
+      tradeCount:  state.trades.length,
+      avatarKey:   state.user.avatarKey,
+      avatarColor: state.user.avatarColor,
+    };
+    const { data: existingPublic } = await client.models.PublicProfile.list();
+    if (existingPublic.length) {
+      await client.models.PublicProfile.update({ id: existingPublic[0].id, ...publicPayload });
+    } else {
+      await client.models.PublicProfile.create(publicPayload);
+    }
   } catch (e) {
     console.warn('saveProfile failed:', e);
+  }
+}
+
+export interface PublicTrader {
+  id:          string;
+  owner:       string;       // Cognito userId — used as Mirror.leaderId
+  handle:      string;
+  league:      string;
+  bankroll:    number;
+  pnlPct:      number;
+  winRate:     number;
+  tradeCount:  number;
+  avatarKey?:  string;
+  avatarColor?: string;
+  avatarUrl?:  string;       // signed S3 URL resolved at fetch time
+}
+
+export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[]> {
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    const { data } = await client.models.PublicProfile.list();
+    const traders = await Promise.all((data as any[]).map(async (d) => {
+      let avatarUrl: string | undefined;
+      if (d.avatarKey && d.owner) {
+        try {
+          const { getUrl } = await import('aws-amplify/storage');
+          // PublicProfile owner field is the Cognito userId/sub; identityId
+          // for storage paths typically matches when using userPool auth.
+          const { url } = await getUrl({
+            path: `avatars/${d.owner}/${d.avatarKey}`,
+            options: { validateObjectExistence: false },
+          });
+          avatarUrl = url.toString();
+        } catch {
+          // Avatar resolution is best-effort.
+        }
+      }
+      return {
+        id:          d.id,
+        owner:       d.owner,
+        handle:      d.handle ?? 'trader',
+        league:      d.league ?? 'Bronze',
+        bankroll:    d.bankroll ?? 10000,
+        pnlPct:      d.pnlPct ?? 0,
+        winRate:     d.winRate ?? 0,
+        tradeCount:  d.tradeCount ?? 0,
+        avatarKey:   d.avatarKey ?? undefined,
+        avatarColor: d.avatarColor ?? undefined,
+        avatarUrl,
+      };
+    }));
+    return traders.sort((a, b) => b.pnlPct - a.pnlPct).slice(0, limit);
+  } catch (e) {
+    console.warn('fetchTopTraders failed:', e);
+    return [];
+  }
+}
+
+export async function fetchTrader(traderId: string): Promise<PublicTrader | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const { data } = await client.models.PublicProfile.get({ id: traderId });
+    if (!data) return null;
+    const d = data as any;
+    let avatarUrl: string | undefined;
+    if (d.avatarKey && d.owner) {
+      try {
+        const { getUrl } = await import('aws-amplify/storage');
+        const { url } = await getUrl({
+          path: `avatars/${d.owner}/${d.avatarKey}`,
+          options: { validateObjectExistence: false },
+        });
+        avatarUrl = url.toString();
+      } catch {
+        // best-effort
+      }
+    }
+    return {
+      id:          d.id,
+      owner:       d.owner,
+      handle:      d.handle ?? 'trader',
+      league:      d.league ?? 'Bronze',
+      bankroll:    d.bankroll ?? 10000,
+      pnlPct:      d.pnlPct ?? 0,
+      winRate:     d.winRate ?? 0,
+      tradeCount:  d.tradeCount ?? 0,
+      avatarKey:   d.avatarKey ?? undefined,
+      avatarColor: d.avatarColor ?? undefined,
+      avatarUrl,
+    };
+  } catch (e) {
+    console.warn('fetchTrader failed:', e);
+    return null;
+  }
+}
+
+export async function createOrUpdateMirror(
+  leaderId: string,
+  allocation: number,
+  maxPositionPct: number = 0.2,
+): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    const { data: existing } = await client.models.Mirror.list({
+      filter: { leaderId: { eq: leaderId } },
+    });
+    const ownExisting = (existing as any[]).find(m => m.leaderId === leaderId);
+    if (ownExisting) {
+      await client.models.Mirror.update({
+        id: ownExisting.id,
+        allocation,
+        maxPositionPct,
+        active: true,
+      });
+    } else {
+      // followerId is set server-side via owner field; we set it explicitly
+      // here as the current user's owner for the Mirror table query path.
+      const { fetchAuthSession } = await import('aws-amplify/auth');
+      const session = await fetchAuthSession();
+      const followerId = session.userSub ?? '';
+      await client.models.Mirror.create({
+        leaderId,
+        followerId,
+        allocation,
+        maxPositionPct,
+        active: true,
+      });
+    }
+  } catch (e) {
+    console.warn('createOrUpdateMirror failed:', e);
+  }
+}
+
+export async function pauseMirror(leaderId: string): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    const { data: existing } = await client.models.Mirror.list({
+      filter: { leaderId: { eq: leaderId } },
+    });
+    const own = (existing as any[]).find(m => m.leaderId === leaderId);
+    if (own) {
+      await client.models.Mirror.update({ id: own.id, active: false });
+    }
+  } catch (e) {
+    console.warn('pauseMirror failed:', e);
   }
 }
 
