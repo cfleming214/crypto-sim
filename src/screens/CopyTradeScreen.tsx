@@ -1,43 +1,116 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
+import { CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { MoreHorizontal, Pause } from 'lucide-react-native';
+import { MoreHorizontal, Pause, X } from 'lucide-react-native';
 
-const tags = ['Day trader', 'High risk', 'Memecoins', '+2'];
+const TRADER_ID = 'degenking';
+const TRADER_HANDLE = '@degenking';
+const TRADER_NAME = 'Jordan K.';
+const TRADER_TAGS = ['Day trader', 'High risk', 'Memecoins'];
+
+// Simulated recent trades from the trader — shown as "mirrored" activity
+const TRADER_RECENT_TRADES = [
+  { id: 't1', symbol: 'DOGE', side: 'buy',  amount: 420,  price: 0.1590, ts: Date.now() - 18 * 60000 },
+  { id: 't2', symbol: 'PEPE', side: 'buy',  amount: 150,  price: 0.0000116, ts: Date.now() - 2.3 * 3600000 },
+  { id: 't3', symbol: 'BTC',  side: 'sell', amount: 1200, price: 63800, ts: Date.now() - 5 * 3600000 },
+  { id: 't4', symbol: 'SOL',  side: 'buy',  amount: 340,  price: 181.0, ts: Date.now() - 1 * 86400000 },
+  { id: 't5', symbol: 'ETH',  side: 'sell', amount: 800,  price: 3155,  ts: Date.now() - 2 * 86400000 },
+];
+
+function relTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${Math.max(1, m)}m ago`;
+  if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+  return `${Math.floor(m / 1440)}d ago`;
+}
+
+function EditMirrorModal({ visible, allocation, onSave, onClose }: {
+  visible: boolean; allocation: number; onSave: (a: number) => void; onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const { state } = useApp();
+  const [alloc, setAlloc] = useState(String(allocation));
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Mirror settings</Text>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, gap: 20, paddingBottom: 40 }}>
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Allocation (USD)</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 }}>
+              <Text style={{ fontSize: 16, color: colors.ink3 }}>$</Text>
+              <TextInput
+                value={alloc}
+                onChangeText={setAlloc}
+                keyboardType="number-pad"
+                style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.ink, marginLeft: 4 }}
+              />
+            </View>
+            <Text style={{ fontSize: 11, color: colors.ink3 }}>
+              Available: ${state.cash.toFixed(2)} cash
+            </Text>
+          </View>
+
+          {[
+            { label: 'Max single position', value: '20%', note: 'of your allocation per trade' },
+            { label: 'Stop copying at', value: '−10%', note: 'auto-pause when drawdown hits 10%' },
+            { label: 'Copy fee', value: '5% of profit', note: 'only paid on profitable trades' },
+          ].map(row => (
+            <View key={row.label} style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{row.label}</Text>
+                <Text style={{ fontWeight: '600', color: colors.ink3 }}>{row.value}</Text>
+              </View>
+              <Text style={{ fontSize: 11, color: colors.ink3 }}>{row.note}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+          <Button variant="brand" onPress={() => { onSave(parseFloat(alloc) || allocation); onClose(); }}>
+            Save changes
+          </Button>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 const perf = [
   ['30D return', '+52.1%', 'up'],
   ['Win rate', '68%', null],
   ['Max DD', '−18%', 'down'],
 ];
-// mirrorSettings derived dynamically in component
 
 export function CopyTradeScreen() {
   const { colors } = useTheme();
   const { state } = useApp();
   const nav = useNavigation<any>();
   const [paused, setPaused] = useState(false);
-  const [allocation] = useState(2000);
+  const [allocation, setAllocation] = useState(2000);
+  const [editOpen, setEditOpen] = useState(false);
 
   const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
 
-  const handleEdit = () => {
-    Alert.alert(
-      'Edit Mirror Settings',
-      'Adjust your allocation, position limits, and stop conditions.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Save changes', onPress: () => {} },
-      ],
-    );
-  };
+  // Derive "mirrored positions" from state.holdings — any coin the trader also holds
+  const traderSymbols = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'PEPE']);
+  const mirroredHoldings = state.holdings.filter(h => traderSymbols.has(h.symbol));
 
   const handleTogglePause = () => {
     const next = !paused;
@@ -45,133 +118,200 @@ export function CopyTradeScreen() {
     Alert.alert(
       next ? 'Copy trading paused' : 'Copy trading resumed',
       next
-        ? '@degenking\'s new trades will not be mirrored until you resume.'
-        : 'You are now mirroring @degenking with $2,000.',
+        ? `${TRADER_HANDLE}'s new trades will not be mirrored until you resume.`
+        : `You are now mirroring ${TRADER_HANDLE} with $${allocation.toLocaleString()}.`,
       [{ text: 'OK' }],
     );
   };
 
   return (
-    <ScreenShell
-      eyebrow="Copy trade"
-      title="@degenking"
-      rightActions={
-        <TouchableOpacity
-          style={{ padding: 8 }}
-          onPress={() => Alert.alert('More options', 'Block trader · Report · Share profile', [{ text: 'Close' }])}
-        >
-          <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
-        </TouchableOpacity>
-      }
-    >
-      {/* Profile head */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Avatar initials="JK" size="lg" style={{ backgroundColor: '#E8DCC4' }} />
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.ink }}>Jordan K.</Text>
-            <Chip variant="up">Diamond II</Chip>
-          </View>
-          <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-            14,210 followers · 92 copying · $48K AUM
-          </Text>
-        </View>
-      </View>
-
-      {/* Status banner when paused */}
-      {paused && (
-        <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Pause color={colors.warn} size={16} strokeWidth={1.75} />
-          <Text style={{ fontWeight: '600', color: colors.ink, flex: 1 }}>
-            Copy trading paused — new trades won't be mirrored
-          </Text>
-        </Card>
-      )}
-
-      {/* Tags */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {tags.map(t => <Chip key={t} variant="outline">{t}</Chip>)}
-      </View>
-
-      {/* Performance */}
-      <Card variant="noPad" style={{ flexDirection: 'row' }}>
-        {perf.map(([k, v, type], i) => (
-          <View
-            key={k}
-            style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}
+    <>
+      <ScreenShell
+        eyebrow="Copy trade"
+        title={TRADER_HANDLE}
+        rightActions={
+          <TouchableOpacity
+            style={{ padding: 8 }}
+            onPress={() => Alert.alert('More options', 'Block trader · Report · Share profile', [{ text: 'Close' }])}
           >
-            <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>
-            <Text style={{
-              fontWeight: '700', fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'],
-              color: type === 'up' ? colors.up : type === 'down' ? colors.down : colors.ink,
-            }}>{v}</Text>
-          </View>
-        ))}
-      </Card>
-
-      {/* Chart vs you */}
-      <Card variant="noPad">
-        <CardSection>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equity · 30D vs you</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 8, height: 2, backgroundColor: colors.up }} />
-              <Text style={{ fontSize: 11 }}>@degenking +52%</Text>
+            <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
+          </TouchableOpacity>
+        }
+      >
+        {/* Profile head */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <Avatar initials="JK" size="lg" style={{ backgroundColor: '#E8DCC4' }} />
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontWeight: '700', fontSize: 16, color: colors.ink }}>{TRADER_NAME}</Text>
+              <Chip variant="up">Diamond II</Chip>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 8, height: 2, backgroundColor: colors.ink3 }} />
-              <Text style={{ fontSize: 11, color: colors.ink3 }}>@{state.user.handle} {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%</Text>
-            </View>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+              14,210 followers · 92 copying · $48K AUM
+            </Text>
           </View>
-          <View style={{ marginTop: 10 }}>
-            <AreaChart height={120} />
-          </View>
-        </CardSection>
-      </Card>
-
-      {/* Mirror settings */}
-      <Card>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700', color: colors.ink }}>Mirror settings</Text>
-          <Button variant="ghost" size="sm" onPress={handleEdit}>Edit</Button>
         </View>
-        {[
-          ['Allocation', `$${allocation.toLocaleString()} / $${state.bankroll.toFixed(0)}`],
-          ['Max single position', '20%'],
-          ['Stop copying at', '−10%'],
-          ['Copy fee', '5% of profit'],
-        ].map(([label, value], i, arr) => (
-          <View key={label}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, color: colors.ink3 }}>{label}</Text>
-              <Text style={{ fontWeight: '600', fontSize: 13, color: label === 'Stop copying at' ? colors.down : colors.ink, fontVariant: ['tabular-nums'] }}>
-                {value}
-              </Text>
-            </View>
-            {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: colors.hairline, marginTop: 8, marginBottom: 8 }} />}
-          </View>
-        ))}
-      </Card>
 
-      {/* Footer */}
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Button variant="ghost" style={{ flex: 1 }} onPress={handleTogglePause}>
-          {paused ? 'Resume' : 'Pause'}
-        </Button>
-        <Button
-          variant={paused ? 'surface' : 'brand'}
-          style={{ flex: 1 }}
-          onPress={() => {
-            if (paused) {
-              Alert.alert('Paused', 'Resume copy trading to mirror new positions.', [{ text: 'OK' }]);
-            } else {
-              Alert.alert('Active mirror', `You are mirroring $${allocation.toLocaleString()} across @degenking's positions.\n\nYour funds are automatically allocated proportionally to their trades.`, [{ text: 'OK' }]);
-            }
-          }}
-        >
-          {paused ? 'Paused' : `Mirroring · $${allocation.toLocaleString()}`}
-        </Button>
-      </View>
-    </ScreenShell>
+        {/* Status banner when paused */}
+        {paused && (
+          <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pause color={colors.warn} size={16} strokeWidth={1.75} />
+            <Text style={{ fontWeight: '600', color: colors.ink, flex: 1 }}>
+              Copy trading paused — new trades won't be mirrored
+            </Text>
+          </Card>
+        )}
+
+        {/* Tags */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {TRADER_TAGS.map(t => <Chip key={t} variant="outline">{t}</Chip>)}
+        </View>
+
+        {/* Performance */}
+        <Card variant="noPad" style={{ flexDirection: 'row' }}>
+          {perf.map(([k, v, type], i) => (
+            <View
+              key={k}
+              style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}
+            >
+              <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>
+              <Text style={{
+                fontWeight: '700', fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'],
+                color: type === 'up' ? colors.up : type === 'down' ? colors.down : colors.ink,
+              }}>{v}</Text>
+            </View>
+          ))}
+        </Card>
+
+        {/* Chart vs you */}
+        <Card variant="noPad">
+          <CardSection>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equity · 30D vs you</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 8, height: 2, backgroundColor: colors.up }} />
+                <Text style={{ fontSize: 11, color: colors.ink }}>{TRADER_HANDLE} +52%</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 8, height: 2, backgroundColor: colors.ink3 }} />
+                <Text style={{ fontSize: 11, color: colors.ink3 }}>@{state.user.handle} {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%</Text>
+              </View>
+            </View>
+            <View style={{ marginTop: 10 }}>
+              <AreaChart height={120} />
+            </View>
+          </CardSection>
+        </Card>
+
+        {/* Mirror settings */}
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontWeight: '700', color: colors.ink }}>Mirror settings</Text>
+            <Button variant="ghost" size="sm" onPress={() => setEditOpen(true)}>Edit</Button>
+          </View>
+          {[
+            ['Allocation', `$${allocation.toLocaleString()} / $${state.bankroll.toFixed(0)}`],
+            ['Max single position', '20%'],
+            ['Stop copying at', '−10%'],
+            ['Copy fee', '5% of profit'],
+          ].map(([label, value], i, arr) => (
+            <View key={label}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 13, color: colors.ink3 }}>{label}</Text>
+                <Text style={{ fontWeight: '600', fontSize: 13, color: label === 'Stop copying at' ? colors.down : colors.ink, fontVariant: ['tabular-nums'] }}>
+                  {value}
+                </Text>
+              </View>
+              {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: colors.hairline, marginTop: 8, marginBottom: 8 }} />}
+            </View>
+          ))}
+        </Card>
+
+        {/* Recent activity */}
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>{TRADER_HANDLE}'s recent trades</Text>
+        <Card variant="noPad">
+          {TRADER_RECENT_TRADES.map((t, i) => (
+            <CardSection key={t.id} last={i === TRADER_RECENT_TRADES.length - 1}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <CoinGlyph symbol={t.symbol} size={32} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontWeight: '600', color: colors.ink }}>{t.symbol}</Text>
+                    <Text style={{ fontWeight: '600', fontVariant: ['tabular-nums'], color: t.side === 'buy' ? colors.up : colors.down }}>
+                      {t.side === 'buy' ? '+' : '−'}${t.amount.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: colors.ink3, textTransform: 'capitalize' }}>{t.side} · ${t.price.toLocaleString('en-US', { maximumFractionDigits: t.price < 0.01 ? 8 : 2 })}</Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{relTime(t.ts)}</Text>
+                  </View>
+                </View>
+              </View>
+            </CardSection>
+          ))}
+        </Card>
+
+        {/* Mirrored positions */}
+        {mirroredHoldings.length > 0 && (
+          <>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Your mirrored positions</Text>
+            <Card variant="noPad">
+              {mirroredHoldings.map((h, i) => {
+                const coin = state.coins.find(c => c.symbol === h.symbol);
+                const value = coin ? h.units * coin.price : 0;
+                const pnl = coin ? (coin.price - h.avgCost) * h.units : 0;
+                const pnlPct = h.avgCost > 0 ? ((coin?.price ?? h.avgCost) - h.avgCost) / h.avgCost * 100 : 0;
+                return (
+                  <CardSection key={h.symbol} last={i === mirroredHoldings.length - 1}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <CoinGlyph symbol={h.symbol} />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
+                          <Text style={{ fontWeight: '600', fontVariant: ['tabular-nums'], color: colors.ink }}>${value.toFixed(2)}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                          <Text style={{ fontSize: 12, color: colors.ink3 }}>{h.units.toFixed(4)} units</Text>
+                          <Text style={{ fontSize: 12, fontVariant: ['tabular-nums'], color: pnlPct >= 0 ? colors.up : colors.down }}>
+                            {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </CardSection>
+                );
+              })}
+            </Card>
+          </>
+        )}
+
+        {/* Footer */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Button variant="ghost" style={{ flex: 1 }} onPress={handleTogglePause}>
+            {paused ? 'Resume' : 'Pause'}
+          </Button>
+          <Button
+            variant={paused ? 'surface' : 'brand'}
+            style={{ flex: 1 }}
+            onPress={() => {
+              if (paused) {
+                Alert.alert('Paused', 'Resume copy trading to mirror new positions.', [{ text: 'OK' }]);
+              } else {
+                Alert.alert('Active mirror', `You are mirroring $${allocation.toLocaleString()} across ${TRADER_HANDLE}'s positions.\n\nYour funds are automatically allocated proportionally to their trades.`, [{ text: 'OK' }]);
+              }
+            }}
+          >
+            {paused ? 'Paused' : `Mirroring · $${allocation.toLocaleString()}`}
+          </Button>
+        </View>
+      </ScreenShell>
+
+      <EditMirrorModal
+        visible={editOpen}
+        allocation={allocation}
+        onSave={setAllocation}
+        onClose={() => setEditOpen(false)}
+      />
+    </>
   );
 }

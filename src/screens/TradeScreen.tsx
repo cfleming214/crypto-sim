@@ -12,6 +12,7 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { Star, MoreHorizontal, Shield, Check, X, ChevronDown, Bell, Share2, ExternalLink } from 'lucide-react-native';
+import { NumPad } from '../components/ui/NumPad';
 
 const QUICK_AMOUNTS = [50, 100, 250, 500];
 
@@ -80,46 +81,33 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
             </View>
           )}
 
-          <Card style={{ gap: 16 }}>
-            <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              {side === 'buy' ? 'You spend' : 'You sell worth'}
+          {/* Amount display */}
+          <View style={{ alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+            <Text style={{ fontSize: 44, fontWeight: '700', color: amount ? colors.ink : colors.ink3, fontVariant: ['tabular-nums'], letterSpacing: -1 }}>
+              ${amount || '0'}
             </Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                ${parsedAmount.toFixed(2)}
-              </Text>
-              <Chip variant="outline">USD</Chip>
-            </View>
-            <View style={{ height: 1, backgroundColor: colors.hairline }} />
-            <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              {side === 'buy' ? 'You get' : 'Returning to cash'}
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              ≈ {units.toFixed(6)} {symbol}
             </Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                {units.toFixed(6)}
-              </Text>
-              <Chip variant="outline">{symbol}</Chip>
-            </View>
+            {/* Quick amounts */}
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {QUICK_AMOUNTS.map((a) => (
-                <TouchableOpacity key={a} style={{ flex: 1 }} onPress={() => setAmount(String(a))}>
-                  <Chip
-                    variant={parsedAmount === a ? 'brand' : 'outline'}
-                    style={{ justifyContent: 'center', width: '100%' }}
-                  >${a}</Chip>
+              {QUICK_AMOUNTS.map(a => (
+                <TouchableOpacity key={a} onPress={() => setAmount(String(a))}>
+                  <Chip variant={parsedAmount === a ? 'brand' : 'outline'}>${a}</Chip>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() => setAmount(side === 'sell' ? maxSell.toFixed(2) : state.cash.toFixed(2))}
-              >
-                <Chip
-                  variant={parsedAmount === (side === 'sell' ? maxSell : state.cash) ? 'brand' : 'outline'}
-                  style={{ justifyContent: 'center', width: '100%' }}
-                >Max</Chip>
+              <TouchableOpacity onPress={() => setAmount((side === 'sell' ? maxSell : state.cash).toFixed(2))}>
+                <Chip variant="outline">Max</Chip>
               </TouchableOpacity>
             </View>
-          </Card>
+          </View>
+
+          {/* Numeric keypad */}
+          <NumPad
+            value={amount}
+            onChange={setAmount}
+            maxValue={side === 'sell' ? maxSell : state.cash}
+          />
 
           <Card variant="compact" style={{ gap: 6 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
