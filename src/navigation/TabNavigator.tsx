@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { PortfolioScreen } from '../screens/PortfolioScreen';
 import { MarketsScreen } from '../screens/MarketsScreen';
@@ -27,6 +28,7 @@ function BellButton() {
 
 export function TabNavigator() {
   const { colors } = useTheme();
+  const { bottom } = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -36,9 +38,9 @@ export function TabNavigator() {
           backgroundColor: colors.surface,
           borderTopColor: colors.hairline,
           borderTopWidth: 1,
-          paddingBottom: 14,
+          paddingBottom: 14 + bottom,
           paddingTop: 8,
-          height: 64,
+          height: 64 + bottom,
         },
         tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.ink4,
