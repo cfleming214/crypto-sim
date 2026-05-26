@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { CandleChart, type Indicator } from '../components/charts/CandleChart';
+import { fetchOhlc, type OhlcCandle } from '../services/priceService';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
@@ -328,7 +329,7 @@ export function TradeScreen() {
   const { colors } = useTheme();
   const { state, getCoin, dispatch } = useApp();
   const nav = useNavigation<any>();
-  const [tf, setTf] = useState('5M');
+  const [tf, setTf] = useState('24H');
   const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([]);
@@ -336,6 +337,7 @@ export function TradeScreen() {
   const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
+  const [candleData, setCandleData] = useState<OhlcCandle[]>([]);
 
   const toggleIndicator = (ind: Indicator) => {
     setActiveIndicators(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
@@ -344,6 +346,17 @@ export function TradeScreen() {
   const symbol = state.tradeSymbol;
   const watchlisted = state.watchlist.includes(symbol);
   const coin = getCoin(symbol);
+
+  // Fetch real OHLC from CoinGecko whenever the symbol or timeframe changes.
+  // Cached for 60s in the service to respect free-tier rate limits.
+  useEffect(() => {
+    let cancelled = false;
+    fetchOhlc(symbol, tf).then(candles => {
+      if (!cancelled) setCandleData(candles);
+    });
+    return () => { cancelled = true; };
+  }, [symbol, tf]);
+
   if (!coin) return null;
 
   const price = coin.price;
@@ -485,11 +498,17 @@ export function TradeScreen() {
           </View>
 
           <View style={{ marginHorizontal: -20 }}>
-            <CandleChart height={220} timeframe={tf} basePrice={price} indicators={activeIndicators} />
+            <CandleChart
+              height={220}
+              data={candleData.length > 0 ? candleData.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close })) : undefined}
+              timeframe={tf}
+              basePrice={price}
+              indicators={activeIndicators}
+            />
           </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Segmented options={['1M', '5M', '1H', '1D', '1W']} value={tf} onChange={setTf} />
+            <Segmented options={['24H', '7D', '30D', '90D', '1Y']} value={tf} onChange={setTf} />
             <Button
               variant={indicatorsOpen ? 'brand' : 'ghost'}
               size="sm"
