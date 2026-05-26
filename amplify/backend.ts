@@ -32,6 +32,18 @@ const backend = defineBackend({
   runMirror,
 });
 
+// Enable USER_PASSWORD_AUTH on the Cognito user pool client. The default
+// USER_SRP_AUTH flow needs crypto.getRandomValues + BigInt math, which is
+// brittle under Hermes on React Native and surfaces only as "An unknown
+// error has occurred". USER_PASSWORD_AUTH sends the password in the request
+// body (still TLS-encrypted) and skips the SRP challenge entirely.
+backend.auth.resources.cfnResources.cfnUserPoolClient.explicitAuthFlows = [
+  'ALLOW_USER_PASSWORD_AUTH',
+  'ALLOW_USER_SRP_AUTH',
+  'ALLOW_REFRESH_TOKEN_AUTH',
+  'ALLOW_CUSTOM_AUTH',
+];
+
 // DynamoDB table references
 const competitionTable = backend.data.resources.tables['Competition'];
 const entryTable       = backend.data.resources.tables['CompetitionEntry'];

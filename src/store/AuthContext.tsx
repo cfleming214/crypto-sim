@@ -53,7 +53,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignIn = async (emailInput: string, password: string) => {
     const { signIn } = await import('aws-amplify/auth');
-    await signIn({ username: emailInput, password });
+    await signIn({
+      username: emailInput,
+      password,
+      // USER_PASSWORD_AUTH avoids the SRP challenge that's flaky on React
+      // Native (BigInt + crypto.getRandomValues under Hermes). Cognito
+      // accepts plaintext password over TLS — same security surface area.
+      options: { authFlowType: 'USER_PASSWORD_AUTH' },
+    });
     await checkSession();
   };
 
