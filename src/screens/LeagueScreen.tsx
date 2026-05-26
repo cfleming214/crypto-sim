@@ -39,10 +39,11 @@ const GLOBAL_PLAYERS = [
   { rank: 112, handle: null,        name: null,         pnl: null,    xpRaw: null,  trend: 'flat', tag: 'you' },
 ];
 
-function PlayerRow({ rank, handle, name, pnl, xpRaw, trend, tag, last, userHandle, userXp, userPnlPct }: {
+function PlayerRow({ rank, handle, name, pnl, xpRaw, trend, tag, last, userHandle, userXp, userPnlPct, userAvatarUri, userAvatarColor }: {
   rank: number; handle: string | null; name: string | null; pnl: string | null;
   xpRaw: number | null; trend: string; tag: string | null; last?: boolean;
   userHandle: string; userXp: number; userPnlPct: number;
+  userAvatarUri?: string; userAvatarColor?: string;
 }) {
   const { colors } = useTheme();
   const isMe = tag === 'you';
@@ -65,7 +66,13 @@ function PlayerRow({ rank, handle, name, pnl, xpRaw, trend, tag, last, userHandl
       <Text style={{ width: 28, fontWeight: '700', color: rank <= 5 ? colors.up : colors.ink3, fontVariant: ['tabular-nums'], fontSize: 13 }}>
         {rank}
       </Text>
-      <Avatar initials={displayName[0]?.toUpperCase() ?? '?'} size="sm" brand={isMe} />
+      <Avatar
+        initials={displayName[0]?.toUpperCase() ?? '?'}
+        size="sm"
+        brand={isMe && !userAvatarUri && !userAvatarColor}
+        uri={isMe ? userAvatarUri : undefined}
+        style={isMe && userAvatarColor && !userAvatarUri ? { backgroundColor: userAvatarColor } : undefined}
+      />
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>{displayName}</Text>
@@ -179,6 +186,8 @@ export function LeagueScreen() {
             userHandle={state.user.handle}
             userXp={state.user.xp}
             userPnlPct={pnlPct}
+            userAvatarUri={state.user.avatarUri}
+            userAvatarColor={state.user.avatarColor}
           />
         ))}
       </Card>
