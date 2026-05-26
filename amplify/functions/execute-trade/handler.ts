@@ -22,13 +22,13 @@ export const handler = async (event: TradeRequest): Promise<{ ok: boolean; trade
   const { userId, symbol, side, amount, price } = event;
 
   // Load profile
-  const { Items: profileItems = [] } = await ddb.send(new GetItemCommand({
+  const { Item: profileItem } = await ddb.send(new GetItemCommand({
     TableName: profileTable,
     Key: marshall({ owner: userId }),
-  }) as any);
+  }));
 
-  if (!profileItems.length) return { ok: false, error: 'Profile not found' };
-  const profile = unmarshall(profileItems[0] as any) as { cash: number; holdingsJson: string };
+  if (!profileItem) return { ok: false, error: 'Profile not found' };
+  const profile = unmarshall(profileItem) as { cash: number; holdingsJson: string };
   const holdings: { symbol: string; units: number; avgCost: number }[] = JSON.parse(profile.holdingsJson || '[]');
 
   const slippage = 0.001; // 0.1%

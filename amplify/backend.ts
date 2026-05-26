@@ -2,6 +2,7 @@ import { defineBackend } from '@aws-amplify/backend';
 import { Duration, Stack } from 'aws-cdk-lib';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
+import { Function as CdkFunction } from 'aws-cdk-lib/aws-lambda';
 import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
 import { storage } from './storage/resource.js';
@@ -31,7 +32,7 @@ const competitionTable = backend.data.resources.tables['Competition'];
 const entryTable       = backend.data.resources.tables['CompetitionEntry'];
 
 // --- tickLeaderboard: runs every 5 minutes ---
-const tickFn = backend.tickLeaderboard.resources.lambda;
+const tickFn = backend.tickLeaderboard.resources.lambda as CdkFunction;
 competitionTable.grantReadData(tickFn);
 entryTable.grantReadWriteData(tickFn);
 tickFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
@@ -42,7 +43,7 @@ new Rule(Stack.of(tickFn), 'TickLeaderboardRule', {
 });
 
 // --- closeCompetition: runs every 10 minutes ---
-const closeFn = backend.closeCompetition.resources.lambda;
+const closeFn = backend.closeCompetition.resources.lambda as CdkFunction;
 competitionTable.grantReadWriteData(closeFn);
 entryTable.grantReadWriteData(closeFn);
 closeFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
@@ -54,12 +55,12 @@ new Rule(Stack.of(closeFn), 'CloseCompetitionRule', {
 });
 
 // --- createCompetition: admin invoke only, no schedule ---
-const createFn = backend.createCompetition.resources.lambda;
+const createFn = backend.createCompetition.resources.lambda as CdkFunction;
 competitionTable.grantWriteData(createFn);
 createFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
 
 // --- resetDemo: user-invoked, clears trades + profile ---
-const resetFn = backend.resetDemo.resources.lambda;
+const resetFn = backend.resetDemo.resources.lambda as CdkFunction;
 const profileTable = backend.data.resources.tables['UserProfile'];
 const tradeTable   = backend.data.resources.tables['Trade'];
 profileTable.grantReadWriteData(resetFn);
@@ -68,7 +69,7 @@ resetFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 resetFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
 
 // --- evaluateCoach: DynamoDB stream trigger on Trade table ---
-const coachFn = backend.evaluateCoach.resources.lambda;
+const coachFn = backend.evaluateCoach.resources.lambda as CdkFunction;
 const coachNudgeTable = backend.data.resources.tables['CoachNudge'];
 profileTable.grantReadData(coachFn);
 coachNudgeTable.grantWriteData(coachFn);
@@ -76,14 +77,14 @@ coachFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 coachFn.addEnvironment('COACH_NUDGE_TABLE_NAME', coachNudgeTable.tableName);
 
 // --- executeTrade: user-invoked, server-side validated trade execution ---
-const execFn = backend.executeTrade.resources.lambda;
+const execFn = backend.executeTrade.resources.lambda as CdkFunction;
 profileTable.grantReadWriteData(execFn);
 tradeTable.grantWriteData(execFn);
 execFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 execFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
 
 // --- runMirror: DynamoDB stream trigger on Trade table, copies trades to followers ---
-const mirrorFn = backend.runMirror.resources.lambda;
+const mirrorFn = backend.runMirror.resources.lambda as CdkFunction;
 const mirrorTable = backend.data.resources.tables['Mirror'];
 profileTable.grantReadWriteData(mirrorFn);
 tradeTable.grantWriteData(mirrorFn);
