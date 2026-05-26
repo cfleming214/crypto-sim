@@ -1,16 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    "lib": ["ES2020"],
-    "outDir": ".",
-    "rootDir": "."
+    "noEmit": true,
+    "paths": {
+      "$amplify/*": ["../.amplify/generated/*"]
+    }
   },
-  "include": ["auth/resource.ts", "data/resource.ts"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules"]
 }
