@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard } from '../services/portfolioService';
@@ -14,12 +14,7 @@ const INITIAL_COINS: Coin[] = [
   { symbol: 'PEPE', name: 'Pepe',      price: 0.0000118,change24h: 12.30, marketCap: '$4.2B',  volume: '$320M',  history: [0.0000095,0.0000100,0.0000105,0.0000108,0.0000111,0.0000114,0.0000116,0.0000118] },
 ];
 
-const INITIAL_HOLDINGS = [
-  { symbol: 'BTC',  units: 0.0656,  avgCost: 61200 },
-  { symbol: 'ETH',  units: 1.0001,  avgCost: 3050  },
-  { symbol: 'SOL',  units: 5.382,   avgCost: 185   },
-  { symbol: 'DOGE', units: 1952,    avgCost: 0.148 },
-];
+const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [];
 
 function computeCoachNudges(
   holdings: { symbol: string; units: number }[],
@@ -75,33 +70,23 @@ function computeRiskScore(
 }
 
 const INITIAL_STATE: AppState = {
-  user: { handle: 'you', xp: 2340, league: 'Diamond', division: 3, streak: 12, avatarColor: '#6366F1' },
-  bankroll: 10847.32,
-  cash: 1163.67,
+  user: { handle: 'you', xp: 0, league: 'Bronze', division: 1, streak: 0, avatarColor: '#6366F1' },
+  bankroll: 10000,
+  cash: 10000,
   holdings: INITIAL_HOLDINGS,
   trades: [],
   coins: INITIAL_COINS,
-  activeTournament: {
-    id: 'ww-1',
-    name: 'Weekend Warriors',
-    type: 'featured',
-    status: 'live',
-    prizePool: '$5,000',
-    players: 1284,
-    userRank: 47,
-    endsAt: Date.now() + 2 * 60 * 60 * 1000 + 14 * 60 * 1000,
-    stake: 'Free',
-  },
-  competitions: SEED_COMPETITIONS,
-  joinedTournamentIds: ['ww-1'],
+  activeTournament: null,
+  competitions: SEED_COMPETITIONS,  // shown pre-auth so AuthScreen background isn't empty; overwritten on login
+  joinedTournamentIds: [],
   leaderboard: {},
   pendingOrders: [],
   watchlist: ['BTC', 'ETH'],
-  riskScore: computeRiskScore(INITIAL_HOLDINGS, 1163.67, 10847.32, INITIAL_COINS, {}),
+  riskScore: 100,
   stopLosses: {},
   priceAlerts: [],
   triggeredAlerts: [],
-  coachNudges: computeCoachNudges(INITIAL_HOLDINGS, 1163.67, 10847.32, INITIAL_COINS, {}, 0),
+  coachNudges: [],
   dismissedNudgeIds: [],
   hasOnboarded: false,
   tradeSymbol: 'BTC',
@@ -252,13 +237,12 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, coins, bankroll: state.cash + holdingsValue };
     }
     case 'LOAD_PROFILE': {
-      // Merge cloud profile over current state, then clear the demo's mock
-      // tournament + recompute nudges from the loaded holdings so a fresh
-      // user doesn't inherit "Diamond III rank #47" or stale risk warnings.
+      // Merge cloud profile over current state and recompute nudges from the
+      // loaded holdings. activeTournament is a UI-only summary; we clear it
+      // because there's no cloud source of truth for it yet.
       const merged = { ...state, ...action.profile };
-      const holdings = merged.holdings;
       const recomputedNudges = computeCoachNudges(
-        holdings,
+        merged.holdings,
         merged.cash,
         merged.bankroll,
         merged.coins,
@@ -267,7 +251,6 @@ function reducer(state: AppState, action: Action): AppState {
       );
       return {
         ...merged,
-        joinedTournamentIds: [],
         activeTournament: null,
         coachNudges: recomputedNudges,
         dismissedNudgeIds: [],
@@ -491,11 +474,25 @@ function reducer(state: AppState, action: Action): AppState {
     case 'DISMISS_NUDGE':
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
+      // Truly clean: $10K cash, no holdings/trades/orders/joined comps, fresh
+      // XP. Keeps profile identity (handle, avatar) and current coin prices.
       return {
-        ...INITIAL_STATE,
-        user: state.user,
-        hasOnboarded: state.hasOnboarded,
-        coins: state.coins,
+        ...state,
+        bankroll: 10000,
+        cash: 10000,
+        holdings: [],
+        trades: [],
+        pendingOrders: [],
+        joinedTournamentIds: [],
+        activeTournament: null,
+        leaderboard: {},
+        stopLosses: {},
+        priceAlerts: [],
+        triggeredAlerts: [],
+        coachNudges: [],
+        dismissedNudgeIds: [],
+        riskScore: 100,
+        user: { ...state.user, xp: 0, streak: 0, league: 'Bronze', division: 1 },
       };
     default:
       return state;
@@ -523,12 +520,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const priceRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const lastActionRef = useRef<Action | null>(null);
+  const [saveTick, setSaveTick] = useState(0);  // incremented by wrappedDispatch to trigger save effect
   const { status: authStatus } = useAuth();
 
-  // Wrap dispatch to track trade actions for cloud sync
+  // Wrap dispatch so any state-mutating action that should persist to the
+  // cloud sets lastActionRef — the save effect below picks it up. Includes
+  // trades, rebalances, profile edits, watchlist changes, stop-losses, and
+  // limit-order management.
+  const SAVE_ACTIONS = [
+    'BUY', 'SELL', 'REBALANCE',
+    'SET_HANDLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
+    'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
+    'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
+    'RESET_DEMO',
+  ];
   const wrappedDispatch = (action: Action) => {
-    if (['BUY', 'SELL', 'REBALANCE'].includes(action.type)) {
+    if (SAVE_ACTIONS.includes(action.type)) {
       lastActionRef.current = action;
+      setSaveTick(t => t + 1);
     }
     dispatch(action);
   };
@@ -609,7 +618,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
       saveTrade(state.trades[0]);
     }
-  }, [state.trades, state.cash, authStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [saveTick, authStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getCoin = (symbol: string) => state.coins.find(c => c.symbol === symbol);
 

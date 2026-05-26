@@ -75,11 +75,43 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
   };
 }
 
+async function loadUserTrades(client: any): Promise<import('../store/types').Trade[]> {
+  try {
+    const { data } = await client.models.Trade.list();
+    return (data as any[]).map(t => ({
+      id:        t.tradeId ?? t.id,
+      symbol:    t.symbol,
+      side:      t.side as 'buy' | 'sell',
+      amount:    t.amount ?? 0,
+      units:     t.units ?? 0,
+      price:     t.price ?? 0,
+      timestamp: t.createdAt ? new Date(t.createdAt).getTime() : Date.now(),
+      xpEarned:  t.xpEarned ?? 0,
+      slippage:  t.slippage ?? 0,
+    })).sort((a, b) => b.timestamp - a.timestamp);
+  } catch {
+    return [];
+  }
+}
+
+async function loadJoinedCompetitions(client: any): Promise<string[]> {
+  try {
+    const { data } = await client.models.CompetitionEntry.list();
+    // CompetitionEntry has owner-scoped read, so list() only returns mine
+    return (data as any[])
+      .filter(e => e.isActive !== false)
+      .map(e => e.competitionId);
+  } catch {
+    return [];
+  }
+}
+
 export async function loadProfile(): Promise<Partial<AppState> | null> {
   const client = await getClient();
   if (!client) return null;
   try {
     const { data: profiles } = await client.models.UserProfile.list();
+    let profile: Partial<AppState>;
     if (!profiles.length) {
       // First sign-in — create a clean starter profile in DynamoDB so the
       // user lands on a fresh $10K / 0 holdings / Bronze I state instead of
@@ -97,9 +129,18 @@ export async function loadProfile(): Promise<Partial<AppState> | null> {
         avatarColor:  '#6366F1',
       };
       await client.models.UserProfile.create(starter);
-      return profileFromRecord(starter);
+      profile = await profileFromRecord(starter);
+    } else {
+      profile = await profileFromRecord(profiles[0]);
     }
-    return profileFromRecord(profiles[0]);
+
+    // Also restore trade history and joined-competition list so the user
+    // sees their actual past activity, not whatever INITIAL_STATE has.
+    const [trades, joinedTournamentIds] = await Promise.all([
+      loadUserTrades(client),
+      loadJoinedCompetitions(client),
+    ]);
+    return { ...profile, trades, joinedTournamentIds };
   } catch {
     return null;
   }
