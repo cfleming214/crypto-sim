@@ -1,70 +1,41 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { Competition, CompetitionEntry } from '../store/types';
 
-const NOW = Date.now();
+// Templates seeded into the cloud the first time the table is empty.
+// entryCount is 0 here because real entry counts are computed from the
+// CompetitionEntry table at fetch time — see fetchCompetitions.
+function seedTemplates(): Competition[] {
+  const now = Date.now();
+  return [
+    { id: 'ww-1',  name: 'Weekend Warriors', type: 'featured', status: 'live',
+      prizePool: '$5,000', maxPlayers: 2000, stake: 'Free',
+      startAt: now - 24 * 60 * 60 * 1000,
+      endAt:   now +  2 * 60 * 60 * 1000 + 14 * 60 * 1000,
+      entryCount: 0 },
+    { id: 'qs-1',  name: 'Quick Sprint',     type: 'daily',    status: 'open',
+      prizePool: '500 XP', maxPlayers: 500, stake: 'Free',
+      startAt: now,
+      endAt:   now + 5 * 60 * 60 * 1000,
+      entryCount: 0 },
+    { id: 'mm-1',  name: 'Memecoin Mania',   type: 'featured', status: 'open',
+      prizePool: '$500', maxPlayers: 1000, stake: '100 XP',
+      startAt: now + 2 * 60 * 60 * 1000,
+      endAt:   now + 2 * 24 * 60 * 60 * 1000,
+      entryCount: 0 },
+    { id: 'br-1',  name: "Bull Run '21",     type: 'replay',   status: 'open',
+      prizePool: '$2,000', maxPlayers: 500, stake: '500 XP',
+      startAt: now,
+      endAt:   now + 7 * 24 * 60 * 60 * 1000,
+      entryCount: 0 },
+    { id: '1v1-1', name: 'Quick Match',      type: '1v1',      status: 'open',
+      prizePool: 'XP', maxPlayers: 2, stake: 'Free',
+      startAt: now,
+      endAt:   now + 30 * 60 * 1000,
+      entryCount: 0 },
+  ];
+}
 
-export const SEED_COMPETITIONS: Competition[] = [
-  {
-    id: 'ww-1',
-    name: 'Weekend Warriors',
-    type: 'featured',
-    status: 'live',
-    prizePool: '$5,000',
-    maxPlayers: 2000,
-    stake: 'Free',
-    startAt: NOW - 24 * 60 * 60 * 1000,
-    endAt: NOW + 2 * 60 * 60 * 1000 + 14 * 60 * 1000,
-    entryCount: 1284,
-  },
-  {
-    id: 'qs-1',
-    name: 'Quick Sprint',
-    type: 'daily',
-    status: 'open',
-    prizePool: '500 XP',
-    maxPlayers: 500,
-    stake: 'Free',
-    startAt: NOW,
-    endAt: NOW + 5 * 60 * 60 * 1000,
-    entryCount: 89,
-  },
-  {
-    id: 'mm-1',
-    name: 'Memecoin Mania',
-    type: 'featured',
-    status: 'open',
-    prizePool: '$500',
-    maxPlayers: 1000,
-    stake: '100 XP',
-    startAt: NOW + 2 * 60 * 60 * 1000,
-    endAt: NOW + 2 * 24 * 60 * 60 * 1000,
-    entryCount: 412,
-  },
-  {
-    id: 'br-1',
-    name: "Bull Run '21",
-    type: 'replay',
-    status: 'open',
-    prizePool: '$2,000',
-    maxPlayers: 500,
-    stake: '500 XP',
-    startAt: NOW,
-    endAt: NOW + 7 * 24 * 60 * 60 * 1000,
-    entryCount: 63,
-  },
-  {
-    id: '1v1-1',
-    name: 'Quick Match',
-    type: '1v1',
-    status: 'open',
-    prizePool: 'XP',
-    maxPlayers: 2,
-    stake: 'Free',
-    startAt: NOW,
-    endAt: NOW + 30 * 60 * 1000,
-    entryCount: 0,
-  },
-];
+export const SEED_COMPETITIONS: Competition[] = seedTemplates();
 
 let clientPromise: Promise<any> | null = null;
 
@@ -112,27 +83,43 @@ export async function fetchCompetitions(): Promise<Competition[]> {
   if (!client) return SEED_COMPETITIONS;
   try {
     const { data } = await client.models.Competition.list();
-    const remote = (data as any[]).map(mapCompetition);
-    if (remote.length > 0) return remote;
+    let remote = (data as any[]).map(mapCompetition);
 
-    // Cloud table is empty — auto-seed the canonical competitions so every
-    // signed-in user sees them. Runs once; subsequent fetches return the
-    // persisted rows. Errors are ignored (e.g. concurrent seeders).
-    await Promise.all(SEED_COMPETITIONS.map(c => client.models.Competition.create({
-      name:       c.name,
-      type:       c.type,
-      status:     c.status,
-      prizePool:  c.prizePool,
-      maxPlayers: c.maxPlayers,
-      stake:      c.stake,
-      startAt:    new Date(c.startAt).toISOString(),
-      endAt:      new Date(c.endAt).toISOString(),
-      entryCount: c.entryCount,
-    }).catch(() => null)));
+    if (remote.length === 0) {
+      // Cloud table is empty — auto-seed canonical templates with entryCount: 0.
+      // Real counts are layered in below from the CompetitionEntry table.
+      const templates = seedTemplates();
+      await Promise.all(templates.map(c => client.models.Competition.create({
+        name:       c.name,
+        type:       c.type,
+        status:     c.status,
+        prizePool:  c.prizePool,
+        maxPlayers: c.maxPlayers,
+        stake:      c.stake,
+        startAt:    new Date(c.startAt).toISOString(),
+        endAt:      new Date(c.endAt).toISOString(),
+        entryCount: 0,
+      }).catch(() => null)));
+      const { data: seeded } = await client.models.Competition.list();
+      remote = (seeded as any[]).map(mapCompetition);
+    }
 
-    const { data: seeded } = await client.models.Competition.list();
-    const persisted = (seeded as any[]).map(mapCompetition);
-    return persisted.length > 0 ? persisted : SEED_COMPETITIONS;
+    // Layer in real entry counts from CompetitionEntry — the cloud row's
+    // entryCount field is just a starting hint; actual joins are reflected
+    // here so the UI shows truthful numbers.
+    try {
+      const { data: entries } = await client.models.CompetitionEntry.list();
+      const counts: Record<string, number> = {};
+      for (const e of entries as any[]) {
+        if (e.isActive !== false) counts[e.competitionId] = (counts[e.competitionId] ?? 0) + 1;
+      }
+      remote = remote.map(c => ({ ...c, entryCount: counts[c.id] ?? 0 }));
+    } catch {
+      // CompetitionEntry list can fail under owner-scoped read for some
+      // setups; fall back to stored entryCount silently.
+    }
+
+    return remote.length > 0 ? remote : SEED_COMPETITIONS;
   } catch {
     return SEED_COMPETITIONS;
   }
