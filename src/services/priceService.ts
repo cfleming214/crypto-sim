@@ -4,6 +4,7 @@ export interface PriceData {
   change24h: number;
   marketCapRaw: number;
   volumeRaw: number;
+  sparkline24h: number[];  // hourly closes for the last ~24 hours
 }
 
 export interface OhlcCandle {
@@ -107,23 +108,36 @@ export function formatLargeNumber(n: number): string {
 
 export async function fetchPrices(): Promise<PriceData[]> {
   const ids = Object.values(COINGECKO_IDS).join(',');
+  // /coins/markets returns prices, market cap, volume, AND a 7-day hourly
+  // sparkline for every coin in a single request — same rate-limit cost as
+  // /simple/price but with the sparkline series included for free.
   const res = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
+    `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h&sparkline=true`,
     { headers: { Accept: 'application/json' } },
   );
   if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-  const json = await res.json();
+  const json = await res.json() as any[];
 
-  // Drop entries CoinGecko didn't return a real price for. Falling back to 0
-  // would zero out the user's holdings in that coin and crash their bankroll
-  // on the next UPDATE_PRICES.
+  // Build lookup by gecko id
+  const byId: Record<string, any> = {};
+  for (const c of json) {
+    if (c?.id) byId[c.id] = c;
+  }
+
   return Object.entries(COINGECKO_IDS)
-    .filter(([, geckoId]) => typeof json[geckoId]?.usd === 'number' && json[geckoId].usd > 0)
-    .map(([symbol, geckoId]) => ({
-      symbol,
-      price:        json[geckoId].usd,
-      change24h:    json[geckoId].usd_24h_change   ?? 0,
-      marketCapRaw: json[geckoId].usd_market_cap   ?? 0,
-      volumeRaw:    json[geckoId].usd_24h_vol      ?? 0,
-    }));
+    .filter(([, geckoId]) => typeof byId[geckoId]?.current_price === 'number' && byId[geckoId].current_price > 0)
+    .map(([symbol, geckoId]) => {
+      const c = byId[geckoId];
+      const spark: number[] = c.sparkline_in_7d?.price ?? [];
+      // Take the most recent 24 hourly points for the 24-hour mini chart.
+      const sparkline24h = spark.slice(-24);
+      return {
+        symbol,
+        price:        c.current_price,
+        change24h:    c.price_change_percentage_24h ?? 0,
+        marketCapRaw: c.market_cap ?? 0,
+        volumeRaw:    c.total_volume ?? 0,
+        sparkline24h,
+      };
+    });
 }

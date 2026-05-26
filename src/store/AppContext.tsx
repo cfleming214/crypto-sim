@@ -129,13 +129,9 @@ function tickPrices(coins: Coin[]): Coin[] {
     if (coin.symbol === 'USDC') return coin;
     const volatility = coin.symbol === 'PEPE' || coin.symbol === 'DOGE' ? 0.0004 : 0.0001;
     const delta = coin.price * (Math.random() - 0.5) * volatility;
-    // Floor relative to the current price — a flat $0.00001 floor would clamp
-    // memecoins like PEPE (real price ~3.5e-6) up to a wrong value on every
-    // tick after UPDATE_PRICES fetched the real data, causing a 2-second
-    // bankroll flash.
     const newPrice = Math.max(coin.price * 0.5, coin.price + delta);
-    const newHistory = [...coin.history.slice(-19), newPrice];
-    return { ...coin, price: newPrice, history: newHistory };
+    // Don't touch history — it's the real 24h sparkline from UPDATE_PRICES.
+    return { ...coin, price: newPrice };
   });
 }
 
@@ -230,14 +226,18 @@ function reducer(state: AppState, action: Action): AppState {
         // Skip coins with no price update (or zero/negative — would zero out
         // any holdings in that coin and crash the bankroll value).
         if (!pd || coin.symbol === 'USDC' || !(pd.price > 0)) return coin;
-        const newHistory = [...coin.history.slice(-19), pd.price];
+        // Replace history with the real 24h hourly sparkline from CoinGecko
+        // when available, falling back to the prior history if not.
+        const realHistory = pd.sparkline24h && pd.sparkline24h.length > 0
+          ? pd.sparkline24h
+          : coin.history;
         return {
           ...coin,
           price:     pd.price,
           change24h: pd.change24h,
           marketCap: pd.marketCapRaw > 0 ? formatLargeNumber(pd.marketCapRaw) : coin.marketCap,
           volume:    pd.volumeRaw    > 0 ? formatLargeNumber(pd.volumeRaw)    : coin.volume,
-          history:   newHistory,
+          history:   realHistory,
         };
       });
       const holdingsValue = state.holdings.reduce((sum, h) => {
