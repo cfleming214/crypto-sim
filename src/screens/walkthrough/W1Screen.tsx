@@ -23,7 +23,7 @@ export function W1Screen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
-      <StatusBar style="light" backgroundColor={colors.brand} />
+      <StatusBar style="light" />
       <View style={{ flex: 1, padding: 28, justifyContent: 'flex-end', gap: 0 }}>
         <View style={{ flex: 1 }} />
 

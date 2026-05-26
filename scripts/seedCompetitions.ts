@@ -82,7 +82,7 @@ async function seed() {
     if (errors?.length) {
       console.error(`Failed to create ${comp.name}:`, errors);
     } else {
-      console.log(`Created: ${comp.name} (${data.id})`);
+      console.log(`Created: ${comp.name} (${(data as { id?: string } | null)?.id ?? '?'})`);
     }
   }
   console.log('Seeding complete.');

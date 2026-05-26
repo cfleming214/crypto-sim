@@ -63,7 +63,7 @@ export function AuthScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
-      <StatusBar style="light" backgroundColor={colors.brand} />
+      <StatusBar style="light" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={{ padding: 28, gap: 24 }} keyboardShouldPersistTaps="handled">
 

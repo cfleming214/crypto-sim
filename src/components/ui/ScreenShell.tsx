@@ -51,7 +51,7 @@ export function ScreenShell({
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: bg }, style]}>
-      <StatusBar style={isDark || brand ? 'light' : 'dark'} backgroundColor={bg} />
+      <StatusBar style={isDark || brand ? 'light' : 'dark'} />
 
       {/* Header */}
       {(eyebrow || title || rightActions || canGoBack) && (

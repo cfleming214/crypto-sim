@@ -1,4 +1,26 @@
-export const lightColors = {
+export interface Colors {
+  bg: string;
+  surface: string;
+  surface2: string;
+  elevated: string;
+  hairline: string;
+  hairlineStrong: string;
+  ink: string;
+  ink2: string;
+  ink3: string;
+  ink4: string;
+  brand: string;
+  brandOn: string;
+  accent: string;
+  up: string;
+  upSoft: string;
+  down: string;
+  downSoft: string;
+  warn: string;
+  warnSoft: string;
+}
+
+export const lightColors: Colors = {
   bg: '#F7F6F2',
   surface: '#FFFFFF',
   surface2: '#F1EFE9',
@@ -18,9 +40,9 @@ export const lightColors = {
   downSoft: '#F6E6E4',
   warn: '#8A6B1F',
   warnSoft: '#F6EFD9',
-} as const;
+};
 
-export const darkColors = {
+export const darkColors: Colors = {
   bg: '#0A0A0B',
   surface: '#141416',
   surface2: '#1B1B1E',
@@ -40,9 +62,7 @@ export const darkColors = {
   downSoft: 'rgba(255,111,97,0.14)',
   warn: '#E0B85E',
   warnSoft: 'rgba(224,184,94,0.12)',
-} as const;
-
-export type Colors = typeof lightColors;
+};
 
 export const spacing = {
   xs: 4,

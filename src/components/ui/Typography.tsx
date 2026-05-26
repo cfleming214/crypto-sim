@@ -37,7 +37,7 @@ export function Typography({
   if (down) textColor = colors.down;
   if (color) textColor = color;
 
-  const variantStyles: TextStyle = {
+  const variantTable: Record<NonNullable<TypographyProps['variant']>, TextStyle> = {
     h1: { fontSize: fontSize.h1, fontWeight: '700', letterSpacing: -0.7 },
     h2: { fontSize: fontSize.h2, fontWeight: '700', letterSpacing: -0.4 },
     h3: { fontSize: fontSize.h3, fontWeight: '600', letterSpacing: -0.16 },
@@ -46,7 +46,8 @@ export function Typography({
     sm: { fontSize: fontSize.sm },
     xs: { fontSize: fontSize.xs },
     eyebrow: { fontSize: fontSize.eyebrow, fontWeight: '600', letterSpacing: 0.44, textTransform: 'uppercase' },
-  }[variant];
+  };
+  const variantStyles = variantTable[variant];
 
   return (
     <Text
