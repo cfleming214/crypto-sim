@@ -1,21 +1,9 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { Competition, CompetitionEntry } from '../store/types';
 
-// Templates seeded into the cloud the first time the table is empty.
-// entryCount is 0 here because real entry counts are computed from the
-// CompetitionEntry table at fetch time — see fetchCompetitions.
-function seedTemplates(): Competition[] {
-  const now = Date.now();
-  return [
-    { id: 'first-1', name: 'First Contest', type: 'featured', status: 'live',
-      prizePool: '$100', maxPlayers: 1000, stake: 'Free',
-      startAt: now,
-      endAt:   now + 7 * 24 * 60 * 60 * 1000,
-      entryCount: 0 },
-  ];
-}
-
-export const SEED_COMPETITIONS: Competition[] = seedTemplates();
+// No hardcoded seed — the Competition table in DynamoDB is the single source
+// of truth. Contests are inserted via the createCompetition Lambda or
+// directly via AWS CLI / console.
 
 let clientPromise: Promise<any> | null = null;
 
@@ -60,29 +48,10 @@ function mapEntry(d: any): CompetitionEntry {
 
 export async function fetchCompetitions(): Promise<Competition[]> {
   const client = await getClient();
-  if (!client) return SEED_COMPETITIONS;
+  if (!client) return [];
   try {
     const { data } = await client.models.Competition.list();
     let remote = (data as any[]).map(mapCompetition);
-
-    if (remote.length === 0) {
-      // Cloud table is empty — auto-seed canonical templates with entryCount: 0.
-      // Real counts are layered in below from the CompetitionEntry table.
-      const templates = seedTemplates();
-      await Promise.all(templates.map(c => client.models.Competition.create({
-        name:       c.name,
-        type:       c.type,
-        status:     c.status,
-        prizePool:  c.prizePool,
-        maxPlayers: c.maxPlayers,
-        stake:      c.stake,
-        startAt:    new Date(c.startAt).toISOString(),
-        endAt:      new Date(c.endAt).toISOString(),
-        entryCount: 0,
-      }).catch(() => null)));
-      const { data: seeded } = await client.models.Competition.list();
-      remote = (seeded as any[]).map(mapCompetition);
-    }
 
     // Layer in real entry counts from CompetitionEntry — the cloud row's
     // entryCount field is just a starting hint; actual joins are reflected
@@ -99,9 +68,9 @@ export async function fetchCompetitions(): Promise<Competition[]> {
       // setups; fall back to stored entryCount silently.
     }
 
-    return remote.length > 0 ? remote : SEED_COMPETITIONS;
+    return remote;
   } catch {
-    return SEED_COMPETITIONS;
+    return [];
   }
 }
 

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useRef, useSta
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
-import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
+import { fetchCompetitions } from '../services/competitionService';
 import { useAuth } from './AuthContext';
 
 const INITIAL_COINS: Coin[] = [
@@ -77,7 +77,7 @@ const INITIAL_STATE: AppState = {
   trades: [],
   coins: INITIAL_COINS,
   activeTournament: null,
-  competitions: SEED_COMPETITIONS,  // shown pre-auth so AuthScreen background isn't empty; overwritten on login
+  competitions: [],                  // populated from cloud on auth
   joinedTournamentIds: [],
   leaderboard: {},
   pendingOrders: [],

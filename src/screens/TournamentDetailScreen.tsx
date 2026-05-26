@@ -9,7 +9,6 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { Bell, MoreHorizontal } from 'lucide-react-native';
-import { SEED_COMPETITIONS } from '../services/competitionService';
 
 const rules = [
   ['Starting bankroll', '$10,000'],
@@ -33,8 +32,23 @@ export function TournamentDetailScreen() {
   const route = useRoute<any>();
   const { getById, isJoined, join, leave, timeRemaining, refreshLeaderboard, leaderboard } = useCompetitions();
 
-  const competitionId: string = route.params?.id ?? 'ww-1';
-  const competition = getById(competitionId) ?? SEED_COMPETITIONS[0];
+  const competitionId: string = route.params?.id ?? '';
+  const competition = getById(competitionId);
+
+  if (!competition) {
+    return (
+      <ScreenShell title="Contest not found">
+        <Card variant="tinted">
+          <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>
+            This contest doesn't exist
+          </Text>
+          <Text style={{ color: colors.ink3, fontSize: 13 }}>
+            It may have been removed. Head back to Compete to see what's live.
+          </Text>
+        </Card>
+      </ScreenShell>
+    );
+  }
 
   const joined = isJoined(competitionId);
   const entries = leaderboard[competitionId] ?? [];
