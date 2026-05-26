@@ -579,10 +579,11 @@ function reducer(state: AppState, action: Action): AppState {
         holdings: target.holdings,
         trades: target.trades,
         bankroll: target.cash + holdingsValue,
-        // Coach nudges, alerts, etc. are global-feeling but recomputed against
-        // the active portfolio so they stay relevant.
+        // Coach nudges recomputed against the active portfolio so they stay
+        // relevant. dismissedNudgeIds preserved across switches — nudge ids
+        // are symbolic (e.g. conc-BTC), so a dismiss on one portfolio still
+        // suppresses the same condition if it surfaces on another.
         coachNudges: computeCoachNudges(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses, target.trades.length),
-        dismissedNudgeIds: [],
         riskScore: computeRiskScore(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses),
       };
     }
