@@ -59,8 +59,39 @@ export function PortfolioScreen() {
   };
 
   const handleRebalance = () => {
-    dispatch({ type: 'SET_TRADE_SYMBOL', symbol: 'BTC' });
-    nav.navigate('Trade');
+    const top5 = state.holdings.slice(0, 5);
+    if (top5.length === 0) {
+      Alert.alert('Nothing to rebalance', 'Add some holdings first.');
+      return;
+    }
+
+    const holdingValues = top5.map(h => {
+      const coin = getCoin(h.symbol)!;
+      return { symbol: h.symbol, currentValue: h.units * coin.price, price: coin.price };
+    });
+    const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
+    const targetPerCoin = totalInvested / top5.length;
+
+    const lines: string[] = [];
+    for (const h of holdingValues) {
+      const diff = h.currentValue - targetPerCoin;
+      if (diff > 5)  lines.push(`Sell $${diff.toFixed(0)} of ${h.symbol}`);
+      if (diff < -5) lines.push(`Buy $${Math.abs(diff).toFixed(0)} of ${h.symbol}`);
+    }
+
+    if (lines.length === 0) {
+      Alert.alert('Already balanced', 'Each position is within 5% of equal weight.');
+      return;
+    }
+
+    Alert.alert(
+      'Rebalance to Equal Weight',
+      `Target: 20% per coin ($${targetPerCoin.toFixed(0)} each)\n\n${lines.join('\n')}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Rebalance', onPress: () => dispatch({ type: 'REBALANCE' }) },
+      ],
+    );
   };
 
   const handleSetStops = () => {

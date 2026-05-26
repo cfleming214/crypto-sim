@@ -44,7 +44,8 @@ type Action =
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
   | { type: 'ADD_XP'; amount: number }
-  | { type: 'SET_TRADE_SYMBOL'; symbol: string };
+  | { type: 'SET_TRADE_SYMBOL'; symbol: string }
+  | { type: 'REBALANCE' };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -116,6 +117,75 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, user: { ...state.user, xp: state.user.xp + action.amount } };
     case 'SET_TRADE_SYMBOL':
       return { ...state, tradeSymbol: action.symbol };
+    case 'REBALANCE': {
+      const top5 = state.holdings.slice(0, 5);
+      if (top5.length === 0) return state;
+
+      // Calculate current values
+      const holdingValues = top5.map(h => {
+        const coin = state.coins.find(c => c.symbol === h.symbol)!;
+        return { ...h, coin, currentValue: h.units * coin.price };
+      });
+      const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
+      const targetPerCoin = totalInvested / top5.length; // equal weight
+
+      let newHoldings = [...state.holdings];
+      let newCash = state.cash;
+      const newTrades = [...state.trades];
+
+      // Step 1: sell overweight positions
+      for (const h of holdingValues) {
+        const excess = h.currentValue - targetPerCoin;
+        if (excess <= 5) continue;
+        const unitsToSell = excess / h.coin.price;
+        newHoldings = newHoldings.map(x =>
+          x.symbol === h.symbol ? { ...x, units: x.units - unitsToSell } : x,
+        ).filter(x => x.units > 0.000001);
+        newCash += excess;
+        newTrades.unshift({
+          id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol: h.symbol, side: 'sell', amount: excess,
+          units: unitsToSell, price: h.coin.price,
+          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+        });
+      }
+
+      // Step 2: buy underweight positions (using freed cash)
+      for (const h of holdingValues) {
+        const deficit = targetPerCoin - h.currentValue;
+        if (deficit <= 5 || newCash < deficit) continue;
+        const unitsToBuy = deficit / h.coin.price;
+        const existing = newHoldings.find(x => x.symbol === h.symbol);
+        newHoldings = existing
+          ? newHoldings.map(x =>
+              x.symbol === h.symbol
+                ? { ...x, units: x.units + unitsToBuy, avgCost: (x.avgCost * x.units + deficit) / (x.units + unitsToBuy) }
+                : x,
+            )
+          : [...newHoldings, { symbol: h.symbol, units: unitsToBuy, avgCost: h.coin.price }];
+        newCash -= deficit;
+        newTrades.unshift({
+          id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol: h.symbol, side: 'buy', amount: deficit,
+          units: unitsToBuy, price: h.coin.price,
+          timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+        });
+      }
+
+      const newBankroll = newCash + newHoldings.reduce((s, h) => {
+        const coin = state.coins.find(c => c.symbol === h.symbol);
+        return s + (coin ? coin.price * h.units : 0);
+      }, 0);
+
+      return {
+        ...state,
+        holdings: newHoldings,
+        cash: newCash,
+        bankroll: newBankroll,
+        trades: newTrades,
+        user: { ...state.user, xp: state.user.xp + 50 },
+      };
+    }
     default:
       return state;
   }
