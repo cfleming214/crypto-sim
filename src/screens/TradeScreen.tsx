@@ -7,7 +7,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
-import { CandleChart } from '../components/charts/CandleChart';
+import { CandleChart, type Indicator } from '../components/charts/CandleChart';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
@@ -183,6 +183,12 @@ export function TradeScreen() {
   const nav = useNavigation<any>();
   const [tf, setTf] = useState('5M');
   const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([]);
+
+  const toggleIndicator = (ind: Indicator) => {
+    setActiveIndicators(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
+  };
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
   const watchlisted = state.watchlist.includes(symbol);
@@ -295,15 +301,38 @@ export function TradeScreen() {
           </View>
 
           <View style={{ marginHorizontal: -20 }}>
-            <CandleChart height={220} timeframe={tf} basePrice={price} />
+            <CandleChart height={220} timeframe={tf} basePrice={price} indicators={activeIndicators} />
           </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Segmented options={['1M', '5M', '1H', '1D', '1W']} value={tf} onChange={setTf} />
-            <Button variant="ghost" size="sm" onPress={() => Alert.alert('Indicators', 'RSI, MACD, Bollinger Bands and more coming in the next update!', [{ text: 'OK' }])}>
-              Indicators
+            <Button
+              variant={indicatorsOpen ? 'brand' : 'ghost'}
+              size="sm"
+              onPress={() => setIndicatorsOpen(o => !o)}
+            >
+              Indicators{activeIndicators.length > 0 ? ` · ${activeIndicators.length}` : ''}
             </Button>
           </View>
+
+          {indicatorsOpen && (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['MA20', 'MA50', 'RSI'] as Indicator[]).map(ind => {
+                const active = activeIndicators.includes(ind);
+                const indColors: Record<Indicator, string> = { MA20: '#F59E0B', MA50: '#6366F1', RSI: colors.ink2 ?? colors.ink3 };
+                return (
+                  <TouchableOpacity key={ind} onPress={() => toggleIndicator(ind)}>
+                    <Chip
+                      variant={active ? 'brand' : 'outline'}
+                      style={active ? { borderWidth: 2, borderColor: indColors[ind] } : undefined}
+                    >
+                      {ind}
+                    </Chip>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
           {/* Stats grid */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, backgroundColor: colors.surface2, borderRadius: 12, padding: 14 }}>

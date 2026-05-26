@@ -13,6 +13,8 @@ import { AreaChart } from '../components/charts/AreaChart';
 import { DonutChart } from '../components/charts/DonutChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { fetchPrices } from '../services/priceService';
+import { loadProfile } from '../services/portfolioService';
 import { Shield, X } from 'lucide-react-native';
 
 const STOP_OPTIONS = [5, 10, 15];
@@ -150,6 +152,17 @@ export function PortfolioScreen() {
     },
   ];
 
+  const handleRefresh = async () => {
+    try {
+      const prices = await fetchPrices();
+      dispatch({ type: 'UPDATE_PRICES', prices });
+    } catch {}
+    try {
+      const profile = await loadProfile();
+      if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
+    } catch {}
+  };
+
   const handleHoldingTap = (symbol: string) => {
     if (symbol === 'USDC') return;
     dispatch({ type: 'SET_TRADE_SYMBOL', symbol });
@@ -212,6 +225,7 @@ export function PortfolioScreen() {
     <ScreenShell
       eyebrow="Weekend Warriors · Day 4"
       title={`$${totalEquity.toFixed(2)}`}
+      onRefresh={handleRefresh}
       rightActions={
         <TouchableOpacity onPress={() => nav.navigate('Profile')}>
           <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="sm" style={{ backgroundColor: state.user.avatarColor }} />

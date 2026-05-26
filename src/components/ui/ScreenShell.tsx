@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ViewStyle, TouchableOpacity, RefreshControl as RNRefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
@@ -15,7 +15,8 @@ interface ScreenShellProps {
   scrollable?: boolean;
   style?: ViewStyle;
   contentStyle?: ViewStyle;
-  brand?: boolean; // dark background splash
+  brand?: boolean;
+  onRefresh?: () => Promise<void>;
 }
 
 export function ScreenShell({
@@ -27,8 +28,16 @@ export function ScreenShell({
   style,
   contentStyle,
   brand = false,
+  onRefresh,
 }: ScreenShellProps) {
   const { colors, isDark } = useTheme();
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const handleRefresh = React.useCallback(async () => {
+    if (!onRefresh) return;
+    setRefreshing(true);
+    try { await onRefresh(); } finally { setRefreshing(false); }
+  }, [onRefresh]);
   const navigation = useNavigation();
   const canGoBack = navigation.canGoBack();
   const bg = brand ? colors.brand : colors.surface;
@@ -70,6 +79,14 @@ export function ScreenShell({
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ gap: 14, paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 }}
+          refreshControl={onRefresh ? (
+            <RNRefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.brand}
+              colors={[colors.brand]}
+            />
+          ) : undefined}
         >
           {children}
         </ScrollView>
