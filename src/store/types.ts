@@ -87,6 +87,15 @@ export interface PriceAlert {
   triggeredAt?: number;
 }
 
+// A trading portfolio — either the main offline portfolio (id: 'main') or a
+// per-contest portfolio (id: competitionId). Each is independent: separate
+// $10K starting cash, separate holdings, separate trades.
+export interface PortfolioSlice {
+  cash: number;
+  holdings: Holding[];
+  trades: Trade[];
+}
+
 export interface AppState {
   user: {
     handle: string;
@@ -103,6 +112,12 @@ export interface AppState {
   holdings: Holding[];
   trades: Trade[];
   coins: Coin[];
+  // Active portfolio selector. 'main' = offline personal portfolio, otherwise
+  // it's the competitionId of a joined contest. Whichever is active drives
+  // state.cash / state.holdings / state.trades. Inactive portfolios are
+  // stashed in `portfolios` until switched back to.
+  activePortfolioId: string;
+  portfolios: Record<string, PortfolioSlice>;
   activeTournament: Tournament | null;
   competitions: Competition[];
   joinedTournamentIds: string[];

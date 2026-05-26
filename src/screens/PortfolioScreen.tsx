@@ -219,7 +219,15 @@ export function PortfolioScreen() {
   const { colors } = useTheme();
   const { state, getCoin, getHolding, dispatch } = useApp();
   const nav = useNavigation<any>();
-  const [tf, setTf] = useState('7D');
+  const isContest = state.activePortfolioId !== 'main';
+  const tfOptions = isContest
+    ? ['Live', '1H', '24H', '7D']
+    : ['Live', '1H', '24H', '7D', '30D', 'MAX'];
+  const [tf, setTf] = useState(isContest ? '1H' : '7D');
+  // If the user switches to/from a contest, clamp the timeframe into the new list.
+  React.useEffect(() => {
+    if (!tfOptions.includes(tf)) setTf(tfOptions[tfOptions.length - 1]);
+  }, [isContest]); // eslint-disable-line react-hooks/exhaustive-deps
   const [view, setView] = useState('List');
   const [stopSheetVisible, setStopSheetVisible] = useState(false);
   const [rebalanceVisible, setRebalanceVisible] = useState(false);
@@ -278,12 +286,12 @@ export function PortfolioScreen() {
   // Filter snapshots to the selected timeframe window. AreaChart wants a flat
   // number[]; we resample if too few/too many points.
   const TF_WINDOW_MS: Record<string, number> = {
-    '1H':  60 * 60 * 1000,
-    '1D':  24 * 60 * 60 * 1000,
-    '7D':  7 * 24 * 60 * 60 * 1000,
-    '30D': 30 * 24 * 60 * 60 * 1000,
-    'SEA': 90 * 24 * 60 * 60 * 1000,
-    'ALL': Number.MAX_SAFE_INTEGER,
+    'Live': 15 * 60 * 1000,
+    '1H':   60 * 60 * 1000,
+    '24H':  24 * 60 * 60 * 1000,
+    '7D':   7 * 24 * 60 * 60 * 1000,
+    '30D':  30 * 24 * 60 * 60 * 1000,
+    'MAX':  Number.MAX_SAFE_INTEGER,
   };
   const chartData = React.useMemo(() => {
     const cutoff = Date.now() - (TF_WINDOW_MS[tf] ?? TF_WINDOW_MS['7D']);
@@ -421,9 +429,20 @@ export function PortfolioScreen() {
   if (state.holdings.length > 0 && state.cash / totalEquity < 0.1) riskWarnings.push('Low cash buffer');
   if (state.holdings.length > 0 && Object.keys(state.stopLosses).length === 0) riskWarnings.push('No stop-loss orders set');
 
+  const activeContest = state.competitions.find(c => c.id === state.activePortfolioId);
+  const eyebrowLabel = state.activePortfolioId === 'main' ? 'Main portfolio' : (activeContest?.name ?? 'Contest');
+
+  const portfolioOptions: { id: string; label: string }[] = [
+    { id: 'main', label: 'Main' },
+    ...state.joinedTournamentIds.map(id => {
+      const comp = state.competitions.find(c => c.id === id);
+      return { id, label: comp?.name ?? 'Contest' };
+    }),
+  ];
+
   return (
     <ScreenShell
-      eyebrow="Weekend Warriors · Day 4"
+      eyebrow={eyebrowLabel}
       title={`$${totalEquity.toFixed(2)}`}
       onRefresh={handleRefresh}
       rightActions={
@@ -437,6 +456,42 @@ export function PortfolioScreen() {
         </TouchableOpacity>
       }
     >
+      {/* Portfolio selector — Main vs. each joined contest */}
+      {portfolioOptions.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+        >
+          {portfolioOptions.map(opt => {
+            const active = opt.id === state.activePortfolioId;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
+                activeOpacity={0.75}
+                style={{
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: active ? colors.brand : colors.hairline,
+                  backgroundColor: active ? colors.brand : 'transparent',
+                }}
+              >
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: active ? colors.brandOn : colors.ink,
+                }}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
       {/* P&L */}
       <Chip variant={pnlPositive ? 'up' : 'down'}>
         {pnlPositive ? '↑' : '↓'} {pnlPositive ? '+' : ''}${pnl.toFixed(2)} · {pnlPct.toFixed(2)}%
@@ -448,7 +503,7 @@ export function PortfolioScreen() {
       </View>
 
       <Segmented
-        options={['1H', '1D', '7D', '30D', 'SEA', 'ALL']}
+        options={tfOptions}
         value={tf}
         onChange={setTf}
         style={{ alignSelf: 'center' }}

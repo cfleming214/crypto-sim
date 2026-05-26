@@ -62,6 +62,12 @@ const schema = a.schema({
     rank: a.integer(),
     joinedAt: a.string().required(), // ISO timestamp
     isActive: a.boolean(),
+    // Per-contest portfolio — separate from the user's main UserProfile.
+    // Each contest gives the player a fresh $10K and tracks its own holdings
+    // and trade history independently.
+    cash: a.float(),
+    holdingsJson: a.string(),
+    tradesJson: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),

@@ -1,5 +1,5 @@
 import { isAmplifyConfigured } from '../lib/amplify';
-import type { AppState, Trade, CompetitionEntry } from '../store/types';
+import type { AppState, Trade, CompetitionEntry, PortfolioSlice } from '../store/types';
 
 // Lazily initialised so it doesn't blow up before Amplify.configure() is called
 let clientPromise: Promise<any> | null = null;
@@ -103,6 +103,49 @@ async function loadJoinedCompetitions(client: any): Promise<string[]> {
       .map(e => e.competitionId);
   } catch {
     return [];
+  }
+}
+
+export async function loadContestPortfolios(): Promise<Record<string, PortfolioSlice>> {
+  const client = await getClient();
+  if (!client) return {};
+  try {
+    const { data } = await client.models.CompetitionEntry.list();
+    const out: Record<string, PortfolioSlice> = {};
+    for (const e of data as any[]) {
+      if (e.isActive === false) continue;
+      out[e.competitionId] = {
+        cash:     typeof e.cash === 'number' ? e.cash : 10000,
+        holdings: e.holdingsJson ? JSON.parse(e.holdingsJson) : [],
+        trades:   e.tradesJson   ? JSON.parse(e.tradesJson)   : [],
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveContestPortfolio(competitionId: string, slice: PortfolioSlice, bankroll: number, pnlPct: number): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    // Find the user's CompetitionEntry for this contest
+    const { data: entries } = await client.models.CompetitionEntry.list({
+      filter: { competitionId: { eq: competitionId } },
+    });
+    const own = (entries as any[]).find(e => e.competitionId === competitionId);
+    if (!own) return; // user hasn't joined this contest — nothing to save against
+    await client.models.CompetitionEntry.update({
+      id: own.id,
+      cash:         slice.cash,
+      holdingsJson: JSON.stringify(slice.holdings),
+      tradesJson:   JSON.stringify(slice.trades),
+      bankroll,
+      pnlPct,
+    });
+  } catch (e) {
+    console.warn('saveContestPortfolio failed:', e);
   }
 }
 

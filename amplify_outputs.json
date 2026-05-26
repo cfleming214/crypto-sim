@@ -591,6 +591,27 @@
               "isRequired": false,
               "attributes": []
             },
+            "cash": {
+              "name": "cash",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "holdingsJson": {
+              "name": "holdingsJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "tradesJson": {
+              "name": "tradesJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,

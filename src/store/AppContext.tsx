@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
-import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge } from './types';
+import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard } from '../services/portfolioService';
+import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
 import { useAuth } from './AuthContext';
 
@@ -90,6 +90,8 @@ const INITIAL_STATE: AppState = {
   dismissedNudgeIds: [],
   hasOnboarded: false,
   tradeSymbol: 'BTC',
+  activePortfolioId: 'main',
+  portfolios: {},
 };
 
 type Action =
@@ -118,7 +120,9 @@ type Action =
   | { type: 'DISMISS_NUDGE'; nudgeId: string }
   | { type: 'SET_AVATAR_URI'; uri: string }
   | { type: 'SET_AVATAR'; uri: string; key: string }
-  | { type: 'SET_CLOUD_NUDGES'; nudges: CoachNudge[] };
+  | { type: 'SET_CLOUD_NUDGES'; nudges: CoachNudge[] }
+  | { type: 'SWITCH_PORTFOLIO'; portfolioId: string }
+  | { type: 'INIT_CONTEST_PORTFOLIO'; competitionId: string; slice?: PortfolioSlice };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -506,11 +510,82 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_COMPETITIONS':
       return { ...state, competitions: action.competitions };
-    case 'JOIN_TOURNAMENT':
+    case 'JOIN_TOURNAMENT': {
       if (state.joinedTournamentIds.includes(action.tournamentId)) return state;
-      return { ...state, joinedTournamentIds: [...state.joinedTournamentIds, action.tournamentId] };
-    case 'LEAVE_TOURNAMENT':
-      return { ...state, joinedTournamentIds: state.joinedTournamentIds.filter(id => id !== action.tournamentId) };
+      // Spawn a fresh $10K portfolio for the new contest if one doesn't exist.
+      const newPortfolios = state.portfolios[action.tournamentId]
+        ? state.portfolios
+        : { ...state.portfolios, [action.tournamentId]: { cash: 10000, holdings: [], trades: [] } };
+      return {
+        ...state,
+        joinedTournamentIds: [...state.joinedTournamentIds, action.tournamentId],
+        portfolios: newPortfolios,
+      };
+    }
+    case 'LEAVE_TOURNAMENT': {
+      // Drop the contest portfolio, and if it's currently active, fall back to main.
+      const { [action.tournamentId]: _removed, ...remainingPortfolios } = state.portfolios;
+      let nextActive = state.activePortfolioId;
+      let nextCash = state.cash, nextHoldings = state.holdings, nextTrades = state.trades;
+      if (state.activePortfolioId === action.tournamentId) {
+        nextActive = 'main';
+        const main = remainingPortfolios['main'] ?? { cash: 10000, holdings: [], trades: [] };
+        nextCash = main.cash;
+        nextHoldings = main.holdings;
+        nextTrades = main.trades;
+      }
+      return {
+        ...state,
+        joinedTournamentIds: state.joinedTournamentIds.filter(id => id !== action.tournamentId),
+        portfolios: remainingPortfolios,
+        activePortfolioId: nextActive,
+        cash: nextCash,
+        holdings: nextHoldings,
+        trades: nextTrades,
+      };
+    }
+    case 'INIT_CONTEST_PORTFOLIO': {
+      // Used when restoring a contest portfolio from cloud on login.
+      const slice = action.slice ?? { cash: 10000, holdings: [], trades: [] };
+      return {
+        ...state,
+        portfolios: { ...state.portfolios, [action.competitionId]: slice },
+      };
+    }
+    case 'SWITCH_PORTFOLIO': {
+      if (action.portfolioId === state.activePortfolioId) return state;
+      // Stash current portfolio's live cash/holdings/trades back into the map,
+      // then load the target. If the target doesn't exist yet, initialize it
+      // with $10K cash. activeTournament stays null — it was UI-only legacy.
+      const stashed = {
+        ...state.portfolios,
+        [state.activePortfolioId]: {
+          cash: state.cash,
+          holdings: state.holdings,
+          trades: state.trades,
+        },
+      };
+      const target = stashed[action.portfolioId]
+        ?? { cash: 10000, holdings: [], trades: [] };
+      const holdingsValue = target.holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      return {
+        ...state,
+        activePortfolioId: action.portfolioId,
+        portfolios: stashed,
+        cash: target.cash,
+        holdings: target.holdings,
+        trades: target.trades,
+        bankroll: target.cash + holdingsValue,
+        // Coach nudges, alerts, etc. are global-feeling but recomputed against
+        // the active portfolio so they stay relevant.
+        coachNudges: computeCoachNudges(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses, target.trades.length),
+        dismissedNudgeIds: [],
+        riskScore: computeRiskScore(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses),
+      };
+    }
     case 'SET_LEADERBOARD':
       return { ...state, leaderboard: { ...state.leaderboard, [action.competitionId]: action.entries } };
     case 'ADD_PRICE_ALERT': {
@@ -593,6 +668,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'RESET_DEMO',
   ];
   const wrappedDispatch = (action: Action) => {
+    // Persist the outgoing portfolio before switching, so the snapshot lands
+    // in the right source (UserProfile for 'main', CompetitionEntry otherwise).
+    if (action.type === 'SWITCH_PORTFOLIO' && authStatus === 'authenticated' && action.portfolioId !== state.activePortfolioId) {
+      if (state.activePortfolioId === 'main') {
+        saveProfile(state);
+      } else {
+        const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+        saveContestPortfolio(
+          state.activePortfolioId,
+          { cash: state.cash, holdings: state.holdings, trades: state.trades },
+          state.bankroll,
+          pnlPct,
+        );
+      }
+    }
     if (SAVE_ACTIONS.includes(action.type)) {
       lastActionRef.current = action;
       setSaveTick(t => t + 1);
@@ -635,6 +725,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     fetchCompetitions().then(competitions => {
       dispatch({ type: 'SET_COMPETITIONS', competitions });
+    });
+
+    // Restore per-contest portfolios from CompetitionEntry rows
+    loadContestPortfolios().then(stash => {
+      for (const [competitionId, slice] of Object.entries(stash)) {
+        dispatch({ type: 'INIT_CONTEST_PORTFOLIO', competitionId, slice });
+      }
     });
 
     let unsubProfile: () => void = () => {};
@@ -686,10 +783,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (authStatus !== 'authenticated') return;
 
-    saveProfile(state);
-
-    if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
-      saveTrade(state.trades[0]);
+    // Route the save to the active portfolio's persistence source.
+    if (state.activePortfolioId === 'main') {
+      saveProfile(state);
+      if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
+        saveTrade(state.trades[0]);
+      }
+    } else {
+      const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+      saveContestPortfolio(
+        state.activePortfolioId,
+        { cash: state.cash, holdings: state.holdings, trades: state.trades },
+        state.bankroll,
+        pnlPct,
+      );
     }
   }, [saveTick, authStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
