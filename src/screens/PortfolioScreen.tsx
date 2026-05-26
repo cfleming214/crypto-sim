@@ -232,6 +232,72 @@ export function PortfolioScreen() {
   const pnlPct = (pnl / startEquity) * 100;
   const pnlPositive = pnl >= 0;
 
+  // Derive real portfolio history by walking trades chronologically. At each
+  // trade we know cash, holdings, and the trade's own price for that symbol.
+  // For other coins, use the last seen trade price for that symbol (or fall
+  // back to the current state.coins price). Produces one snapshot per trade
+  // plus a final current-state snapshot.
+  const historySnapshots = React.useMemo(() => {
+    const sorted = [...state.trades].sort((a, b) => a.timestamp - b.timestamp);
+    let cash = startEquity;
+    const holdings = new Map<string, { units: number; avgCost: number }>();
+    const lastPrice = new Map<string, number>();
+    const snaps: { t: number; v: number }[] = [{ t: sorted[0]?.timestamp ?? Date.now() - 1, v: startEquity }];
+
+    for (const tr of sorted) {
+      lastPrice.set(tr.symbol, tr.price);
+      if (tr.side === 'buy') {
+        cash -= tr.amount;
+        const ex = holdings.get(tr.symbol);
+        if (ex) {
+          const u = ex.units + tr.units;
+          holdings.set(tr.symbol, { units: u, avgCost: (ex.avgCost * ex.units + tr.amount) / u });
+        } else {
+          holdings.set(tr.symbol, { units: tr.units, avgCost: tr.price });
+        }
+      } else {
+        cash += tr.amount;
+        const ex = holdings.get(tr.symbol);
+        if (ex) {
+          const u = ex.units - tr.units;
+          if (u <= 1e-6) holdings.delete(tr.symbol);
+          else holdings.set(tr.symbol, { units: u, avgCost: ex.avgCost });
+        }
+      }
+      let bankroll = cash;
+      for (const [sym, h] of holdings) {
+        const price = lastPrice.get(sym) ?? getCoin(sym)?.price ?? 0;
+        bankroll += h.units * price;
+      }
+      snaps.push({ t: tr.timestamp, v: bankroll });
+    }
+    snaps.push({ t: Date.now(), v: totalEquity });
+    return snaps;
+  }, [state.trades, totalEquity, getCoin]);
+
+  // Filter snapshots to the selected timeframe window. AreaChart wants a flat
+  // number[]; we resample if too few/too many points.
+  const TF_WINDOW_MS: Record<string, number> = {
+    '1H':  60 * 60 * 1000,
+    '1D':  24 * 60 * 60 * 1000,
+    '7D':  7 * 24 * 60 * 60 * 1000,
+    '30D': 30 * 24 * 60 * 60 * 1000,
+    'SEA': 90 * 24 * 60 * 60 * 1000,
+    'ALL': Number.MAX_SAFE_INTEGER,
+  };
+  const chartData = React.useMemo(() => {
+    const cutoff = Date.now() - (TF_WINDOW_MS[tf] ?? TF_WINDOW_MS['7D']);
+    const windowed = historySnapshots.filter(s => s.t >= cutoff);
+    // Guarantee a starting anchor: if the first snapshot is after cutoff,
+    // prepend the latest pre-cutoff value so the line starts inside the window.
+    if (windowed.length > 0 && historySnapshots[0].t < cutoff) {
+      const pre = historySnapshots.filter(s => s.t < cutoff).slice(-1)[0];
+      if (pre) windowed.unshift({ t: cutoff, v: pre.v });
+    }
+    const values = (windowed.length >= 2 ? windowed : historySnapshots).map(s => s.v);
+    return values.length >= 2 ? values : [startEquity, totalEquity];
+  }, [historySnapshots, tf]);
+
   const holdingRows = [
     ...state.holdings.map(h => {
       const coin = getCoin(h.symbol);
@@ -378,7 +444,7 @@ export function PortfolioScreen() {
 
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
-        <AreaChart height={170} timeframe={tf} baseValue={totalEquity} />
+        <AreaChart height={170} data={chartData} down={!pnlPositive} />
       </View>
 
       <Segmented
