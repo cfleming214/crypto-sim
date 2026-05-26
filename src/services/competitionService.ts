@@ -7,30 +7,10 @@ import type { Competition, CompetitionEntry } from '../store/types';
 function seedTemplates(): Competition[] {
   const now = Date.now();
   return [
-    { id: 'ww-1',  name: 'Weekend Warriors', type: 'featured', status: 'live',
-      prizePool: '$5,000', maxPlayers: 2000, stake: 'Free',
-      startAt: now - 24 * 60 * 60 * 1000,
-      endAt:   now +  2 * 60 * 60 * 1000 + 14 * 60 * 1000,
-      entryCount: 0 },
-    { id: 'qs-1',  name: 'Quick Sprint',     type: 'daily',    status: 'open',
-      prizePool: '500 XP', maxPlayers: 500, stake: 'Free',
-      startAt: now,
-      endAt:   now + 5 * 60 * 60 * 1000,
-      entryCount: 0 },
-    { id: 'mm-1',  name: 'Memecoin Mania',   type: 'featured', status: 'open',
-      prizePool: '$500', maxPlayers: 1000, stake: '100 XP',
-      startAt: now + 2 * 60 * 60 * 1000,
-      endAt:   now + 2 * 24 * 60 * 60 * 1000,
-      entryCount: 0 },
-    { id: 'br-1',  name: "Bull Run '21",     type: 'replay',   status: 'open',
-      prizePool: '$2,000', maxPlayers: 500, stake: '500 XP',
+    { id: 'first-1', name: 'First Contest', type: 'featured', status: 'live',
+      prizePool: '$100', maxPlayers: 1000, stake: 'Free',
       startAt: now,
       endAt:   now + 7 * 24 * 60 * 60 * 1000,
-      entryCount: 0 },
-    { id: '1v1-1', name: 'Quick Match',      type: '1v1',      status: 'open',
-      prizePool: 'XP', maxPlayers: 2, stake: 'Free',
-      startAt: now,
-      endAt:   now + 30 * 60 * 1000,
       entryCount: 0 },
   ];
 }
