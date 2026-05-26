@@ -3,6 +3,7 @@ import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingO
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard } from '../services/portfolioService';
 import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
+import { useAuth } from './AuthContext';
 
 const INITIAL_COINS: Coin[] = [
   { symbol: 'BTC',  name: 'Bitcoin',   price: 64210.48, change24h: 2.41,  marketCap: '$1.26T', volume: '$1.24B', history: [58000,60000,61500,63000,62000,64000,63500,64210] },
@@ -502,6 +503,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const priceRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const lastActionRef = useRef<Action | null>(null);
+  const { status: authStatus } = useAuth();
 
   // Wrap dispatch to track trade actions for cloud sync
   const wrappedDispatch = (action: Action) => {
@@ -511,29 +513,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch(action);
   };
 
+  // Always-on: price simulation and competition seed list. These don't need auth.
   useEffect(() => {
-    // Load cloud portfolio on mount
-    loadProfile().then(profile => {
-      if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
-    });
-
-    // Load competitions (falls back to seed data if offline)
     fetchCompetitions().then(competitions => {
       dispatch({ type: 'SET_COMPETITIONS', competitions });
     });
 
-    // Real-time subscriptions (no-op when Amplify isn't configured)
-    let unsubProfile: () => void = () => {};
-    let unsubNudges:  () => void = () => {};
-    subscribeToProfile(profile => dispatch({ type: 'LOAD_PROFILE', profile }))
-      .then(unsub => { unsubProfile = unsub; });
-    subscribeToCoachNudges(nudges => dispatch({ type: 'SET_CLOUD_NUDGES', nudges }))
-      .then(unsub => { unsubNudges = unsub; });
-
-    // Simulated micro-tick for UI fluidity
     tickRef.current = setInterval(() => dispatch({ type: 'TICK_PRICES' }), 2000);
 
-    // Real prices from CoinGecko every 30s
     const doFetch = async () => {
       try {
         const prices = await fetchPrices();
@@ -548,16 +535,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       clearInterval(tickRef.current);
       clearInterval(priceRef.current);
-      unsubProfile();
-      unsubNudges();
     };
   }, []);
 
-  // Live-subscribe to leaderboard for every joined competition. The
-  // tickLeaderboard cron rewrites ranks every 5 min server-side, so this
-  // pushes updates into state without polling. Re-subscribes whenever the
-  // joined-set changes (join/leave).
+  // Auth-gated: profile load + real-time subscriptions. AppSync rejects
+  // observeQuery and any owner-scoped query without a Cognito JWT, so we
+  // wait for status === 'authenticated' before touching the cloud.
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+
+    loadProfile().then(profile => {
+      if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
+    });
+
+    let unsubProfile: () => void = () => {};
+    let unsubNudges:  () => void = () => {};
+    subscribeToProfile(profile => dispatch({ type: 'LOAD_PROFILE', profile }))
+      .then(unsub => { unsubProfile = unsub; });
+    subscribeToCoachNudges(nudges => dispatch({ type: 'SET_CLOUD_NUDGES', nudges }))
+      .then(unsub => { unsubNudges = unsub; });
+
+    return () => {
+      unsubProfile();
+      unsubNudges();
+    };
+  }, [authStatus]);
+
+  // Auth-gated leaderboard subscriptions, one per joined competition.
+  // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     const unsubs: (() => void)[] = [];
     state.joinedTournamentIds.forEach(competitionId => {
       subscribeToLeaderboard(competitionId, entries => {
@@ -565,7 +572,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }).then(unsub => unsubs.push(unsub));
     });
     return () => unsubs.forEach(u => u());
-  }, [state.joinedTournamentIds]);
+  }, [authStatus, state.joinedTournamentIds]);
 
   // Sync portfolio to cloud after each trade
   useEffect(() => {
@@ -573,12 +580,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!action) return;
     lastActionRef.current = null;
 
+    if (authStatus !== 'authenticated') return;
+
     saveProfile(state);
 
     if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
       saveTrade(state.trades[0]);
     }
-  }, [state.trades, state.cash]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.trades, state.cash, authStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getCoin = (symbol: string) => state.coins.find(c => c.symbol === symbol);
 
