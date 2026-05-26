@@ -49,6 +49,8 @@ export interface Competition {
   startAt: number;
   endAt: number;
   entryCount: number;
+  numberOfPrizes: number;   // count of paid positions
+  prizes: number[];         // dollar amount per rank (index 0 = #1)
 }
 
 export interface CompetitionEntry {

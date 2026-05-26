@@ -49,6 +49,8 @@ const schema = a.schema({
     endAt: a.string().required(),   // ISO timestamp
     entryCount: a.integer(),
     createdBy: a.string(),
+    numberOfPrizes: a.integer(),    // length of the prizes array
+    prizesJson: a.string(),         // JSON array of dollar amounts, e.g. "[100,50,20,10,5]"
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),

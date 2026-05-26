@@ -17,14 +17,6 @@ const rules = [
   ['Final standing', 'Highest equity wins'],
 ];
 
-const payouts = [
-  ['#1', '$2,000'],
-  ['#2', '$1,000'],
-  ['#3', '$500'],
-  ['#4–10', '$100'],
-  ['#11–50', '$25'],
-];
-
 export function TournamentDetailScreen() {
   const { colors } = useTheme();
   const { state } = useApp();
@@ -232,18 +224,24 @@ export function TournamentDetailScreen() {
       </Card>
 
       {/* Payouts */}
-      <Card>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700', color: colors.ink }}>Payouts</Text>
-          <Text style={{ fontSize: 11, color: colors.ink3 }}>Top 50 paid</Text>
-        </View>
-        {payouts.map(([rank, amount]) => (
-          <View key={rank} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.hairline }}>
-            <Text style={{ fontSize: 13, color: colors.ink }}>{rank}</Text>
-            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>{amount}</Text>
+      {competition.prizes.length > 0 && (
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontWeight: '700', color: colors.ink }}>Payouts</Text>
+            <Text style={{ fontSize: 11, color: colors.ink3 }}>
+              Top {competition.numberOfPrizes} paid
+            </Text>
           </View>
-        ))}
-      </Card>
+          {competition.prizes.map((amount, i) => (
+            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: i < competition.prizes.length - 1 ? 1 : 0, borderBottomColor: colors.hairline }}>
+              <Text style={{ fontSize: 13, color: colors.ink }}>#{i + 1}</Text>
+              <Text style={{ fontWeight: '700', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                ${amount.toLocaleString()}
+              </Text>
+            </View>
+          ))}
+        </Card>
+      )}
 
       {/* Footer */}
       <View style={{ flexDirection: 'row', gap: 10 }}>

@@ -19,6 +19,11 @@ async function getClient() {
 }
 
 function mapCompetition(d: any): Competition {
+  let prizes: number[] = [];
+  if (d.prizesJson) {
+    try { prizes = JSON.parse(d.prizesJson); }
+    catch { prizes = []; }
+  }
   return {
     id: d.id,
     name: d.name,
@@ -30,6 +35,8 @@ function mapCompetition(d: any): Competition {
     startAt: new Date(d.startAt).getTime(),
     endAt: new Date(d.endAt).getTime(),
     entryCount: d.entryCount ?? 0,
+    numberOfPrizes: d.numberOfPrizes ?? prizes.length,
+    prizes,
   };
 }
 
