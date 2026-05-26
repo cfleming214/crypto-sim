@@ -90,7 +90,8 @@ type Action =
   | { type: 'PLACE_LIMIT_ORDER'; symbol: string; side: 'buy' | 'sell'; amount: number; limitPrice: number }
   | { type: 'CANCEL_LIMIT_ORDER'; orderId: string }
   | { type: 'ADD_PRICE_ALERT'; symbol: string; targetPrice: number; direction: 'above' | 'below' }
-  | { type: 'DISMISS_PRICE_ALERT'; alertId: string };
+  | { type: 'DISMISS_PRICE_ALERT'; alertId: string }
+  | { type: 'RESET_DEMO' };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -406,6 +407,13 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         priceAlerts: state.priceAlerts.filter(a => a.id !== action.alertId),
         triggeredAlerts: state.triggeredAlerts.filter(a => a.id !== action.alertId),
+      };
+    case 'RESET_DEMO':
+      return {
+        ...INITIAL_STATE,
+        user: state.user,
+        hasOnboarded: state.hasOnboarded,
+        coins: state.coins,
       };
     default:
       return state;

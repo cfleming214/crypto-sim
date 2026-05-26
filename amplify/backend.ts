@@ -7,6 +7,7 @@ import { data } from './data/resource.js';
 import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
+import { resetDemo } from './functions/reset-demo/resource.js';
 
 const backend = defineBackend({
   auth,
@@ -14,6 +15,7 @@ const backend = defineBackend({
   tickLeaderboard,
   closeCompetition,
   createCompetition,
+  resetDemo,
 });
 
 // DynamoDB table references
@@ -47,3 +49,12 @@ new Rule(Stack.of(closeFn), 'CloseCompetitionRule', {
 const createFn = backend.createCompetition.resources.lambda;
 competitionTable.grantWriteData(createFn);
 createFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
+
+// --- resetDemo: user-invoked, clears trades + profile ---
+const resetFn = backend.resetDemo.resources.lambda;
+const profileTable = backend.data.resources.tables['UserProfile'];
+const tradeTable   = backend.data.resources.tables['Trade'];
+profileTable.grantReadWriteData(resetFn);
+tradeTable.grantReadWriteData(resetFn);
+resetFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+resetFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);

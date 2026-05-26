@@ -85,6 +85,17 @@ export async function saveTrade(trade: Trade): Promise<void> {
   }
 }
 
+export async function resetDemoCloud(): Promise<void> {
+  if (!isAmplifyConfigured) return;
+  try {
+    const { post } = await import('aws-amplify/api');
+    // Invoke reset-demo Lambda via REST. In production this would use a proper API Gateway endpoint.
+    // For now this is a no-op shim — the client-side RESET_DEMO action handles the state reset.
+  } catch (e) {
+    console.warn('resetDemoCloud failed:', e);
+  }
+}
+
 export async function fetchLeaderboard(tournamentId: string) {
   const client = await getClient();
   if (!client) return [];
