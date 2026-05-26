@@ -9,6 +9,8 @@ import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
 import { resetDemo } from './functions/reset-demo/resource.js';
 import { evaluateCoach } from './functions/evaluate-coach/resource.js';
+import { executeTrade } from './functions/execute-trade/resource.js';
+import { runMirror } from './functions/run-mirror/resource.js';
 
 const backend = defineBackend({
   auth,
@@ -18,6 +20,8 @@ const backend = defineBackend({
   createCompetition,
   resetDemo,
   evaluateCoach,
+  executeTrade,
+  runMirror,
 });
 
 // DynamoDB table references
@@ -65,3 +69,17 @@ resetFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
 const coachFn = backend.evaluateCoach.resources.lambda;
 profileTable.grantReadData(coachFn);
 coachFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+
+// --- executeTrade: user-invoked, server-side validated trade execution ---
+const execFn = backend.executeTrade.resources.lambda;
+profileTable.grantReadWriteData(execFn);
+tradeTable.grantWriteData(execFn);
+execFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+execFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
+
+// --- runMirror: DynamoDB stream trigger on Trade table, copies trades to followers ---
+const mirrorFn = backend.runMirror.resources.lambda;
+profileTable.grantReadWriteData(mirrorFn);
+tradeTable.grantWriteData(mirrorFn);
+mirrorFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+mirrorFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
