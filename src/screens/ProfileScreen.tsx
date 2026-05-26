@@ -180,6 +180,31 @@ export function ProfileScreen() {
     : 64;
   const bestRank = state.activeTournament ? `#${state.activeTournament.userRank}` : '—';
 
+  // Contest history: every contest the user has joined, with current bankroll,
+  // P&L, live rank, and the prize they'd win if it ended right now.
+  const contestHistory = state.joinedTournamentIds
+    .map(id => {
+      const comp = state.competitions.find(c => c.id === id);
+      if (!comp) return null;
+      const portfolio = state.portfolios[id];
+      const slice = state.activePortfolioId === id
+        ? { cash: state.cash, holdings: state.holdings }
+        : (portfolio ?? { cash: 10000, holdings: [] });
+      const bankroll = slice.cash + slice.holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      const contestPnl = bankroll - 10000;
+      const entries = state.leaderboard[id] ?? [];
+      const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
+      const myIdx = sorted.findIndex(e => e.handle === state.user.handle);
+      const myRank = myIdx >= 0 ? myIdx + 1 : null;
+      const prize = myRank && myRank <= comp.prizes.length ? comp.prizes[myRank - 1] : 0;
+      return { comp, bankroll, pnl: contestPnl, myRank, prize };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => b.comp.startAt - a.comp.startAt);
+
   const handleShareProfile = async () => {
     const pnlStr = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`;
     const divLabel = state.user.division > 0 ? ['', 'I', 'II', 'III', 'IV'][state.user.division] : '';
@@ -345,6 +370,76 @@ export function ProfileScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Contest history */}
+      <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Contest history</Text>
+      {contestHistory.length === 0 ? (
+        <Card variant="tinted">
+          <Text style={{ fontSize: 13, color: colors.ink3 }}>
+            You haven't joined any contests yet. Head to Compete to find one.
+          </Text>
+        </Card>
+      ) : (
+        <Card variant="noPad">
+          {contestHistory.map((row, i) => {
+            const finished = row.comp.status === 'finished';
+            const live = row.comp.status === 'live';
+            return (
+              <TouchableOpacity
+                key={row.comp.id}
+                activeOpacity={0.7}
+                onPress={() => nav.navigate('TournamentDetail', { id: row.comp.id })}
+              >
+                <CardSection last={i === contestHistory.length - 1}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontWeight: '700', fontSize: 14, color: colors.ink }}>
+                          {row.comp.name}
+                        </Text>
+                        <View style={{
+                          paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4,
+                          backgroundColor: finished ? colors.surface2 : (live ? colors.upSoft : colors.surface2),
+                        }}>
+                          <Text style={{
+                            fontSize: 10, fontWeight: '700', letterSpacing: 0.3,
+                            color: finished ? colors.ink3 : (live ? colors.up : colors.ink3),
+                            textTransform: 'uppercase',
+                          }}>
+                            {finished ? 'Finished' : (live ? 'Live' : 'Open')}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 3, fontVariant: ['tabular-nums'] }}>
+                        {row.myRank ? `#${row.myRank}` : 'Unranked'} · ${Math.round(row.bankroll).toLocaleString()} bankroll
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{
+                        fontWeight: '700', fontSize: 13,
+                        color: row.pnl >= 0 ? colors.up : colors.down,
+                        fontVariant: ['tabular-nums'],
+                      }}>
+                        {row.pnl >= 0 ? '+' : ''}${Math.abs(row.pnl).toFixed(0)}
+                      </Text>
+                      <Text style={{
+                        fontSize: 11,
+                        color: row.prize > 0 ? colors.up : colors.ink3,
+                        fontVariant: ['tabular-nums'],
+                        marginTop: 2,
+                      }}>
+                        {row.prize > 0
+                          ? (finished ? `Won $${row.prize}` : `~$${row.prize} if ends now`)
+                          : (finished ? 'No prize' : 'Out of money')}
+                      </Text>
+                    </View>
+                  </View>
+                </CardSection>
+              </TouchableOpacity>
+            );
+          })}
+        </Card>
+      )}
 
       {/* Sign out */}
       {status !== 'unauthenticated' && (
