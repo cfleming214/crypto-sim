@@ -6,42 +6,37 @@ import { Chip } from '../components/ui/Chip';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
+import { useApp } from '../store/AppContext';
 
 const categories = ['All', 'Top 10', 'DeFi', 'Layer 1', 'Meme', 'Stables'];
 
-const assets = [
-  { symbol: 'BTC',  name: 'Bitcoin',   cap: '$1.26T',  price: '64,210', change: '+2.4%', down: false },
-  { symbol: 'ETH',  name: 'Ethereum',  cap: '$381B',   price: '3,180',  change: '+1.1%', down: false },
-  { symbol: 'SOL',  name: 'Solana',    cap: '$80B',    price: '182.40', change: '−0.8%', down: true  },
-  { symbol: 'BNB',  name: 'BNB',       cap: '$88B',    price: '590.20', change: '+0.4%', down: false },
-  { symbol: 'DOGE', name: 'Dogecoin',  cap: '$23B',    price: '0.160',  change: '+5.7%', down: false },
-  { symbol: 'PEPE', name: 'Pepe',      cap: '$4.2B',   price: '0.0000118', change: '+12.3%', down: false },
-  { symbol: 'USDC', name: 'USD Coin',  cap: '$32B',    price: '1.000',  change: '0.0%',  down: false },
-];
-
-const movers = assets.filter(a => a.symbol !== 'USDC').slice(0, 5);
-
 export function MarketsScreen() {
   const { colors } = useTheme();
+  const { state } = useApp();
   const [cat, setCat] = useState('All');
+
+  const coins = state.coins;
+  const movers = [...coins].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 5);
 
   return (
     <ScreenShell eyebrow="Markets" title="Crypto">
       {/* Stats strip */}
-      <View style={{ flexDirection: 'row', gap: 16 }}>
-        <View>
-          <Text style={{ fontSize: 11, color: colors.ink3 }}>TOTAL MKT CAP</Text>
-          <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>$2.41T</Text>
+      <Card variant="noPad" style={{ flexDirection: 'row' }}>
+        <View style={{ flex: 1, padding: 12, borderRightWidth: 1, borderRightColor: colors.hairline }}>
+          <Text style={{ fontSize: 11, color: colors.ink3 }}>Total mkt cap</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>$2.41T</Text>
+            <Text style={{ fontSize: 11, color: colors.up, fontVariant: ['tabular-nums'] }}>+1.8%</Text>
+          </View>
         </View>
-        <View>
-          <Text style={{ fontSize: 11, color: colors.ink3 }}>FEAR & GREED</Text>
-          <Text style={{ fontWeight: '700', color: colors.warn, fontVariant: ['tabular-nums'] }}>62 · Greed</Text>
+        <View style={{ flex: 1, padding: 12 }}>
+          <Text style={{ fontSize: 11, color: colors.ink3 }}>Fear & Greed</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>72</Text>
+            <Chip variant="warn" style={{ paddingVertical: 1, paddingHorizontal: 6 }}>Greed</Chip>
+          </View>
         </View>
-        <View>
-          <Text style={{ fontSize: 11, color: colors.ink3 }}>BTC DOM</Text>
-          <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>52.4%</Text>
-        </View>
-      </View>
+      </Card>
 
       {/* Category chips */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
@@ -59,36 +54,46 @@ export function MarketsScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
         <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
           {movers.map(a => (
-            <Card key={a.symbol} variant="compact" style={{ width: 110 }}>
-              <CoinGlyph symbol={a.symbol} size={28} />
-              <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-              <Text style={{ fontSize: 11, color: a.down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
-                {a.change}
+            <Card key={a.symbol} variant="compact" style={{ width: 120, gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <CoinGlyph symbol={a.symbol} size={24} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+              </View>
+              <Sparkline data={a.history} down={a.change24h < 0} width={96} height={28} />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
               </Text>
             </Card>
           ))}
         </View>
       </ScrollView>
 
-      {/* Asset list */}
+      {/* All assets */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>All assets</Text>
+        <Text style={{ fontSize: 11, color: colors.ink3 }}>Sort: Market cap ↓</Text>
+      </View>
+
       <Card variant="noPad">
-        {assets.map((a, i) => (
-          <CardSection key={a.symbol} last={i === assets.length - 1}>
+        {coins.map((a, i) => (
+          <CardSection key={a.symbol} last={i === coins.length - 1}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <CoinGlyph symbol={a.symbol} />
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-                  <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${a.price}</Text>
+                  <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                    ${a.price < 0.01 ? a.price.toFixed(8) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                  <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.cap}</Text>
-                  <Text style={{ fontSize: 12, color: a.down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
-                    {a.change}
+                  <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name} · MC {a.marketCap}</Text>
+                  <Text style={{ fontSize: 12, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                    {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                   </Text>
                 </View>
               </View>
-              <Sparkline down={a.down} width={56} height={22} />
+              <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
             </View>
           </CardSection>
         ))}
