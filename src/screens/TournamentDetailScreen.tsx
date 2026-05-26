@@ -243,6 +243,74 @@ export function TournamentDetailScreen() {
         </Card>
       )}
 
+      {/* Live leaderboard */}
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700', color: colors.ink }}>Leaderboard</Text>
+          <Text style={{ fontSize: 11, color: colors.ink3 }}>
+            {entries.length === 0
+              ? 'No players yet'
+              : `${entries.length} ${entries.length === 1 ? 'player' : 'players'} · live`}
+          </Text>
+        </View>
+        {entries.length === 0 ? (
+          <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 8 }}>
+            Join the contest and rankings will appear here.
+          </Text>
+        ) : (
+          [...entries]
+            .sort((a, b) => b.bankroll - a.bankroll)
+            .map((e, idx, arr) => {
+              const liveRank = idx + 1;
+              const prize = liveRank <= competition.prizes.length
+                ? competition.prizes[liveRank - 1]
+                : 0;
+              const isMe = e.handle === state.user.handle;
+              return (
+                <View
+                  key={e.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 10,
+                    borderBottomWidth: idx < arr.length - 1 ? 1 : 0,
+                    borderBottomColor: colors.hairline,
+                    backgroundColor: isMe ? colors.surface2 : 'transparent',
+                    marginHorizontal: -12,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  <Text style={{
+                    width: 28,
+                    fontWeight: '700',
+                    color: liveRank <= 3 ? colors.up : colors.ink3,
+                    fontVariant: ['tabular-nums'],
+                    fontSize: 13,
+                  }}>
+                    {liveRank}
+                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>
+                      @{e.handle}{isMe ? ' (you)' : ''}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                      ${Math.round(e.bankroll).toLocaleString()} · {e.pnlPct >= 0 ? '+' : ''}{e.pnlPct.toFixed(1)}%
+                    </Text>
+                  </View>
+                  <Text style={{
+                    fontWeight: '700',
+                    fontSize: 13,
+                    color: prize > 0 ? colors.up : colors.ink3,
+                    fontVariant: ['tabular-nums'],
+                  }}>
+                    {prize > 0 ? `$${prize.toLocaleString()}` : '—'}
+                  </Text>
+                </View>
+              );
+            })
+        )}
+      </Card>
+
       {/* Footer */}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button
