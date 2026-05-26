@@ -70,6 +70,15 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
                   >${a}</Chip>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() => setAmount(side === 'sell' ? maxSell.toFixed(2) : state.cash.toFixed(2))}
+              >
+                <Chip
+                  variant={parsedAmount === (side === 'sell' ? maxSell : state.cash) ? 'brand' : 'outline'}
+                  style={{ justifyContent: 'center', width: '100%' }}
+                >Max</Chip>
+              </TouchableOpacity>
             </View>
           </Card>
 
@@ -87,6 +96,12 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={{ fontSize: 13, color: colors.ink3 }}>Fee</Text>
               <Text style={{ fontWeight: '600', fontSize: 13, color: colors.up }}>Free</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>{side === 'sell' ? 'Position value' : 'Available cash'}</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                ${(side === 'sell' ? maxSell : state.cash).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
             </View>
           </Card>
 
