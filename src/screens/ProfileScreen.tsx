@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -186,6 +186,19 @@ export function ProfileScreen() {
     : 64;
   const bestRank = state.activeTournament ? `#${state.activeTournament.userRank}` : '—';
 
+  const handleShareProfile = async () => {
+    const pnlStr = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`;
+    const divLabel = state.user.division > 0 ? ['', 'I', 'II', 'III', 'IV'][state.user.division] : '';
+    const message =
+      `@${state.user.handle} on Crypto Sim — ${pnlStr} all-time · ${state.user.league} ${divLabel}`.trim() +
+      `\n${winRate}% win rate · ${state.user.xp.toLocaleString()} XP · ${state.user.streak}-day streak`;
+    try {
+      await Share.share({ message });
+    } catch {
+      // User cancelled or share unavailable — silent
+    }
+  };
+
   const stats = [
     ['All-time P&L', `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`, pnl >= 0 ? 'up' : 'down'],
     ['Tournaments', String(Math.max(1, state.joinedTournamentIds.length)), null],
@@ -203,7 +216,7 @@ export function ProfileScreen() {
           style={{ padding: 8 }}
           onPress={() => Alert.alert('More options', '', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Share profile', onPress: () => Alert.alert('Share', 'Sharing coming soon!') },
+            { text: 'Share profile', onPress: handleShareProfile },
             {
               text: 'Reset demo ($10K)',
               onPress: () => Alert.alert(

@@ -228,7 +228,7 @@ export function ReplayScreen() {
 
         {/* Chart — driven by current replay price */}
         <View style={{ marginHorizontal: -20 }}>
-          <CandleChart height={180} coinPrice={currentPrice} timeframe="1D" />
+          <CandleChart height={180} basePrice={currentPrice} timeframe="1D" />
         </View>
 
         {/* Current price */}

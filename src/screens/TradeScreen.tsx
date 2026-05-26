@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -265,13 +265,33 @@ function MoreSheet({ visible, symbol, currentPrice, onClose, onSetAlert }: {
       Icon: Share2,
       label: 'Share',
       sub: `Share ${symbol} trade idea`,
-      onPress: () => { onClose(); Alert.alert('Share', 'Sharing coming soon!'); },
+      onPress: async () => {
+        onClose();
+        try {
+          await Share.share({
+            message: `${symbol} at $${currentPrice.toLocaleString('en-US', { maximumFractionDigits: currentPrice < 0.01 ? 8 : 2 })} — watching this one on Crypto Sim`,
+          });
+        } catch {
+          // User cancelled — silent
+        }
+      },
     },
     {
       Icon: ExternalLink,
       label: 'View on CoinGecko',
       sub: `Open ${symbol} market page`,
-      onPress: () => { onClose(); Alert.alert('External link', 'Opens in browser in production.'); },
+      onPress: async () => {
+        onClose();
+        const slugs: Record<string, string> = {
+          BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana',
+          DOGE: 'dogecoin', USDC: 'usd-coin', PEPE: 'pepe',
+        };
+        const slug = slugs[symbol] ?? symbol.toLowerCase();
+        const url = `https://www.coingecko.com/en/coins/${slug}`;
+        const canOpen = await Linking.canOpenURL(url);
+        if (canOpen) await Linking.openURL(url);
+        else Alert.alert('Cannot open link', url);
+      },
     },
   ];
 

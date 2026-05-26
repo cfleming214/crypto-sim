@@ -202,8 +202,8 @@ export function NotificationsScreen() {
           <Card variant="noPad">
             {newItems.map((n, i) => (
               <NotifRow
-                key={n.key}
                 {...n}
+                key={n.key}
                 unread={n.unread && !readKeys.has(n.key)}
                 last={i === newItems.length - 1}
                 onPress={() => { markRead(n.key); n.onPress?.(); }}
@@ -219,8 +219,8 @@ export function NotificationsScreen() {
           <Card variant="noPad">
             {earlierItems.map((n, i) => (
               <NotifRow
-                key={n.key}
                 {...n}
+                key={n.key}
                 unread={n.unread && !readKeys.has(n.key)}
                 last={i === earlierItems.length - 1}
                 onPress={() => { markRead(n.key); n.onPress?.(); }}
