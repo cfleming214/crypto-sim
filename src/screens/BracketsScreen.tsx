@@ -97,7 +97,7 @@ export function BracketsScreen() {
   };
 
   return (
-    <ScreenShell eyebrow="Season 3 · Bull Run" title="All brackets">
+    <ScreenShell title="All brackets">
       <Segmented
         options={['Open', 'Live', 'Finished']}
         value={tab}

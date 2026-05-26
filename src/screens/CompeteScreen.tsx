@@ -88,7 +88,7 @@ export function CompeteScreen() {
 
   return (
     <ScreenShell
-      eyebrow="Season 3 · Bull Run"
+      eyebrow="Contests"
       title="Compete"
       rightActions={
         <TouchableOpacity style={{ padding: 8 }} onPress={() => nav.navigate('Notifications')}>

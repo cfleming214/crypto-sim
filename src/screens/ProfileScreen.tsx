@@ -154,12 +154,6 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
 }
 
 
-const seasons = [
-  ['Season 3 · Bull Run', 'In progress · Diamond III', '+$847',  'up'],
-  ['Season 2 · Sideways', 'Finished · Platinum I',     '+$420',  'up'],
-  ['Season 1 · Genesis',  'Finished · Gold II',         '−$180', 'down'],
-];
-
 export function ProfileScreen() {
   const { colors, isDark, toggle } = useTheme();
   const { state, dispatch } = useApp();
@@ -351,24 +345,6 @@ export function ProfileScreen() {
           </TouchableOpacity>
         ))}
       </View>
-
-      {/* Season history */}
-      <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Season history</Text>
-      <Card variant="noPad">
-        {seasons.map(([name, sub, pnl, type], i) => (
-          <CardSection key={name as string} last={i === seasons.length - 1}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View>
-                <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>{name}</Text>
-                <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>{sub}</Text>
-              </View>
-              <Text style={{ fontWeight: '700', color: type === 'up' ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                {pnl}
-              </Text>
-            </View>
-          </CardSection>
-        ))}
-      </Card>
 
       {/* Sign out */}
       {status !== 'unauthenticated' && (
