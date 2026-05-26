@@ -1,68 +1,220 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, SafeAreaView, ScrollView, TextInput } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { CandleChart } from '../components/charts/CandleChart';
+import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
-import { Star, MoreHorizontal, Shield } from 'lucide-react-native';
+import { useApp } from '../store/AppContext';
+import { Star, MoreHorizontal, Shield, Check, X } from 'lucide-react-native';
+
+const QUICK_AMOUNTS = [50, 100, 250, 500];
+
+function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
+  visible: boolean; side: 'buy' | 'sell'; symbol: string;
+  onClose: () => void; onConfirm: (amount: number) => void;
+}) {
+  const { colors } = useTheme();
+  const { state, getCoin, getHolding } = useApp();
+  const [amount, setAmount] = useState('100');
+  const coin = getCoin(symbol);
+  if (!coin) return null;
+
+  const parsedAmount = parseFloat(amount) || 0;
+  const units = parsedAmount / coin.price;
+  const holding = getHolding(symbol);
+  const maxSell = holding ? holding.value : 0;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>
+            {side === 'buy' ? 'Buy' : 'Sell'} {symbol}
+          </Text>
+          <TouchableOpacity onPress={onClose}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+          <Card style={{ gap: 16 }}>
+            <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              {side === 'buy' ? 'You spend' : 'You sell worth'}
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                ${parsedAmount.toFixed(2)}
+              </Text>
+              <Chip variant="outline">USD</Chip>
+            </View>
+            <View style={{ height: 1, backgroundColor: colors.hairline }} />
+            <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              {side === 'buy' ? 'You get' : 'Returning to cash'}
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                {units.toFixed(6)}
+              </Text>
+              <Chip variant="outline">{symbol}</Chip>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {QUICK_AMOUNTS.map((a, i) => (
+                <TouchableOpacity key={a} style={{ flex: 1 }} onPress={() => setAmount(String(a))}>
+                  <Chip
+                    variant={parsedAmount === a ? 'brand' : 'outline'}
+                    style={{ justifyContent: 'center', width: '100%' }}
+                  >${a}</Chip>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Card>
+
+          <Card variant="compact" style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>Price</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                ${coin.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>Slippage (max)</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>0.10%</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>Fee</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.up }}>Free</Text>
+            </View>
+          </Card>
+
+          {side === 'buy' && parsedAmount > 0 && (
+            <Card variant="tinted" style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+              <Shield color={colors.warn} size={16} strokeWidth={1.75} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '600', fontSize: 12, color: colors.ink }}>
+                  Risk impact: {state.riskScore} → {Math.min(100, state.riskScore + Math.round(parsedAmount / 200))}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
+                  ${parsedAmount.toFixed(0)} of your bankroll in {symbol}
+                </Text>
+              </View>
+            </Card>
+          )}
+
+          <Button
+            variant={side === 'buy' ? 'up' : 'down'}
+            onPress={() => onConfirm(parsedAmount)}
+            style={{ width: '100%' }}
+            disabled={parsedAmount <= 0 || (side === 'buy' && parsedAmount > state.cash) || (side === 'sell' && parsedAmount > maxSell)}
+          >
+            {side === 'buy' ? 'Confirm buy' : 'Confirm sell'} · ${parsedAmount.toFixed(2)}
+          </Button>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
 
 export function TradeScreen() {
   const { colors } = useTheme();
+  const { state, getCoin, dispatch } = useApp();
   const [tf, setTf] = useState('5M');
   const [symbol] = useState('BTC');
+  const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
+
+  const coin = getCoin(symbol);
+  if (!coin) return null;
+
+  const price = coin.price;
+  const change24h = coin.change24h;
+  const isUp = change24h >= 0;
+
+  const handleConfirm = (amount: number) => {
+    if (!modalSide) return;
+    const units = amount / price;
+    dispatch({ type: modalSide === 'buy' ? 'BUY' : 'SELL', symbol, amount });
+    setLastTrade({ side: modalSide, amount, units });
+    setModalSide(null);
+    setShowSuccess(true);
+  };
+
+  if (showSuccess && lastTrade) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+          <View style={{ alignItems: 'center', paddingVertical: 24, gap: 14 }}>
+            <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.upSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Check color={colors.up} size={44} strokeWidth={2} />
+            </View>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.up, textTransform: 'uppercase', letterSpacing: 0.5 }}>Order filled</Text>
+            <Text style={{ fontSize: 26, fontWeight: '700', color: colors.ink, letterSpacing: -0.65, textAlign: 'center' }}>
+              {lastTrade.side === 'buy' ? 'Bought' : 'Sold'} {lastTrade.units.toFixed(5)} {symbol}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>at ${price.toLocaleString('en-US', { maximumFractionDigits: 2 })} · just now</Text>
+            <Chip variant="up">+25 XP</Chip>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
+            <Button variant="brand" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>View portfolio</Button>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <ScreenShell
-      eyebrow="Trade"
-      title={`${symbol} / USD`}
-      scrollable={false}
-      style={{ flex: 1 }}
-      rightActions={
-        <>
-          <TouchableOpacity style={{ padding: 8 }}>
-            <Star color={colors.ink} size={20} strokeWidth={1.75} />
-          </TouchableOpacity>
-          <TouchableOpacity style={{ padding: 8 }}>
-            <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
-          </TouchableOpacity>
-        </>
-      }
-    >
-      <View style={{ flex: 1, gap: 14, paddingHorizontal: 20 }}>
-        {/* Price block */}
-        <View>
-          <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: -0.7 }}>
-            $64,210.48
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
-            <Chip variant="up">↑ +$1,510.20 · 2.41%</Chip>
-            <Text style={{ fontSize: 12, color: colors.ink3 }}>24h</Text>
+    <>
+      <ScreenShell
+        eyebrow="Trade"
+        title={`${symbol} / USD`}
+        scrollable={false}
+        style={{ flex: 1 }}
+        rightActions={
+          <>
+            <TouchableOpacity style={{ padding: 8 }}>
+              <Star color={colors.ink} size={20} strokeWidth={1.75} />
+            </TouchableOpacity>
+            <TouchableOpacity style={{ padding: 8 }}>
+              <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
+            </TouchableOpacity>
+          </>
+        }
+      >
+        <View style={{ flex: 1, gap: 14, paddingHorizontal: 20 }}>
+          {/* Price */}
+          <View>
+            <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: -0.7 }}>
+              ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <Chip variant={isUp ? 'up' : 'down'}>
+                {isUp ? '↑' : '↓'} {isUp ? '+' : ''}{change24h.toFixed(2)}%
+              </Chip>
+              <Text style={{ fontSize: 12, color: colors.ink3 }}>24h</Text>
+            </View>
           </View>
-        </View>
 
-        {/* Chart */}
-        <View style={{ marginHorizontal: -20 }}>
-          <CandleChart height={220} />
-        </View>
+          <View style={{ marginHorizontal: -20 }}>
+            <CandleChart height={220} />
+          </View>
 
-        {/* Timeframe + Indicators */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Segmented options={['1M', '5M', '1H', '1D', '1W']} value={tf} onChange={setTf} />
-          <Button variant="ghost" size="sm">Indicators</Button>
-        </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Segmented options={['1M', '5M', '1H', '1D', '1W']} value={tf} onChange={setTf} />
+            <Button variant="ghost" size="sm">Indicators</Button>
+          </View>
 
-        {/* Stats grid */}
-        <Card variant="compact" style={{ display: 'flex' } as any}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+          {/* Stats grid */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, backgroundColor: colors.surface2, borderRadius: 12, padding: 14 }}>
             {[
-              ['24h High', '$64,890'],
-              ['24h Low', '$62,400'],
-              ['Volume', '$1.24B'],
-              ['Mkt Cap', '$1.26T'],
-              ['RSI 14', '64.2'],
+              ['24h High', `$${(price * 1.01).toFixed(0)}`],
+              ['24h Low',  `$${(price * 0.97).toFixed(0)}`],
+              ['Volume',   coin.volume],
+              ['Mkt Cap',  coin.marketCap],
+              ['RSI 14',   '64.2'],
               ['Your pos.', '+$320'],
             ].map(([label, value]) => (
               <View key={label} style={{ width: '30%' }}>
@@ -73,27 +225,33 @@ export function TradeScreen() {
               </View>
             ))}
           </View>
-        </Card>
 
-        {/* Risk impact */}
-        <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <Shield color={colors.warn} size={16} strokeWidth={1.75} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: '600', fontSize: 12, color: colors.ink }}>
-              A $1,000 buy raises your risk score 62 → 67
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
-              BTC would be 43% of portfolio · still within bracket limits
-            </Text>
+          <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+            <Shield color={colors.warn} size={16} strokeWidth={1.75} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: '600', fontSize: 12, color: colors.ink }}>
+                A $1,000 buy raises your risk score {state.riskScore} → {state.riskScore + 5}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
+                {symbol} would be 43% of portfolio · still within bracket limits
+              </Text>
+            </View>
+          </Card>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
+            <Button variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
+            <Button variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
           </View>
-        </Card>
-
-        {/* Sticky buy/sell */}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
-          <Button variant="down" style={{ flex: 1 }}>Sell</Button>
-          <Button variant="up" style={{ flex: 1 }}>Buy</Button>
         </View>
-      </View>
-    </ScreenShell>
+      </ScreenShell>
+
+      <OrderModal
+        visible={modalSide !== null}
+        side={modalSide ?? 'buy'}
+        symbol={symbol}
+        onClose={() => setModalSide(null)}
+        onConfirm={handleConfirm}
+      />
+    </>
   );
 }
