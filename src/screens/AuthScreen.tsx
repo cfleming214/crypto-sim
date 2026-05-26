@@ -42,7 +42,14 @@ export function AuthScreen() {
         const { nextStep } = await signUp(email.trim(), password);
         if (nextStep === 'CONFIRM_SIGN_UP') setMode('confirm');
       } else {
-        await confirmSignUp(email.trim(), code.trim());
+        const { autoSignedIn } = await confirmSignUp(email.trim(), code.trim());
+        if (!autoSignedIn) {
+          // Email confirmed but Cognito didn't auto-sign-in (e.g. account was
+          // created before autoSignIn was enabled). Send the user to sign-in.
+          setMode('signin');
+          setCode('');
+          Alert.alert('Email confirmed', 'Sign in with your password to continue.');
+        }
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Something went wrong. Please try again.');

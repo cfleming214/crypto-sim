@@ -9,7 +9,7 @@ interface AuthContextValue {
   email: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ nextStep: string }>;
-  confirmSignUp: (email: string, code: string) => Promise<void>;
+  confirmSignUp: (email: string, code: string) => Promise<{ autoSignedIn: boolean }>;
   resendCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -20,7 +20,7 @@ const AuthContext = createContext<AuthContextValue>({
   email: null,
   signIn: async () => {},
   signUp: async () => ({ nextStep: '' }),
-  confirmSignUp: async () => {},
+  confirmSignUp: async () => ({ autoSignedIn: false }),
   resendCode: async () => {},
   signOut: async () => {},
 });
@@ -62,15 +62,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await signUp({
       username: emailInput,
       password,
-      options: { userAttributes: { email: emailInput } },
+      options: {
+        userAttributes: { email: emailInput },
+        autoSignIn: true,
+      },
     });
     return { nextStep: result.nextStep.signUpStep };
   };
 
-  const handleConfirmSignUp = async (emailInput: string, code: string) => {
-    const { confirmSignUp } = await import('aws-amplify/auth');
-    await confirmSignUp({ username: emailInput, confirmationCode: code });
-    await handleSignIn(emailInput, '');
+  const handleConfirmSignUp = async (emailInput: string, code: string): Promise<{ autoSignedIn: boolean }> => {
+    const { confirmSignUp, autoSignIn } = await import('aws-amplify/auth');
+    const result = await confirmSignUp({ username: emailInput, confirmationCode: code });
+    // If signUp was called with autoSignIn: true, Cognito staged a one-time
+    // sign-in token alongside the confirmation. autoSignIn() consumes it and
+    // returns a real session without needing the password again.
+    if (result.nextStep.signUpStep === 'COMPLETE_AUTO_SIGN_IN') {
+      try {
+        await autoSignIn();
+        await checkSession();
+        return { autoSignedIn: true };
+      } catch {
+        // autoSignIn token expired or session pool changed — fall through to manual sign-in
+      }
+    }
+    return { autoSignedIn: false };
   };
 
   const handleResendCode = async (emailInput: string) => {
