@@ -1,28 +1,36 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
 import { PortfolioScreen } from '../screens/PortfolioScreen';
 import { MarketsScreen } from '../screens/MarketsScreen';
 import { TradeScreen } from '../screens/TradeScreen';
 import { CompeteScreen } from '../screens/CompeteScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
-import {
-  Home,
-  BarChart2,
-  ArrowLeftRight,
-  Trophy,
-  User,
-} from 'lucide-react-native';
+import { Home, BarChart2, ArrowLeftRight, Trophy, User, Bell, Search } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator();
+
+function BellButton() {
+  const { colors } = useTheme();
+  const nav = useNavigation<any>();
+  return (
+    <TouchableOpacity onPress={() => nav.navigate('Notifications')} style={{ marginRight: 8, padding: 8 }}>
+      <View style={{ position: 'relative' }}>
+        <Bell color={colors.ink} size={20} strokeWidth={1.75} />
+        <View style={{ position: 'absolute', top: -1, right: -1, width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.down }} />
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export function TabNavigator() {
   const { colors } = useTheme();
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.surface,
@@ -35,12 +43,12 @@ export function TabNavigator() {
         tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.ink4,
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
-      })}
+      }}
     >
       <Tab.Screen
         name="Home"
         component={PortfolioScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Home color={color} size={22} strokeWidth={1.75} /> }}
+        options={{ tabBarIcon: ({ color }) => <Home color={color} size={22} strokeWidth={1.75} /> }}
       />
       <Tab.Screen
         name="Markets"
@@ -55,7 +63,10 @@ export function TabNavigator() {
       <Tab.Screen
         name="Compete"
         component={CompeteScreen}
-        options={{ tabBarIcon: ({ color }) => <Trophy color={color} size={22} strokeWidth={1.75} /> }}
+        options={{
+          tabBarIcon: ({ color }) => <Trophy color={color} size={22} strokeWidth={1.75} />,
+          headerShown: false,
+        }}
       />
       <Tab.Screen
         name="Profile"

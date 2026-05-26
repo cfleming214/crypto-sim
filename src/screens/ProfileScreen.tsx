@@ -1,21 +1,14 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Switch } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2 } from 'lucide-react-native';
-
-const stats = [
-  ['All-time P&L', '+$2,140', 'up'],
-  ['Tournaments', '17',       null],
-  ['Win rate', '64%',         'up'],
-  ['Followers', '128',        null],
-  ['Copying', '3',            null],
-  ['Best rank', '#4',         null],
-];
+import { useApp } from '../store/AppContext';
+import { useNavigation } from '@react-navigation/native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity } from 'lucide-react-native';
 
 const achievements = [
   { Icon: Star,           name: 'First $',      earned: true  },
@@ -35,7 +28,18 @@ const seasons = [
 ];
 
 export function ProfileScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark, toggle } = useTheme();
+  const { state } = useApp();
+  const nav = useNavigation<any>();
+
+  const stats = [
+    ['All-time P&L', `+$${(state.bankroll - 10000).toFixed(0)}`, state.bankroll >= 10000 ? 'up' : 'down'],
+    ['Tournaments', '17',     null],
+    ['Win rate', '64%',       'up'],
+    ['Followers', '128',      null],
+    ['Copying', '3',          null],
+    ['Best rank', '#4',       null],
+  ];
 
   return (
     <ScreenShell
@@ -48,11 +52,11 @@ export function ProfileScreen() {
     >
       {/* Identity */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Avatar initials="JS" size="xl" brand />
+        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase()} size="xl" brand />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@claude</Text>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <Chip variant="brand">Diamond III</Chip>
+            <Chip variant="brand">{state.user.league} {state.user.division > 0 ? `${['', 'I', 'II', 'III', 'IV'][state.user.division]}` : ''}</Chip>
             <Text style={{ fontSize: 12, color: colors.ink3 }}>Joined Mar '26</Text>
           </View>
         </View>
@@ -76,12 +80,52 @@ export function ProfileScreen() {
             }}
           >
             <Text style={{ fontSize: 11, color: colors.ink3 }}>{label}</Text>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: type === 'up' ? colors.up : colors.ink, fontVariant: ['tabular-nums'], marginTop: 2 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: type === 'up' ? colors.up : type === 'down' ? colors.down : colors.ink, fontVariant: ['tabular-nums'], marginTop: 2 }}>
               {value}
             </Text>
           </View>
         ))}
       </View>
+
+      {/* Quick links */}
+      <Card variant="noPad">
+        <TouchableOpacity onPress={() => nav.navigate('Notifications')}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Bell color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Notifications</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent }} />
+                <Text style={{ color: colors.ink3 }}>›</Text>
+              </View>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
+        <CardSection>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Moon color={colors.ink} size={18} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '600', color: colors.ink }}>Dark mode</Text>
+            </View>
+            <Switch value={isDark} onValueChange={toggle} trackColor={{ true: colors.brand, false: colors.surface2 }} />
+          </View>
+        </CardSection>
+
+        <CardSection last>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Activity color={colors.ink} size={18} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '600', color: colors.ink }}>XP this season</Text>
+            </View>
+            <Text style={{ fontWeight: '700', color: colors.up, fontVariant: ['tabular-nums'] }}>
+              {state.user.xp.toLocaleString()} XP
+            </Text>
+          </View>
+        </CardSection>
+      </Card>
 
       {/* Achievements */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
