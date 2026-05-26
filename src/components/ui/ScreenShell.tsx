@@ -28,7 +28,9 @@ export function ScreenShell({
 }: ScreenShellProps) {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
-  const canGoBack = navigation.canGoBack();
+  const navState = navigation.getState();
+  const isInStack = navState?.type === 'stack';
+  const canGoBack = isInStack && navigation.canGoBack();
   const bg = brand ? colors.brand : colors.surface;
   const ink = brand ? colors.brandOn : colors.ink;
 
