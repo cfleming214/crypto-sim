@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
-import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert } from './types';
+import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade } from '../services/portfolioService';
 import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
@@ -19,6 +19,41 @@ const INITIAL_HOLDINGS = [
   { symbol: 'SOL',  units: 5.382,   avgCost: 185   },
   { symbol: 'DOGE', units: 1952,    avgCost: 0.148 },
 ];
+
+function computeCoachNudges(
+  holdings: { symbol: string; units: number }[],
+  cash: number,
+  bankroll: number,
+  coins: { symbol: string; price: number; change24h: number }[],
+  stopLosses: Record<string, number>,
+  tradeCount: number,
+): CoachNudge[] {
+  if (bankroll <= 0 || holdings.length === 0) return [];
+  const nudges: CoachNudge[] = [];
+  const now = Date.now();
+
+  for (const h of holdings) {
+    const coin = coins.find(c => c.symbol === h.symbol);
+    if (!coin) continue;
+    const pct = (h.units * coin.price) / bankroll;
+    if (pct > 0.4) {
+      nudges.push({ id: `conc-${h.symbol}`, message: `${h.symbol} is ${Math.round(pct * 100)}% of your portfolio — consider trimming to below 40%`, severity: 'warn', createdAt: now });
+    }
+    if (coin.change24h < -8 && !stopLosses[h.symbol]) {
+      nudges.push({ id: `vol-${h.symbol}`, message: `${h.symbol} is down ${Math.abs(coin.change24h).toFixed(0)}% today with no stop-loss set`, severity: 'warn', createdAt: now });
+    }
+  }
+  if (cash / bankroll < 0.05) {
+    nudges.push({ id: 'cash-low', message: 'Your cash buffer is below 5% — you may not have room to buy dips', severity: 'warn', createdAt: now });
+  }
+  if (holdings.length === 1) {
+    nudges.push({ id: 'diversify', message: `You're 100% in ${holdings[0].symbol} — spreading across 3–5 assets reduces single-coin risk`, severity: 'tip', createdAt: now });
+  }
+  if (tradeCount > 0 && tradeCount % 10 === 0) {
+    nudges.push({ id: `milestone-${tradeCount}`, message: `Nice! ${tradeCount} trades completed — review your win/loss ratio in Activity`, severity: 'info', createdAt: now });
+  }
+  return nudges.slice(0, 3);
+}
 
 function computeRiskScore(
   holdings: { symbol: string; units: number }[],
@@ -65,6 +100,8 @@ const INITIAL_STATE: AppState = {
   stopLosses: {},
   priceAlerts: [],
   triggeredAlerts: [],
+  coachNudges: computeCoachNudges(INITIAL_HOLDINGS, 1163.67, 10847.32, INITIAL_COINS, {}, 0),
+  dismissedNudgeIds: [],
   hasOnboarded: false,
   tradeSymbol: 'BTC',
 };
@@ -91,7 +128,8 @@ type Action =
   | { type: 'CANCEL_LIMIT_ORDER'; orderId: string }
   | { type: 'ADD_PRICE_ALERT'; symbol: string; targetPrice: number; direction: 'above' | 'below' }
   | { type: 'DISMISS_PRICE_ALERT'; alertId: string }
-  | { type: 'RESET_DEMO' };
+  | { type: 'RESET_DEMO' }
+  | { type: 'DISMISS_NUDGE'; nudgeId: string };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -233,6 +271,7 @@ function reducer(state: AppState, action: Action): AppState {
         const c = state.coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
+      const newNudges = computeCoachNudges(holdings, newCash, newBankroll, state.coins, state.stopLosses, state.trades.length + 1);
       return {
         ...state,
         cash: newCash,
@@ -241,6 +280,8 @@ function reducer(state: AppState, action: Action): AppState {
         trades: [trade, ...state.trades],
         user: { ...state.user, xp: state.user.xp + 25 },
         riskScore: computeRiskScore(holdings, newCash, newBankroll, state.coins, state.stopLosses),
+        coachNudges: newNudges,
+        dismissedNudgeIds: [],
       };
     }
     case 'SELL': {
@@ -264,6 +305,7 @@ function reducer(state: AppState, action: Action): AppState {
       }, 0);
       const newStopLosses = { ...state.stopLosses };
       if (unitsToSell >= holding.units) delete newStopLosses[action.symbol];
+      const sellNudges = computeCoachNudges(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses, state.trades.length + 1);
       return {
         ...state,
         cash: newCashSell,
@@ -272,6 +314,8 @@ function reducer(state: AppState, action: Action): AppState {
         trades: [trade, ...state.trades],
         stopLosses: newStopLosses,
         riskScore: computeRiskScore(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses),
+        coachNudges: sellNudges,
+        dismissedNudgeIds: [],
       };
     }
     case 'SET_ONBOARDED':
@@ -408,6 +452,8 @@ function reducer(state: AppState, action: Action): AppState {
         priceAlerts: state.priceAlerts.filter(a => a.id !== action.alertId),
         triggeredAlerts: state.triggeredAlerts.filter(a => a.id !== action.alertId),
       };
+    case 'DISMISS_NUDGE':
+      return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
       return {
         ...INITIAL_STATE,

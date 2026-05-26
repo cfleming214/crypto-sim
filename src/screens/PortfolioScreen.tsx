@@ -15,7 +15,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
 import { loadProfile } from '../services/portfolioService';
-import { Shield, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb } from 'lucide-react-native';
 
 const STOP_OPTIONS = [5, 10, 15];
 
@@ -382,6 +382,21 @@ export function PortfolioScreen() {
           <Button variant="brand" size="sm" style={{ flex: 1 }} onPress={() => setStopSheetVisible(true)}>Set stops</Button>
         </View>
       </Card>
+
+      {/* Coach nudges */}
+      {state.coachNudges.filter(n => !state.dismissedNudgeIds.includes(n.id)).slice(0, 2).map(nudge => {
+        const nudgeColor = nudge.severity === 'warn' ? colors.warn : nudge.severity === 'info' ? colors.up : colors.brand;
+        const nudgeBg = nudge.severity === 'warn' ? colors.warnSoft : nudge.severity === 'info' ? colors.upSoft : `${colors.brand}12`;
+        return (
+          <View key={nudge.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: nudgeBg, borderRadius: 14, padding: 14 }}>
+            <Lightbulb color={nudgeColor} size={16} strokeWidth={1.75} style={{ marginTop: 1 }} />
+            <Text style={{ flex: 1, fontSize: 12, color: colors.ink, lineHeight: 18 }}>{nudge.message}</Text>
+            <TouchableOpacity onPress={() => dispatch({ type: 'DISMISS_NUDGE', nudgeId: nudge.id })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <X color={colors.ink3} size={14} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
 
       {/* Holdings */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

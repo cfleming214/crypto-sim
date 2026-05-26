@@ -71,6 +71,13 @@ export interface PendingOrder {
   createdAt: number;
 }
 
+export interface CoachNudge {
+  id: string;
+  message: string;
+  severity: 'info' | 'warn' | 'tip';
+  createdAt: number;
+}
+
 export interface PriceAlert {
   id: string;
   symbol: string;
@@ -104,6 +111,8 @@ export interface AppState {
   stopLosses: Record<string, number>;
   priceAlerts: PriceAlert[];
   triggeredAlerts: PriceAlert[];
+  coachNudges: CoachNudge[];
+  dismissedNudgeIds: string[];
   hasOnboarded: boolean;
   tradeSymbol: string;
 }

@@ -8,6 +8,7 @@ import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
 import { resetDemo } from './functions/reset-demo/resource.js';
+import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 
 const backend = defineBackend({
   auth,
@@ -16,6 +17,7 @@ const backend = defineBackend({
   closeCompetition,
   createCompetition,
   resetDemo,
+  evaluateCoach,
 });
 
 // DynamoDB table references
@@ -58,3 +60,8 @@ profileTable.grantReadWriteData(resetFn);
 tradeTable.grantReadWriteData(resetFn);
 resetFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 resetFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
+
+// --- evaluateCoach: DynamoDB stream trigger on Trade table ---
+const coachFn = backend.evaluateCoach.resources.lambda;
+profileTable.grantReadData(coachFn);
+coachFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
