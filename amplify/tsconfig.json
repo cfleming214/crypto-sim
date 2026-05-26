@@ -9,6 +9,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "types": ["node"],
     "paths": {
       "$amplify/*": ["../.amplify/generated/*"]
     }
