@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -11,22 +11,26 @@ import { CandleChart } from '../components/charts/CandleChart';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { Star, MoreHorizontal, Shield, Check, X } from 'lucide-react-native';
+import { Star, MoreHorizontal, Shield, Check, X, ChevronDown } from 'lucide-react-native';
 
 const QUICK_AMOUNTS = [50, 100, 250, 500];
 
 function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
   visible: boolean; side: 'buy' | 'sell'; symbol: string;
-  onClose: () => void; onConfirm: (amount: number) => void;
+  onClose: () => void; onConfirm: (amount: number, limitPrice?: number) => void;
 }) {
   const { colors } = useTheme();
   const { state, getCoin, getHolding } = useApp();
   const [amount, setAmount] = useState('100');
+  const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
+  const [limitPriceStr, setLimitPriceStr] = useState('');
   const coin = getCoin(symbol);
   if (!coin) return null;
 
   const parsedAmount = parseFloat(amount) || 0;
-  const units = parsedAmount / coin.price;
+  const limitPrice = parseFloat(limitPriceStr) || 0;
+  const effectivePrice = orderType === 'limit' && limitPrice > 0 ? limitPrice : coin.price;
+  const units = parsedAmount / effectivePrice;
   const holding = getHolding(symbol);
   const maxSell = holding ? holding.value : 0;
 
@@ -42,6 +46,40 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+          {/* Order type toggle */}
+          <View style={{ flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: 10, padding: 3 }}>
+            {(['market', 'limit'] as const).map(t => (
+              <TouchableOpacity
+                key={t}
+                style={{ flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 8, backgroundColor: orderType === t ? colors.surface : 'transparent' }}
+                onPress={() => setOrderType(t)}
+              >
+                <Text style={{ fontWeight: '600', fontSize: 13, color: orderType === t ? colors.ink : colors.ink3, textTransform: 'capitalize' }}>{t}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Limit price input */}
+          {orderType === 'limit' && (
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Limit price (USD)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}>
+                <Text style={{ fontSize: 15, color: colors.ink3 }}>$</Text>
+                <TextInput
+                  value={limitPriceStr}
+                  onChangeText={setLimitPriceStr}
+                  placeholder={coin.price.toFixed(2)}
+                  placeholderTextColor={colors.ink3}
+                  keyboardType="decimal-pad"
+                  style={{ flex: 1, fontSize: 15, color: colors.ink, marginLeft: 4 }}
+                />
+              </View>
+              <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                {side === 'buy' ? 'Order fills when price drops to this level' : 'Order fills when price rises to this level'}
+              </Text>
+            </View>
+          )}
+
           <Card style={{ gap: 16 }}>
             <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>
               {side === 'buy' ? 'You spend' : 'You sell worth'}
@@ -122,11 +160,16 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
 
           <Button
             variant={side === 'buy' ? 'up' : 'down'}
-            onPress={() => onConfirm(parsedAmount)}
+            onPress={() => onConfirm(parsedAmount, orderType === 'limit' && limitPrice > 0 ? limitPrice : undefined)}
             style={{ width: '100%' }}
-            disabled={parsedAmount <= 0 || (side === 'buy' && parsedAmount > state.cash) || (side === 'sell' && parsedAmount > maxSell)}
+            disabled={
+              parsedAmount <= 0 ||
+              (side === 'buy' && parsedAmount > state.cash) ||
+              (side === 'sell' && parsedAmount > maxSell) ||
+              (orderType === 'limit' && limitPrice <= 0)
+            }
           >
-            {side === 'buy' ? 'Confirm buy' : 'Confirm sell'} · ${parsedAmount.toFixed(2)}
+            {orderType === 'limit' ? 'Place limit order' : (side === 'buy' ? 'Confirm buy' : 'Confirm sell')} · ${parsedAmount.toFixed(2)}
           </Button>
         </ScrollView>
       </SafeAreaView>
@@ -142,7 +185,7 @@ export function TradeScreen() {
   const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
-  const [watchlisted, setWatchlisted] = useState(false);
+  const watchlisted = state.watchlist.includes(symbol);
 
   const symbol = state.tradeSymbol;
   const coin = getCoin(symbol);
@@ -152,8 +195,18 @@ export function TradeScreen() {
   const change24h = coin.change24h;
   const isUp = change24h >= 0;
 
-  const handleConfirm = (amount: number) => {
+  const handleConfirm = (amount: number, limitPrice?: number) => {
     if (!modalSide) return;
+    if (limitPrice && limitPrice > 0) {
+      dispatch({ type: 'PLACE_LIMIT_ORDER', symbol, side: modalSide, amount, limitPrice });
+      setModalSide(null);
+      Alert.alert(
+        'Limit order placed',
+        `${modalSide === 'buy' ? 'Buy' : 'Sell'} $${amount.toFixed(2)} of ${symbol} when price ${modalSide === 'buy' ? 'drops to' : 'rises to'} $${limitPrice.toLocaleString()}.`,
+        [{ text: 'OK' }],
+      );
+      return;
+    }
     const units = amount / price;
     dispatch({ type: modalSide === 'buy' ? 'BUY' : 'SELL', symbol, amount });
     setLastTrade({ side: modalSide, amount, units });
@@ -194,7 +247,7 @@ export function TradeScreen() {
         style={{ flex: 1 }}
         rightActions={
           <>
-            <TouchableOpacity style={{ padding: 8 }} onPress={() => setWatchlisted(w => !w)}>
+            <TouchableOpacity style={{ padding: 8 }} onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol })}>
               <Star
                 color={watchlisted ? colors.warn : colors.ink}
                 size={20}

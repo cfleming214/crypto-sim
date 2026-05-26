@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -9,9 +10,103 @@ import { Segmented } from '../components/ui/Segmented';
 import { RiskMeter } from '../components/ui/RiskMeter';
 import { CoinGlyph, Avatar } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
+import { DonutChart } from '../components/charts/DonutChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { Shield } from 'lucide-react-native';
+import { Shield, X } from 'lucide-react-native';
+
+const STOP_OPTIONS = [5, 10, 15];
+
+const DONUT_COLORS = ['#F7931A', '#627EEA', '#9945FF', '#BA9F33', '#2775CA', '#00D632'];
+
+function StopSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { colors } = useTheme();
+  const { state, dispatch, getCoin } = useApp();
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Stop-loss orders</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>Auto-sell if price drops by selected %</Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 8 }}>
+          {state.holdings.length === 0 ? (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <Text style={{ color: colors.ink3 }}>No holdings to protect</Text>
+            </View>
+          ) : state.holdings.map(h => {
+            const coin = getCoin(h.symbol);
+            const activePct = state.stopLosses[h.symbol] ?? 0;
+            return (
+              <Card key={h.symbol} variant="compact" style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <CoinGlyph symbol={h.symbol} size={28} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
+                    <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                      {coin ? `$${(h.units * coin.price).toFixed(2)}` : '—'}
+                    </Text>
+                  </View>
+                  {activePct > 0 && (
+                    <Chip variant="warn" style={{ paddingVertical: 2, paddingHorizontal: 8 }}>−{activePct}%</Chip>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {STOP_OPTIONS.map(pct => (
+                    <TouchableOpacity
+                      key={pct}
+                      style={{ flex: 1 }}
+                      onPress={() => dispatch({ type: 'SET_STOP_LOSS', symbol: h.symbol, pct: activePct === pct ? 0 : pct })}
+                    >
+                      <View style={{
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        backgroundColor: activePct === pct ? colors.warnSoft : colors.surface2,
+                        borderWidth: 1,
+                        borderColor: activePct === pct ? colors.warn : 'transparent',
+                      }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: activePct === pct ? colors.warn : colors.ink2 }}>
+                          −{pct}%
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => dispatch({ type: 'SET_STOP_LOSS', symbol: h.symbol, pct: 0 })}
+                    disabled={activePct === 0}
+                  >
+                    <View style={{
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      backgroundColor: colors.surface2,
+                      opacity: activePct === 0 ? 0.4 : 1,
+                    }}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3 }}>Clear</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </Card>
+            );
+          })}
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+          <Button variant="brand" onPress={onClose}>Done</Button>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
 
 export function PortfolioScreen() {
   const { colors } = useTheme();
@@ -19,6 +114,7 @@ export function PortfolioScreen() {
   const nav = useNavigation<any>();
   const [tf, setTf] = useState('7D');
   const [view, setView] = useState('List');
+  const [stopSheetVisible, setStopSheetVisible] = useState(false);
 
   const totalEquity = state.bankroll;
   const startEquity = 10000;
@@ -39,6 +135,7 @@ export function PortfolioScreen() {
         down: (data?.pnlPct ?? 0) < 0,
         pct: Math.round(pct),
         units: h.units < 1 ? h.units.toFixed(4) : h.units.toFixed(2),
+        stopPct: state.stopLosses[h.symbol] ?? 0,
       };
     }),
     {
@@ -49,6 +146,7 @@ export function PortfolioScreen() {
       down: false,
       pct: Math.round((state.cash / totalEquity) * 100),
       units: state.cash.toFixed(2),
+      stopPct: 0,
     },
   ];
 
@@ -94,13 +192,21 @@ export function PortfolioScreen() {
     );
   };
 
-  const handleSetStops = () => {
-    Alert.alert(
-      'Set Stop-Loss',
-      'Trailing stops automatically sell a position if it falls by a set percentage, locking in gains.\n\nExample: Set a 5% trailing stop on BTC to sell if price drops 5% from its peak.\n\nStop-loss orders are coming in Season 4!',
-      [{ text: 'Got it' }],
-    );
-  };
+  // Dynamic risk card
+  const riskVariant = state.riskScore >= 80 ? 'up' : state.riskScore >= 50 ? 'warn' : 'down';
+  const riskLabel = state.riskScore >= 80 ? 'Healthy' : state.riskScore >= 50 ? 'Caution' : 'High risk';
+  const riskShieldColor = state.riskScore >= 80 ? colors.up : state.riskScore >= 50 ? colors.warn : colors.down;
+
+  const riskWarnings: string[] = [];
+  for (const h of state.holdings) {
+    const coin = getCoin(h.symbol);
+    if (coin && (h.units * coin.price) / totalEquity > 0.4) {
+      riskWarnings.push(`${h.symbol} concentration high (${Math.round((h.units * coin.price) / totalEquity * 100)}%)`);
+      break;
+    }
+  }
+  if (state.holdings.length > 0 && state.cash / totalEquity < 0.1) riskWarnings.push('Low cash buffer');
+  if (state.holdings.length > 0 && Object.keys(state.stopLosses).length === 0) riskWarnings.push('No stop-loss orders set');
 
   return (
     <ScreenShell
@@ -108,7 +214,7 @@ export function PortfolioScreen() {
       title={`$${totalEquity.toFixed(2)}`}
       rightActions={
         <TouchableOpacity onPress={() => nav.navigate('Profile')}>
-          <Avatar initials={state.user.handle.slice(0, 2).toUpperCase()} size="sm" brand />
+          <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="sm" style={{ backgroundColor: state.user.avatarColor }} />
         </TouchableOpacity>
       }
     >
@@ -133,18 +239,18 @@ export function PortfolioScreen() {
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Shield color={colors.warn} size={18} strokeWidth={1.75} />
+            <Shield color={riskShieldColor} size={18} strokeWidth={1.75} />
             <Text style={{ fontWeight: '600', color: colors.ink }}>Risk health</Text>
           </View>
-          <Chip variant="warn">Caution · {state.riskScore}</Chip>
+          <Chip variant={riskVariant}>{riskLabel} · {state.riskScore}</Chip>
         </View>
         <RiskMeter score={state.riskScore} />
         <Text style={{ fontSize: 12, color: colors.ink3 }}>
-          BTC concentration high · no stop-loss set · low cash buffer
+          {riskWarnings.length > 0 ? riskWarnings.join(' · ') : 'Portfolio risk looks good'}
         </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Button variant="ghost" size="sm" style={{ flex: 1 }} onPress={handleRebalance}>Rebalance</Button>
-          <Button variant="brand" size="sm" style={{ flex: 1 }} onPress={handleSetStops}>Set stops</Button>
+          <Button variant="brand" size="sm" style={{ flex: 1 }} onPress={() => setStopSheetVisible(true)}>Set stops</Button>
         </View>
       </Card>
 
@@ -153,6 +259,21 @@ export function PortfolioScreen() {
         <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Holdings</Text>
         <Segmented options={['List', 'Allocation']} value={view} onChange={setView} />
       </View>
+
+      {view === 'Allocation' && (
+        <Card>
+          <DonutChart
+            size={180}
+            centerLabel={`$${Math.round(totalEquity).toLocaleString()}`}
+            centerSub="Total"
+            segments={holdingRows.map((h, i) => ({
+              label: h.symbol,
+              pct: h.pct,
+              color: DONUT_COLORS[i % DONUT_COLORS.length],
+            }))}
+          />
+        </Card>
+      )}
 
       <Card variant="noPad">
         {holdingRows.map((h, i) => (
@@ -163,33 +284,39 @@ export function PortfolioScreen() {
           >
             <CardSection last={i === holdingRows.length - 1}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <CoinGlyph symbol={h.symbol} />
+                <View>
+                  <CoinGlyph symbol={h.symbol} />
+                  {h.stopPct > 0 && (
+                    <View style={{
+                      position: 'absolute', bottom: -2, right: -2,
+                      width: 14, height: 14, borderRadius: 7,
+                      backgroundColor: colors.warnSoft,
+                      borderWidth: 1.5, borderColor: colors.surface,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Shield color={colors.warn} size={8} strokeWidth={2.5} />
+                    </View>
+                  )}
+                </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
                     <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${h.value}</Text>
                   </View>
-                  {view === 'List' ? (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                      <Text style={{ fontSize: 12, color: colors.ink3 }}>{h.units} {h.symbol}</Text>
-                      <Text style={{ fontSize: 12, color: h.down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
-                        {h.change} · {h.pct}%
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={{ marginTop: 6, gap: 4 }}>
-                      <View style={{ height: 4, backgroundColor: colors.surface2, borderRadius: 999, overflow: 'hidden' }}>
-                        <View style={{ height: '100%', width: `${h.pct}%`, backgroundColor: h.down ? colors.down : colors.brand, borderRadius: 999 }} />
-                      </View>
-                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{h.pct}% of portfolio</Text>
-                    </View>
-                  )}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{h.units} {h.symbol}</Text>
+                    <Text style={{ fontSize: 12, color: h.down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
+                      {h.change} · {h.pct}%
+                    </Text>
+                  </View>
                 </View>
               </View>
             </CardSection>
           </TouchableOpacity>
         ))}
       </Card>
+
+      <StopSheet visible={stopSheetVisible} onClose={() => setStopSheetVisible(false)} />
     </ScreenShell>
   );
 }

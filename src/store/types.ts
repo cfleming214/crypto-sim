@@ -38,6 +38,39 @@ export interface Tournament {
   stake: string;
 }
 
+export interface Competition {
+  id: string;
+  name: string;
+  type: 'daily' | 'featured' | 'replay' | '1v1';
+  status: 'open' | 'live' | 'finished';
+  prizePool: string;
+  maxPlayers: number;
+  stake: string;
+  startAt: number;
+  endAt: number;
+  entryCount: number;
+}
+
+export interface CompetitionEntry {
+  id: string;
+  competitionId: string;
+  handle: string;
+  bankroll: number;
+  pnlPct: number;
+  rank: number;
+  joinedAt: number;
+  isActive: boolean;
+}
+
+export interface PendingOrder {
+  id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  amount: number;
+  limitPrice: number;
+  createdAt: number;
+}
+
 export interface AppState {
   user: {
     handle: string;
@@ -45,6 +78,7 @@ export interface AppState {
     league: string;
     division: number;
     streak: number;
+    avatarColor: string;
   };
   bankroll: number;
   cash: number;
@@ -52,7 +86,13 @@ export interface AppState {
   trades: Trade[];
   coins: Coin[];
   activeTournament: Tournament | null;
+  competitions: Competition[];
+  joinedTournamentIds: string[];
+  leaderboard: Record<string, CompetitionEntry[]>;
+  pendingOrders: PendingOrder[];
+  watchlist: string[];
   riskScore: number;
+  stopLosses: Record<string, number>;
   hasOnboarded: boolean;
   tradeSymbol: string;
 }

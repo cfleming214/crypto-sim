@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
+import { useApp } from '../store/AppContext';
 import { MoreHorizontal, Pause } from 'lucide-react-native';
 
 const tags = ['Day trader', 'High risk', 'Memecoins', '+2'];
@@ -16,17 +17,16 @@ const perf = [
   ['Win rate', '68%', null],
   ['Max DD', '−18%', 'down'],
 ];
-const mirrorSettings = [
-  ['Allocation', '$2,000 / $10,847'],
-  ['Max single position', '20%'],
-  ['Stop copying at', '−10%'],
-  ['Copy fee', '5% of profit'],
-];
+// mirrorSettings derived dynamically in component
 
 export function CopyTradeScreen() {
   const { colors } = useTheme();
+  const { state } = useApp();
   const nav = useNavigation<any>();
   const [paused, setPaused] = useState(false);
+  const [allocation] = useState(2000);
+
+  const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
 
   const handleEdit = () => {
     Alert.alert(
@@ -120,7 +120,7 @@ export function CopyTradeScreen() {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <View style={{ width: 8, height: 2, backgroundColor: colors.ink3 }} />
-              <Text style={{ fontSize: 11, color: colors.ink3 }}>You +8%</Text>
+              <Text style={{ fontSize: 11, color: colors.ink3 }}>@{state.user.handle} {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%</Text>
             </View>
           </View>
           <View style={{ marginTop: 10 }}>
@@ -135,7 +135,12 @@ export function CopyTradeScreen() {
           <Text style={{ fontWeight: '700', color: colors.ink }}>Mirror settings</Text>
           <Button variant="ghost" size="sm" onPress={handleEdit}>Edit</Button>
         </View>
-        {mirrorSettings.map(([label, value], i) => (
+        {[
+          ['Allocation', `$${allocation.toLocaleString()} / $${state.bankroll.toFixed(0)}`],
+          ['Max single position', '20%'],
+          ['Stop copying at', '−10%'],
+          ['Copy fee', '5% of profit'],
+        ].map(([label, value], i, arr) => (
           <View key={label}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={{ fontSize: 13, color: colors.ink3 }}>{label}</Text>
@@ -143,7 +148,7 @@ export function CopyTradeScreen() {
                 {value}
               </Text>
             </View>
-            {i < mirrorSettings.length - 1 && <View style={{ height: 1, backgroundColor: colors.hairline, marginTop: 8, marginBottom: 8 }} />}
+            {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: colors.hairline, marginTop: 8, marginBottom: 8 }} />}
           </View>
         ))}
       </Card>
@@ -160,11 +165,11 @@ export function CopyTradeScreen() {
             if (paused) {
               Alert.alert('Paused', 'Resume copy trading to mirror new positions.', [{ text: 'OK' }]);
             } else {
-              Alert.alert('Active mirror', 'You are mirroring $2,000 across @degenking\'s positions.\n\nYour funds are automatically allocated proportionally to their trades.', [{ text: 'OK' }]);
+              Alert.alert('Active mirror', `You are mirroring $${allocation.toLocaleString()} across @degenking's positions.\n\nYour funds are automatically allocated proportionally to their trades.`, [{ text: 'OK' }]);
             }
           }}
         >
-          {paused ? 'Paused' : 'Mirroring · $2,000'}
+          {paused ? 'Paused' : `Mirroring · $${allocation.toLocaleString()}`}
         </Button>
       </View>
     </ScreenShell>

@@ -35,6 +35,35 @@ const schema = a.schema({
     allow.authenticated().to(['read']),
     allow.owner(),
   ]),
+
+  Competition: a.model({
+    name: a.string().required(),
+    type: a.string().required(),    // 'daily' | 'featured' | 'replay' | '1v1'
+    status: a.string().required(),  // 'open' | 'live' | 'finished'
+    prizePool: a.string(),
+    maxPlayers: a.integer(),
+    stake: a.string(),
+    startAt: a.string().required(), // ISO timestamp
+    endAt: a.string().required(),   // ISO timestamp
+    entryCount: a.integer(),
+    createdBy: a.string(),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+    allow.owner(),
+  ]),
+
+  CompetitionEntry: a.model({
+    competitionId: a.string().required(),
+    handle: a.string().required(),
+    bankroll: a.float(),
+    pnlPct: a.float(),
+    rank: a.integer(),
+    joinedAt: a.string().required(), // ISO timestamp
+    isActive: a.boolean(),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+    allow.owner(),
+  ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

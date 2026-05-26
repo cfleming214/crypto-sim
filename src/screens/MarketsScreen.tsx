@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -8,8 +8,9 @@ import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useNavigation } from '@react-navigation/native';
+import { Search, Star } from 'lucide-react-native';
 
-const categories = ['All', 'Top 10', 'DeFi', 'Layer 1', 'Meme', 'Stables'];
+const BASE_CATEGORIES = ['All', 'Top 10', 'DeFi', 'Layer 1', 'Meme', 'Stables'];
 
 const categorySymbols: Record<string, string[]> = {
   'Meme':    ['DOGE', 'PEPE'],
@@ -25,12 +26,23 @@ export function MarketsScreen() {
   const nav = useNavigation<any>();
   const [cat, setCat] = useState('All');
   const [sortIdx, setSortIdx] = useState(0);
+  const [query, setQuery] = useState('');
 
   const allCoins = state.coins;
+  const categories = ['Watchlist', ...BASE_CATEGORIES];
 
-  const filtered = (cat === 'All' || cat === 'Top 10' || cat === 'DeFi')
-    ? allCoins
-    : allCoins.filter(c => categorySymbols[cat]?.includes(c.symbol));
+  const byCategory = (() => {
+    if (cat === 'Watchlist') return allCoins.filter(c => state.watchlist.includes(c.symbol));
+    if (cat === 'All' || cat === 'Top 10') return allCoins;
+    return allCoins.filter(c => (categorySymbols[cat] ?? []).includes(c.symbol));
+  })();
+
+  const filtered = query.trim()
+    ? byCategory.filter(c =>
+        c.symbol.toLowerCase().includes(query.toLowerCase()) ||
+        c.name.toLowerCase().includes(query.toLowerCase()),
+      )
+    : byCategory;
 
   const sorted = [...filtered].sort((a, b) => {
     if (sortIdx === 1) return b.price - a.price;
@@ -65,37 +77,64 @@ export function MarketsScreen() {
         </View>
       </Card>
 
+      {/* Search */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
+      }}>
+        <Search color={colors.ink3} size={16} strokeWidth={1.75} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search coins…"
+          placeholderTextColor={colors.ink4 ?? colors.ink3}
+          style={{ flex: 1, fontSize: 14, color: colors.ink }}
+        />
+      </View>
+
       {/* Category chips */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
         <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
           {categories.map(c => (
-            <TouchableOpacity key={c} onPress={() => setCat(c)}>
-              <Chip variant={cat === c ? 'brand' : 'outline'}>{c}</Chip>
+            <TouchableOpacity key={c} onPress={() => { setCat(c); setQuery(''); }}>
+              <Chip
+                variant={cat === c ? 'brand' : 'outline'}
+                style={c === 'Watchlist' ? { flexDirection: 'row', gap: 4, alignItems: 'center' } : undefined}
+              >
+                {c === 'Watchlist' && (
+                  <Star size={11} color={cat === 'Watchlist' ? '#fff' : colors.ink3} strokeWidth={1.75} fill={cat === 'Watchlist' ? '#fff' : 'none'} />
+                )}
+                {c}
+              </Chip>
             </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
-      {/* Top movers */}
-      <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Top movers</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
-        <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
-          {movers.map(a => (
-            <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
-              <Card variant="compact" style={{ width: 120, gap: 6 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <CoinGlyph symbol={a.symbol} size={24} />
-                  <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-                </View>
-                <Sparkline data={a.history} down={a.change24h < 0} width={96} height={28} />
-                <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                  {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                </Text>
-              </Card>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      {/* Top movers — hidden when searching */}
+      {!query && cat === 'All' && (
+        <>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Top movers</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
+            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
+              {movers.map(a => (
+                <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
+                  <Card variant="compact" style={{ width: 120, gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <CoinGlyph symbol={a.symbol} size={24} />
+                      <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                    </View>
+                    <Sparkline data={a.history} down={a.change24h < 0} width={96} height={28} />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                      {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                    </Text>
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </>
+      )}
 
       {/* All assets */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -111,7 +150,9 @@ export function MarketsScreen() {
       <Card variant="noPad">
         {sorted.length === 0 ? (
           <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: colors.ink3 }}>No coins in this category</Text>
+            <Text style={{ color: colors.ink3 }}>
+              {query ? `No results for "${query}"` : cat === 'Watchlist' ? 'Your watchlist is empty' : 'No coins in this category'}
+            </Text>
           </View>
         ) : sorted.map((a, i) => (
           <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
@@ -132,7 +173,20 @@ export function MarketsScreen() {
                     </Text>
                   </View>
                 </View>
-                <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
+                <View style={{ gap: 4, alignItems: 'flex-end' }}>
+                  <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
+                  <TouchableOpacity
+                    onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol: a.symbol })}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Star
+                      size={14}
+                      color={state.watchlist.includes(a.symbol) ? colors.warn : colors.ink3}
+                      strokeWidth={1.75}
+                      fill={state.watchlist.includes(a.symbol) ? colors.warn : 'none'}
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
             </CardSection>
           </TouchableOpacity>

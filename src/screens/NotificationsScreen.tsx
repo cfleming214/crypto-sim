@@ -6,31 +6,61 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Segmented } from '../components/ui/Segmented';
 import { Button } from '../components/ui/Button';
 import { useTheme } from '../theme/ThemeContext';
-import { Trophy, Shield, User, Flame, Star } from 'lucide-react-native';
+import { useApp } from '../store/AppContext';
+import { Trophy, Shield, User, Flame, Star, ArrowUp, ArrowDown } from 'lucide-react-native';
 
 type NotifType = 'compete' | 'trade' | 'social';
 
-const allNotifs = [
-  { Icon: Trophy, color: 'up',   title: 'You moved up to #43',             sub: 'Weekend Warriors · 4 spots gained',       time: '2m',  unread: true,  type: 'compete' as NotifType },
-  { Icon: Shield, color: 'warn', title: 'Trailing stop hit on ETH',         sub: 'Sold 0.4 ETH at $3,180 · locked +12%',   time: '11m', unread: true,  type: 'trade' as NotifType   },
-  { Icon: User,   color: null,   title: '@degenking opened a new position', sub: 'Bought 2.4 BTC · you mirrored $200',      time: '24m', unread: true,  type: 'trade' as NotifType   },
-  { Icon: Flame,  color: 'down', title: 'PEPE +18% in 1h',                  sub: 'On your watchlist · tap to trade',        time: '3h',  unread: false, type: 'trade' as NotifType   },
-  { Icon: Trophy, color: null,   title: 'Memecoin Madness starts in 5h',    sub: '412 players already joined',              time: '5h',  unread: false, type: 'compete' as NotifType },
-  { Icon: Star,   color: null,   title: 'Achievement unlocked: First profit',sub: 'Sold a position above your entry',       time: '1d',  unread: false, type: 'social' as NotifType  },
-  { Icon: User,   color: null,   title: '@chartist started following you',  sub: 'Tap to view profile',                     time: '2d',  unread: false, type: 'social' as NotifType  },
+interface Notif {
+  Icon: any;
+  color: string | null;
+  title: string;
+  sub: string;
+  time: string;
+  unread: boolean;
+  type: NotifType;
+  onPress?: () => void;
+  key: string;
+}
+
+function relTime(ts: number): string {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 60) return `${Math.max(1, mins)}m`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h`;
+  return `${Math.floor(mins / 1440)}d`;
+}
+
+const STATIC_NOTIFS: Omit<Notif, 'onPress'>[] = [
+  {
+    key: 'rank-up',
+    Icon: Trophy, color: 'up',
+    title: 'You moved up to #43',
+    sub: 'Weekend Warriors · 4 spots gained',
+    time: '2m', unread: true, type: 'compete',
+  },
+  {
+    key: 'tournament',
+    Icon: Trophy, color: null,
+    title: 'Memecoin Madness starts in 5h',
+    sub: '412 players already joined',
+    time: '5h', unread: false, type: 'compete',
+  },
+  {
+    key: 'follower',
+    Icon: User, color: null,
+    title: '@chartist started following you',
+    sub: 'Tap to view profile',
+    time: '2d', unread: false, type: 'social',
+  },
 ];
 
 function NotifRow({ Icon, color, title, sub, time, unread, last, onPress }: {
-  Icon: any; color: string | null; title: string; sub: string; time: string; unread?: boolean; last?: boolean; onPress?: () => void;
+  Icon: any; color: string | null; title: string; sub: string;
+  time: string; unread?: boolean; last?: boolean; onPress?: () => void;
 }) {
   const { colors } = useTheme();
-
-  const bgMap: Record<string, string> = {
-    up: colors.upSoft, warn: colors.warnSoft, down: colors.downSoft,
-  };
-  const colorMap: Record<string, string> = {
-    up: colors.up, warn: colors.warn, down: colors.down,
-  };
+  const bgMap: Record<string, string> = { up: colors.upSoft, warn: colors.warnSoft, down: colors.downSoft };
+  const colorMap: Record<string, string> = { up: colors.up, warn: colors.warn, down: colors.down };
   const bg = color ? bgMap[color] : colors.surface2;
   const iconColor = color ? colorMap[color] : colors.ink2;
 
@@ -59,17 +89,62 @@ function NotifRow({ Icon, color, title, sub, time, unread, last, onPress }: {
 
 export function NotificationsScreen() {
   const { colors } = useTheme();
+  const { state } = useApp();
   const nav = useNavigation<any>();
   const [tab, setTab] = useState('All');
-  const [readIds, setReadIds] = useState<Set<number>>(new Set());
+  const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
 
-  const markAllRead = () => {
-    setReadIds(new Set(allNotifs.map((_, i) => i)));
-  };
+  // Derive trade notifications from real trades
+  const tradeNotifs: Notif[] = state.trades.slice(0, 5).map(t => ({
+    key: t.id,
+    Icon: t.side === 'buy' ? ArrowUp : ArrowDown,
+    color: null,
+    title: `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.symbol}`,
+    sub: `${t.units.toFixed(4)} ${t.symbol} at $${t.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} · +${t.xpEarned} XP`,
+    time: relTime(t.timestamp),
+    unread: Date.now() - t.timestamp < 10 * 60 * 1000,
+    type: 'trade' as NotifType,
+  }));
 
-  const markRead = (idx: number) => {
-    setReadIds(prev => new Set([...prev, idx]));
-  };
+  // Achievement notification if earned any
+  const earnedStops = Object.keys(state.stopLosses).length > 0;
+  const achievementNotifs: Notif[] = [
+    ...(state.trades.length === 1 ? [{
+      key: 'ach-first',
+      Icon: Star, color: 'up' as string | null,
+      title: 'Achievement unlocked: First $',
+      sub: 'You made your first trade!',
+      time: relTime(state.trades[0]?.timestamp ?? Date.now()),
+      unread: false, type: 'social' as NotifType,
+    }] : []),
+    ...(earnedStops ? [{
+      key: 'ach-safe',
+      Icon: Shield, color: 'warn' as string | null,
+      title: 'Achievement unlocked: Safe Trader',
+      sub: 'You set your first stop-loss order',
+      time: '1h', unread: false, type: 'social' as NotifType,
+    }] : []),
+    ...(state.user.streak >= 7 ? [{
+      key: 'ach-streak',
+      Icon: Flame, color: null as string | null,
+      title: `${state.user.streak}-day streak bonus`,
+      sub: `Keep it up! +50 XP awarded`,
+      time: 'Today', unread: false, type: 'social' as NotifType,
+    }] : []),
+  ];
+
+  const allNotifs: Notif[] = [
+    ...tradeNotifs,
+    ...STATIC_NOTIFS.map(n => ({
+      ...n,
+      onPress: n.type === 'compete' ? () => nav.navigate('TournamentDetail', { id: 'ww-1' }) :
+               n.type === 'trade'   ? () => nav.navigate('MainTabs', { screen: 'Trade' }) : undefined,
+    })),
+    ...achievementNotifs,
+  ];
+
+  const markRead = (key: string) => setReadKeys(prev => new Set([...prev, key]));
+  const markAllRead = () => setReadKeys(new Set(allNotifs.map(n => n.key)));
 
   const filtered = tab === 'All'
     ? allNotifs
@@ -80,22 +155,20 @@ export function NotificationsScreen() {
         return true;
       });
 
-  const getOnPress = (n: typeof allNotifs[0]) => {
-    if (n.type === 'compete') return () => nav.navigate('TournamentDetail', { id: 'ww-1' });
-    if (n.type === 'trade') return () => nav.navigate('MainTabs', { screen: 'Trade' });
-    return undefined;
-  };
+  // Split into new (<1h) and earlier
+  const newItems = filtered.filter(n => {
+    if (n.time.endsWith('m') || n.time === 'Today') return true;
+    const h = parseInt(n.time);
+    return n.time.endsWith('h') && h <= 1;
+  });
+  const earlierItems = filtered.filter(n => !newItems.includes(n));
 
-  const newNotifs = filtered.filter((_, i) => allNotifs.indexOf(allNotifs[i]) < 3);
-  const earlierNotifs = filtered.filter((_, i) => allNotifs.indexOf(allNotifs[i]) >= 3);
-
-  const newItems = filtered.filter(n => allNotifs.slice(0, 3).includes(n));
-  const earlierItems = filtered.filter(n => allNotifs.slice(3).includes(n));
+  const unreadCount = allNotifs.filter(n => n.unread && !readKeys.has(n.key)).length;
 
   return (
     <ScreenShell
-      title="Notifications"
-      rightActions={<Button variant="ghost" size="sm" onPress={markAllRead}>Mark read</Button>}
+      title={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+      rightActions={<Button variant="ghost" size="sm" onPress={markAllRead}>Mark all read</Button>}
     >
       <Segmented options={['All', 'Trades', 'Compete', 'Social']} value={tab} onChange={setTab} />
 
@@ -103,18 +176,15 @@ export function NotificationsScreen() {
         <>
           <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>New</Text>
           <Card variant="noPad">
-            {newItems.map((n, i) => {
-              const globalIdx = allNotifs.indexOf(n);
-              return (
-                <NotifRow
-                  key={globalIdx}
-                  {...n}
-                  unread={n.unread && !readIds.has(globalIdx)}
-                  last={i === newItems.length - 1}
-                  onPress={() => { markRead(globalIdx); getOnPress(n)?.(); }}
-                />
-              );
-            })}
+            {newItems.map((n, i) => (
+              <NotifRow
+                key={n.key}
+                {...n}
+                unread={n.unread && !readKeys.has(n.key)}
+                last={i === newItems.length - 1}
+                onPress={() => { markRead(n.key); n.onPress?.(); }}
+              />
+            ))}
           </Card>
         </>
       )}
@@ -123,18 +193,15 @@ export function NotificationsScreen() {
         <>
           <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Earlier</Text>
           <Card variant="noPad">
-            {earlierItems.map((n, i) => {
-              const globalIdx = allNotifs.indexOf(n);
-              return (
-                <NotifRow
-                  key={globalIdx}
-                  {...n}
-                  unread={n.unread && !readIds.has(globalIdx)}
-                  last={i === earlierItems.length - 1}
-                  onPress={() => { markRead(globalIdx); getOnPress(n)?.(); }}
-                />
-              );
-            })}
+            {earlierItems.map((n, i) => (
+              <NotifRow
+                key={n.key}
+                {...n}
+                unread={n.unread && !readKeys.has(n.key)}
+                last={i === earlierItems.length - 1}
+                onPress={() => { markRead(n.key); n.onPress?.(); }}
+              />
+            ))}
           </Card>
         </>
       )}
@@ -142,6 +209,7 @@ export function NotificationsScreen() {
       {filtered.length === 0 && (
         <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
           <Text style={{ fontSize: 16, color: colors.ink3 }}>No {tab.toLowerCase()} notifications</Text>
+          <Text style={{ fontSize: 13, color: colors.ink4 }}>You're all caught up</Text>
         </View>
       )}
     </ScreenShell>

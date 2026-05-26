@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
-import { AppState, Coin, Holding, Trade } from './types';
+import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade } from '../services/portfolioService';
+import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
 
 const INITIAL_COINS: Coin[] = [
   { symbol: 'BTC',  name: 'Bitcoin',   price: 64210.48, change24h: 2.41,  marketCap: '$1.26T', volume: '$1.24B', history: [58000,60000,61500,63000,62000,64000,63500,64210] },
@@ -12,16 +13,36 @@ const INITIAL_COINS: Coin[] = [
   { symbol: 'PEPE', name: 'Pepe',      price: 0.0000118,change24h: 12.30, marketCap: '$4.2B',  volume: '$320M',  history: [0.0000095,0.0000100,0.0000105,0.0000108,0.0000111,0.0000114,0.0000116,0.0000118] },
 ];
 
+const INITIAL_HOLDINGS = [
+  { symbol: 'BTC',  units: 0.0656,  avgCost: 61200 },
+  { symbol: 'ETH',  units: 1.0001,  avgCost: 3050  },
+  { symbol: 'SOL',  units: 5.382,   avgCost: 185   },
+  { symbol: 'DOGE', units: 1952,    avgCost: 0.148 },
+];
+
+function computeRiskScore(
+  holdings: { symbol: string; units: number }[],
+  cash: number,
+  bankroll: number,
+  coins: { symbol: string; price: number }[],
+  stopLosses: Record<string, number>,
+): number {
+  if (bankroll <= 0 || holdings.length === 0) return 100;
+  let score = 100;
+  for (const h of holdings) {
+    const coin = coins.find(c => c.symbol === h.symbol);
+    if (coin && (h.units * coin.price) / bankroll > 0.4) { score -= 25; break; }
+  }
+  if (cash / bankroll < 0.1) score -= 20;
+  if (Object.keys(stopLosses).length === 0) score -= 15;
+  return Math.max(20, Math.min(100, score));
+}
+
 const INITIAL_STATE: AppState = {
-  user: { handle: 'you', xp: 2340, league: 'Diamond', division: 3, streak: 12 },
+  user: { handle: 'you', xp: 2340, league: 'Diamond', division: 3, streak: 12, avatarColor: '#6366F1' },
   bankroll: 10847.32,
   cash: 1163.67,
-  holdings: [
-    { symbol: 'BTC',  units: 0.0656,  avgCost: 61200 },
-    { symbol: 'ETH',  units: 1.0001,  avgCost: 3050  },
-    { symbol: 'SOL',  units: 5.382,   avgCost: 185   },
-    { symbol: 'DOGE', units: 1952,    avgCost: 0.148 },
-  ],
+  holdings: INITIAL_HOLDINGS,
   trades: [],
   coins: INITIAL_COINS,
   activeTournament: {
@@ -35,7 +56,13 @@ const INITIAL_STATE: AppState = {
     endsAt: Date.now() + 2 * 60 * 60 * 1000 + 14 * 60 * 1000,
     stake: 'Free',
   },
-  riskScore: 62,
+  competitions: SEED_COMPETITIONS,
+  joinedTournamentIds: ['ww-1'],
+  leaderboard: {},
+  pendingOrders: [],
+  watchlist: ['BTC', 'ETH'],
+  riskScore: computeRiskScore(INITIAL_HOLDINGS, 1163.67, 10847.32, INITIAL_COINS, {}),
+  stopLosses: {},
   hasOnboarded: false,
   tradeSymbol: 'BTC',
 };
@@ -49,7 +76,17 @@ type Action =
   | { type: 'SET_ONBOARDED' }
   | { type: 'ADD_XP'; amount: number }
   | { type: 'SET_TRADE_SYMBOL'; symbol: string }
-  | { type: 'REBALANCE' };
+  | { type: 'SET_STOP_LOSS'; symbol: string; pct: number }
+  | { type: 'REBALANCE' }
+  | { type: 'SET_COMPETITIONS'; competitions: Competition[] }
+  | { type: 'JOIN_TOURNAMENT'; tournamentId: string }
+  | { type: 'LEAVE_TOURNAMENT'; tournamentId: string }
+  | { type: 'SET_LEADERBOARD'; competitionId: string; entries: CompetitionEntry[] }
+  | { type: 'TOGGLE_WATCHLIST'; symbol: string }
+  | { type: 'SET_HANDLE'; handle: string }
+  | { type: 'SET_AVATAR_COLOR'; color: string }
+  | { type: 'PLACE_LIMIT_ORDER'; symbol: string; side: 'buy' | 'sell'; amount: number; limitPrice: number }
+  | { type: 'CANCEL_LIMIT_ORDER'; orderId: string };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -66,11 +103,65 @@ function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'TICK_PRICES': {
       const coins = tickPrices(state.coins);
-      const holdingsValue = state.holdings.reduce((sum, h) => {
-        const coin = coins.find(c => c.symbol === h.symbol);
+
+      // Auto-fill triggered limit orders
+      let newState = { ...state, coins };
+      for (const order of state.pendingOrders) {
+        const coin = coins.find(c => c.symbol === order.symbol);
+        if (!coin) continue;
+        const triggered = order.side === 'buy'
+          ? coin.price <= order.limitPrice
+          : coin.price >= order.limitPrice;
+        if (!triggered) continue;
+
+        // Execute the order
+        if (order.side === 'buy' && newState.cash >= order.amount) {
+          const units = order.amount / coin.price;
+          const existing = newState.holdings.find(h => h.symbol === order.symbol);
+          const holdings = existing
+            ? newState.holdings.map(h => h.symbol === order.symbol
+                ? { ...h, units: h.units + units, avgCost: (h.avgCost * h.units + order.amount) / (h.units + units) }
+                : h)
+            : [...newState.holdings, { symbol: order.symbol, units, avgCost: coin.price }];
+          const trade: Trade = {
+            id: order.id, symbol: order.symbol, side: 'buy', amount: order.amount,
+            units, price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0,
+          };
+          newState = {
+            ...newState,
+            cash: newState.cash - order.amount,
+            holdings,
+            trades: [trade, ...newState.trades],
+            user: { ...newState.user, xp: newState.user.xp + 25 },
+          };
+        } else if (order.side === 'sell') {
+          const h = newState.holdings.find(h => h.symbol === order.symbol);
+          if (h) {
+            const unitsToSell = Math.min(order.amount / coin.price, h.units);
+            const proceeds = unitsToSell * coin.price;
+            const holdings = unitsToSell >= h.units
+              ? newState.holdings.filter(x => x.symbol !== order.symbol)
+              : newState.holdings.map(x => x.symbol === order.symbol ? { ...x, units: x.units - unitsToSell } : x);
+            const trade: Trade = {
+              id: order.id, symbol: order.symbol, side: 'sell', amount: proceeds,
+              units: unitsToSell, price: coin.price, timestamp: Date.now(), xpEarned: 10, slippage: 0,
+            };
+            newState = {
+              ...newState,
+              cash: newState.cash + proceeds,
+              holdings,
+              trades: [trade, ...newState.trades],
+            };
+          }
+        }
+        newState = { ...newState, pendingOrders: newState.pendingOrders.filter(o => o.id !== order.id) };
+      }
+
+      const holdingsValue = newState.holdings.reduce((sum, h) => {
+        const coin = newState.coins.find(c => c.symbol === h.symbol);
         return sum + (coin ? coin.price * h.units : 0);
       }, 0);
-      return { ...state, coins, bankroll: state.cash + holdingsValue };
+      return { ...newState, bankroll: newState.cash + holdingsValue };
     }
     case 'UPDATE_PRICES': {
       const coins = state.coins.map(coin => {
@@ -111,12 +202,19 @@ function reducer(state: AppState, action: Action): AppState {
         symbol: action.symbol, side: 'buy', amount: action.amount,
         units, price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
       };
+      const newCash = state.cash - action.amount;
+      const newBankroll = newCash + holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
       return {
         ...state,
-        cash: state.cash - action.amount,
+        cash: newCash,
+        bankroll: newBankroll,
         holdings,
         trades: [trade, ...state.trades],
         user: { ...state.user, xp: state.user.xp + 25 },
+        riskScore: computeRiskScore(holdings, newCash, newBankroll, state.coins, state.stopLosses),
       };
     }
     case 'SELL': {
@@ -133,7 +231,22 @@ function reducer(state: AppState, action: Action): AppState {
         symbol: action.symbol, side: 'sell', amount: proceeds,
         units: unitsToSell, price: coin.price, timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
       };
-      return { ...state, cash: state.cash + proceeds, holdings, trades: [trade, ...state.trades] };
+      const newCashSell = state.cash + proceeds;
+      const newBankrollSell = newCashSell + holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      const newStopLosses = { ...state.stopLosses };
+      if (unitsToSell >= holding.units) delete newStopLosses[action.symbol];
+      return {
+        ...state,
+        cash: newCashSell,
+        bankroll: newBankrollSell,
+        holdings,
+        trades: [trade, ...state.trades],
+        stopLosses: newStopLosses,
+        riskScore: computeRiskScore(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses),
+      };
     }
     case 'SET_ONBOARDED':
       return { ...state, hasOnboarded: true };
@@ -141,6 +254,16 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, user: { ...state.user, xp: state.user.xp + action.amount } };
     case 'SET_TRADE_SYMBOL':
       return { ...state, tradeSymbol: action.symbol };
+    case 'SET_STOP_LOSS': {
+      const newStopLosses = { ...state.stopLosses };
+      if (action.pct === 0) delete newStopLosses[action.symbol];
+      else newStopLosses[action.symbol] = action.pct;
+      return {
+        ...state,
+        stopLosses: newStopLosses,
+        riskScore: computeRiskScore(state.holdings, state.cash, state.bankroll, state.coins, newStopLosses),
+      };
+    }
     case 'REBALANCE': {
       const top5 = state.holdings.slice(0, 5);
       if (top5.length === 0) return state;
@@ -205,12 +328,50 @@ function reducer(state: AppState, action: Action): AppState {
         bankroll: newBankroll,
         trades: newTrades,
         user: { ...state.user, xp: state.user.xp + 50 },
+        riskScore: computeRiskScore(newHoldings, newCash, newBankroll, state.coins, state.stopLosses),
       };
     }
+    case 'PLACE_LIMIT_ORDER': {
+      const order: PendingOrder = {
+        id: `LMT-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+        symbol: action.symbol,
+        side: action.side,
+        amount: action.amount,
+        limitPrice: action.limitPrice,
+        createdAt: Date.now(),
+      };
+      return { ...state, pendingOrders: [...state.pendingOrders, order] };
+    }
+    case 'CANCEL_LIMIT_ORDER':
+      return { ...state, pendingOrders: state.pendingOrders.filter(o => o.id !== action.orderId) };
+    case 'SET_HANDLE':
+      return { ...state, user: { ...state.user, handle: action.handle.trim() || state.user.handle } };
+    case 'SET_AVATAR_COLOR':
+      return { ...state, user: { ...state.user, avatarColor: action.color } };
+    case 'TOGGLE_WATCHLIST': {
+      const inList = state.watchlist.includes(action.symbol);
+      return {
+        ...state,
+        watchlist: inList
+          ? state.watchlist.filter(s => s !== action.symbol)
+          : [...state.watchlist, action.symbol],
+      };
+    }
+    case 'SET_COMPETITIONS':
+      return { ...state, competitions: action.competitions };
+    case 'JOIN_TOURNAMENT':
+      if (state.joinedTournamentIds.includes(action.tournamentId)) return state;
+      return { ...state, joinedTournamentIds: [...state.joinedTournamentIds, action.tournamentId] };
+    case 'LEAVE_TOURNAMENT':
+      return { ...state, joinedTournamentIds: state.joinedTournamentIds.filter(id => id !== action.tournamentId) };
+    case 'SET_LEADERBOARD':
+      return { ...state, leaderboard: { ...state.leaderboard, [action.competitionId]: action.entries } };
     default:
       return state;
   }
 }
+
+export type { Action };
 
 interface AppContextValue {
   state: AppState;
@@ -244,6 +405,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Load cloud portfolio on mount
     loadProfile().then(profile => {
       if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
+    });
+
+    // Load competitions (falls back to seed data if offline)
+    fetchCompetitions().then(competitions => {
+      dispatch({ type: 'SET_COMPETITIONS', competitions });
     });
 
     // Simulated micro-tick for UI fluidity

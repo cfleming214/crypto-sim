@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Segmented } from '../components/ui/Segmented';
 import { Chip } from '../components/ui/Chip';
+import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { ArrowUp, ArrowDown, Shield, User, Star, Flame, Trophy } from 'lucide-react-native';
+import { ArrowUp, ArrowDown, Shield, User, Flame, Clock } from 'lucide-react-native';
 
 function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
   const { colors } = useTheme();
@@ -29,13 +30,6 @@ function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
   );
 }
 
-const xpEvents = [
-  { Icon: ArrowUp,  label: 'Bought BTC',         xp: '+25 XP',  time: 'Today · 10:42 AM' },
-  { Icon: Flame,    label: '12-day streak bonus',  xp: '+50 XP',  time: 'Today · 12:00 AM' },
-  { Icon: Trophy,   label: 'Rank #43 in Weekend Warriors', xp: '+100 XP', time: 'Yesterday' },
-  { Icon: Star,     label: 'Achievement: First $', xp: '+200 XP', time: '2 days ago' },
-  { Icon: ArrowDown,label: 'Sold ETH',             xp: '+10 XP',  time: '3 days ago' },
-];
 
 const earnings = [
   { label: 'Tournament prize — Quick Sprint',  amount: '+$0',   time: '3 days ago', type: 'neutral' },
@@ -45,7 +39,7 @@ const earnings = [
 
 export function ActivityScreen() {
   const { colors } = useTheme();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const [tab, setTab] = useState('Trades');
 
   const today = state.trades.filter(t => Date.now() - t.timestamp < 24 * 60 * 60 * 1000);
@@ -135,10 +129,48 @@ export function ActivityScreen() {
       )}
 
       {tab === 'Orders' && (
-        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
-          <Text style={{ fontSize: 16, color: colors.ink3 }}>No open orders</Text>
-          <Text style={{ fontSize: 13, color: colors.ink4 }}>Limit and stop orders will appear here</Text>
-        </View>
+        state.pendingOrders.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Text style={{ fontSize: 16, color: colors.ink3 }}>No open orders</Text>
+            <Text style={{ fontSize: 13, color: colors.ink4 }}>Limit orders placed in Trade will appear here</Text>
+          </View>
+        ) : (
+          <Card variant="noPad">
+            {state.pendingOrders.map((order, i) => (
+              <CardSection key={order.id} last={i === state.pendingOrders.length - 1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Clock color={colors.ink2} size={18} strokeWidth={1.75} />
+                  </View>
+                  <CoinGlyph symbol={order.symbol} size={28} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontWeight: '600', color: colors.ink }}>
+                        {order.side === 'buy' ? 'Buy' : 'Sell'} {order.symbol}
+                      </Text>
+                      <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                        ${order.amount.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                      <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                        Limit @ ${order.limitPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      </Text>
+                      <TouchableOpacity onPress={() => {
+                        Alert.alert('Cancel order?', `Cancel ${order.side} ${order.symbol} limit @ $${order.limitPrice}?`, [
+                          { text: 'Keep', style: 'cancel' },
+                          { text: 'Cancel order', style: 'destructive', onPress: () => dispatch({ type: 'CANCEL_LIMIT_ORDER', orderId: order.id }) },
+                        ]);
+                      }}>
+                        <Text style={{ fontSize: 12, color: colors.down }}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </CardSection>
+            ))}
+          </Card>
+        )
       )}
 
       {tab === 'Earnings' && (
@@ -159,24 +191,48 @@ export function ActivityScreen() {
         </Card>
       )}
 
-      {tab === 'XP log' && (
-        <Card variant="noPad">
-          {xpEvents.map(({ Icon, label, xp, time }, i) => (
-            <CardSection key={label} last={i === xpEvents.length - 1}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon color={colors.ink2} size={18} strokeWidth={1.75} />
+      {tab === 'XP log' && (() => {
+        const xpEvents: { Icon: React.ComponentType<any>; label: string; xp: string; time: string }[] = [];
+        if (state.user.streak >= 1) {
+          xpEvents.push({ Icon: Flame, label: `${state.user.streak}-day streak bonus`, xp: '+50 XP', time: 'Today · 12:00 AM' });
+        }
+        for (const t of state.trades) {
+          const label = t.side === 'buy' ? `Bought ${t.symbol}` : `Sold ${t.symbol}`;
+          const Icon = t.side === 'buy' ? ArrowUp : ArrowDown;
+          const d = new Date(t.timestamp);
+          const isToday = Date.now() - t.timestamp < 24 * 60 * 60 * 1000;
+          const time = isToday
+            ? `Today · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+            : d.toLocaleDateString();
+          xpEvents.push({ Icon, label, xp: `+${t.xpEarned} XP`, time });
+        }
+        if (xpEvents.length === 0) {
+          return (
+            <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+              <Text style={{ fontSize: 16, color: colors.ink3 }}>No XP events yet</Text>
+              <Text style={{ fontSize: 13, color: colors.ink4 }}>Make trades and keep your streak to earn XP</Text>
+            </View>
+          );
+        }
+        return (
+          <Card variant="noPad">
+            {xpEvents.map(({ Icon, label, xp, time }, i) => (
+              <CardSection key={`${label}-${i}`} last={i === xpEvents.length - 1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon color={colors.ink2} size={18} strokeWidth={1.75} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', color: colors.ink }}>{label}</Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{time}</Text>
+                  </View>
+                  <Chip variant="up" style={{ paddingVertical: 2 }}>{xp}</Chip>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '600', color: colors.ink }}>{label}</Text>
-                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{time}</Text>
-                </View>
-                <Chip variant="up" style={{ paddingVertical: 2 }}>{xp}</Chip>
-              </View>
-            </CardSection>
-          ))}
-        </Card>
-      )}
+              </CardSection>
+            ))}
+          </Card>
+        );
+      })()}
     </ScreenShell>
   );
 }
