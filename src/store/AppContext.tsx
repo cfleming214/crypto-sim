@@ -635,8 +635,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     let unsubProfile: () => void = () => {};
     let unsubNudges:  () => void = () => {};
-    subscribeToProfile(profile => dispatch({ type: 'LOAD_PROFILE', profile }))
-      .then(unsub => { unsubProfile = unsub; });
+    // Stash the last cash/holdings signature we accepted so the subscription
+    // doesn't bounce-back our own writes. The subscription fires once per
+    // observeQuery update — including immediately after our own saveProfile —
+    // and re-dispatching the just-saved data clobbers any in-flight local
+    // state, producing a 1-2s flash to the saved snapshot before TICK_PRICES
+    // recomputes. Skipping no-op updates breaks the loop.
+    let lastSig = '';
+    const accept = (profile: any) => {
+      const sig = JSON.stringify([
+        profile.cash,
+        (profile.holdings ?? []).map((h: any) => [h.symbol, h.units, h.avgCost]),
+      ]);
+      if (sig === lastSig) return;
+      lastSig = sig;
+      dispatch({ type: 'LOAD_PROFILE', profile });
+    };
+    subscribeToProfile(accept).then(unsub => { unsubProfile = unsub; });
     subscribeToCoachNudges(nudges => dispatch({ type: 'SET_CLOUD_NUDGES', nudges }))
       .then(unsub => { unsubNudges = unsub; });
 
