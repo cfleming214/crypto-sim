@@ -12,6 +12,34 @@ import { useNavigation } from '@react-navigation/native';
 import { Clock, Flame, Bell } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
+const SEASON_DURATION = 30;
+const SEASON_START = new Date('2026-05-01T00:00:00Z').getTime();
+
+function computeSeasonDay(): number {
+  const elapsed = Date.now() - SEASON_START;
+  return Math.min(SEASON_DURATION, Math.max(1, Math.ceil(elapsed / 86400000)));
+}
+
+function computeStreak(tradeTimes: number[]): number {
+  if (tradeTimes.length === 0) return 0;
+  const days = new Set(
+    tradeTimes.map(t => {
+      const d = new Date(t);
+      return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+    })
+  );
+  const today = new Date();
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+    if (days.has(key)) streak++;
+    else if (i > 0) break;
+  }
+  return streak;
+}
+
 const TYPE_LABEL: Record<string, string> = {
   daily: 'Daily',
   featured: 'Featured',
@@ -28,6 +56,8 @@ export function CompeteScreen() {
   const xp = state.user.xp;
   const xpGoal = 6000;
   const xpPct = Math.min(100, (xp / xpGoal) * 100);
+  const seasonDay = computeSeasonDay();
+  const derivedStreak = computeStreak(state.trades.map(t => t.timestamp)) || state.user.streak;
 
   const liveComps = getLive();
   const openComps = getOpen();
@@ -74,7 +104,7 @@ export function CompeteScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View>
             <Text style={{ fontSize: 11, fontWeight: '600', color: `${colors.brandOn}99`, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-              {state.user.league} {['', 'I', 'II', 'III'][state.user.division] ?? ''} · Day 12 of 30
+              {state.user.league} {['', 'I', 'II', 'III'][state.user.division] ?? ''} · Day {seasonDay} of {SEASON_DURATION}
             </Text>
             <Text style={{ fontSize: 28, fontWeight: '700', color: colors.brandOn, fontVariant: ['tabular-nums'], marginTop: 4 }}>
               {xp.toLocaleString()} <Text style={{ fontSize: 13, fontWeight: '400', opacity: 0.6 }}>/ {xpGoal.toLocaleString()} XP</Text>
@@ -82,7 +112,7 @@ export function CompeteScreen() {
           </View>
           <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, gap: 6, alignItems: 'center' }}>
             <Flame color={colors.brandOn} size={14} strokeWidth={1.75} />
-            <Text style={{ color: colors.brandOn, fontSize: 12, fontWeight: '600' }}>{state.user.streak}d</Text>
+            <Text style={{ color: colors.brandOn, fontSize: 12, fontWeight: '600' }}>{derivedStreak}d</Text>
           </View>
         </View>
         <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 999, overflow: 'hidden' }}>

@@ -1,14 +1,113 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
+import { Button } from '../components/ui/Button';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useNavigation } from '@react-navigation/native';
-import { Search, Star } from 'lucide-react-native';
+import { Search, Star, SlidersHorizontal, X } from 'lucide-react-native';
+
+type ChangeFilter = 'all' | 'gainers' | 'losers';
+type McapFilter = 'all' | 'large' | 'mid' | 'small';
+
+interface Filters {
+  change: ChangeFilter;
+  mcap: McapFilter;
+}
+
+function FilterSheet({ visible, filters, onApply, onClose }: {
+  visible: boolean;
+  filters: Filters;
+  onApply: (f: Filters) => void;
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const [local, setLocal] = useState<Filters>(filters);
+
+  const handleApply = () => { onApply(local); onClose(); };
+  const handleReset = () => { const f: Filters = { change: 'all', mcap: 'all' }; setLocal(f); onApply(f); onClose(); };
+
+  const activeCount = (local.change !== 'all' ? 1 : 0) + (local.mcap !== 'all' ? 1 : 0);
+
+  const changeOptions: { label: string; value: ChangeFilter }[] = [
+    { label: 'All', value: 'all' }, { label: 'Gainers', value: 'gainers' }, { label: 'Losers', value: 'losers' },
+  ];
+  const mcapOptions: { label: string; value: McapFilter }[] = [
+    { label: 'All', value: 'all' }, { label: 'Large cap (>$100B)', value: 'large' },
+    { label: 'Mid cap ($1B–$100B)', value: 'mid' }, { label: 'Small cap (<$1B)', value: 'small' },
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>
+            Filter{activeCount > 0 ? ` (${activeCount})` : ''}
+          </Text>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, gap: 24, paddingBottom: 40 }}>
+          {/* 24h change */}
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>24h change</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {changeOptions.map(o => (
+                <TouchableOpacity key={o.value} style={{ flex: 1 }} onPress={() => setLocal(l => ({ ...l, change: o.value }))}>
+                  <View style={{
+                    paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+                    backgroundColor: local.change === o.value ? colors.brand : colors.surface2,
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: local.change === o.value ? colors.brandOn : colors.ink2 }}>
+                      {o.label}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Market cap tier */}
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Market cap</Text>
+            <View style={{ gap: 8 }}>
+              {mcapOptions.map(o => (
+                <TouchableOpacity key={o.value} onPress={() => setLocal(l => ({ ...l, mcap: o.value }))}>
+                  <View style={{
+                    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12,
+                    backgroundColor: local.mcap === o.value ? colors.surface2 : 'transparent',
+                    borderWidth: 1,
+                    borderColor: local.mcap === o.value ? colors.brand : colors.hairline,
+                  }}>
+                    <Text style={{ fontSize: 14, color: colors.ink }}>{o.label}</Text>
+                    {local.mcap === o.value && (
+                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ color: colors.brandOn, fontSize: 12, fontWeight: '700' }}>✓</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: 20, paddingBottom: 20, flexDirection: 'row', gap: 10 }}>
+          <Button variant="ghost" style={{ flex: 1 }} onPress={handleReset}>Reset</Button>
+          <Button variant="brand" style={{ flex: 1 }} onPress={handleApply}>Apply filters</Button>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
 
 const BASE_CATEGORIES = ['All', 'Top 10', 'DeFi', 'Layer 1', 'Meme', 'Stables'];
 
@@ -20,6 +119,14 @@ const categorySymbols: Record<string, string[]> = {
 
 const sortOrders = ['Market cap ↓', 'Price ↓', 'Change ↓'];
 
+function parseMcap(raw: string): number {
+  const m = raw.replace('$', '').trim();
+  if (m.endsWith('T')) return parseFloat(m) * 1e12;
+  if (m.endsWith('B')) return parseFloat(m) * 1e9;
+  if (m.endsWith('M')) return parseFloat(m) * 1e6;
+  return parseFloat(m) || 0;
+}
+
 export function MarketsScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
@@ -27,6 +134,10 @@ export function MarketsScreen() {
   const [cat, setCat] = useState('All');
   const [sortIdx, setSortIdx] = useState(0);
   const [query, setQuery] = useState('');
+  const [filters, setFilters] = useState<Filters>({ change: 'all', mcap: 'all' });
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  const activeFilterCount = (filters.change !== 'all' ? 1 : 0) + (filters.mcap !== 'all' ? 1 : 0);
 
   const allCoins = state.coins;
   const categories = ['Watchlist', ...BASE_CATEGORIES];
@@ -37,12 +148,24 @@ export function MarketsScreen() {
     return allCoins.filter(c => (categorySymbols[cat] ?? []).includes(c.symbol));
   })();
 
-  const filtered = query.trim()
+  const byQuery = query.trim()
     ? byCategory.filter(c =>
         c.symbol.toLowerCase().includes(query.toLowerCase()) ||
         c.name.toLowerCase().includes(query.toLowerCase()),
       )
     : byCategory;
+
+  const filtered = byQuery.filter(c => {
+    if (filters.change === 'gainers' && c.change24h < 0) return false;
+    if (filters.change === 'losers'  && c.change24h > 0) return false;
+    if (filters.mcap !== 'all') {
+      const mc = parseMcap(c.marketCap);
+      if (filters.mcap === 'large' && mc <  1e11) return false;
+      if (filters.mcap === 'mid'   && (mc < 1e9 || mc >= 1e11)) return false;
+      if (filters.mcap === 'small' && mc >= 1e9)  return false;
+    }
+    return true;
+  });
 
   const sorted = [...filtered].sort((a, b) => {
     if (sortIdx === 1) return b.price - a.price;
@@ -58,7 +181,25 @@ export function MarketsScreen() {
   };
 
   return (
-    <ScreenShell eyebrow="Markets" title="Crypto">
+    <ScreenShell
+      eyebrow="Markets"
+      title="Crypto"
+      rightActions={
+        <TouchableOpacity style={{ padding: 8, position: 'relative' }} onPress={() => setFilterOpen(true)}>
+          <SlidersHorizontal color={activeFilterCount > 0 ? colors.brand : colors.ink} size={20} strokeWidth={1.75} />
+          {activeFilterCount > 0 && (
+            <View style={{
+              position: 'absolute', top: 4, right: 4,
+              width: 16, height: 16, borderRadius: 8,
+              backgroundColor: colors.brand,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ color: colors.brandOn, fontSize: 9, fontWeight: '700' }}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      }
+    >
       {/* Stats strip */}
       <Card variant="noPad" style={{ flexDirection: 'row' }}>
         <View style={{ flex: 1, padding: 12, borderRightWidth: 1, borderRightColor: colors.hairline }}>
@@ -140,7 +281,7 @@ export function MarketsScreen() {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>
           {cat === 'All' ? 'All assets' : cat}
-          {sorted.length < allCoins.length ? ` (${sorted.length})` : ''}
+          {` (${sorted.length})`}
         </Text>
         <TouchableOpacity onPress={() => setSortIdx(i => (i + 1) % sortOrders.length)}>
           <Text style={{ fontSize: 11, color: colors.ink3 }}>Sort: {sortOrders[sortIdx]}</Text>
@@ -192,6 +333,12 @@ export function MarketsScreen() {
           </TouchableOpacity>
         ))}
       </Card>
+      <FilterSheet
+        visible={filterOpen}
+        filters={filters}
+        onApply={setFilters}
+        onClose={() => setFilterOpen(false)}
+      />
     </ScreenShell>
   );
 }
