@@ -125,7 +125,11 @@ function tickPrices(coins: Coin[]): Coin[] {
     if (coin.symbol === 'USDC') return coin;
     const volatility = coin.symbol === 'PEPE' || coin.symbol === 'DOGE' ? 0.0004 : 0.0001;
     const delta = coin.price * (Math.random() - 0.5) * volatility;
-    const newPrice = Math.max(0.00001, coin.price + delta);
+    // Floor relative to the current price — a flat $0.00001 floor would clamp
+    // memecoins like PEPE (real price ~3.5e-6) up to a wrong value on every
+    // tick after UPDATE_PRICES fetched the real data, causing a 2-second
+    // bankroll flash.
+    const newPrice = Math.max(coin.price * 0.5, coin.price + delta);
     const newHistory = [...coin.history.slice(-19), newPrice];
     return { ...coin, price: newPrice, history: newHistory };
   });
