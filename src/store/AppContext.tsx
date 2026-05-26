@@ -343,7 +343,47 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'REBALANCE': {
       const top5 = state.holdings.slice(0, 5);
-      if (top5.length === 0) return state;
+
+      // Cold-start rebalance: no holdings yet, so build a balanced portfolio
+      // from cash. Splits 95% across the top 5 non-stablecoin coins, leaves
+      // 5% as cash buffer.
+      if (top5.length === 0) {
+        const targetCoins = state.coins.filter(c => c.symbol !== 'USDC').slice(0, 5);
+        if (targetCoins.length === 0 || state.cash < 50) return state;
+        const investable = state.cash * 0.95;
+        const perCoin = investable / targetCoins.length;
+
+        const newHoldings = targetCoins.map(c => ({
+          symbol:  c.symbol,
+          units:   perCoin / c.price,
+          avgCost: c.price,
+        }));
+        const newTradesFromCold: Trade[] = targetCoins.map(c => ({
+          id:        `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol:    c.symbol,
+          side:      'buy',
+          amount:    perCoin,
+          units:     perCoin / c.price,
+          price:     c.price,
+          timestamp: Date.now(),
+          xpEarned:  25,
+          slippage:  0.001,
+        }));
+        const newCashCold     = state.cash - investable;
+        const newBankrollCold = newCashCold + newHoldings.reduce((s, h) => {
+          const c = state.coins.find(x => x.symbol === h.symbol);
+          return s + (c ? c.price * h.units : 0);
+        }, 0);
+        return {
+          ...state,
+          cash:      newCashCold,
+          bankroll:  newBankrollCold,
+          holdings:  newHoldings,
+          trades:    [...newTradesFromCold, ...state.trades],
+          user:      { ...state.user, xp: state.user.xp + 50 },
+          riskScore: computeRiskScore(newHoldings, newCashCold, newBankrollCold, state.coins, state.stopLosses),
+        };
+      }
 
       const holdingValues = top5.map(h => {
         const coin = state.coins.find(c => c.symbol === h.symbol)!;

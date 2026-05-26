@@ -280,8 +280,26 @@ export function PortfolioScreen() {
 
   const handleRebalance = () => {
     const top5 = state.holdings.slice(0, 5);
+
+    // Cold-start: no holdings yet → propose buying a balanced basket from cash.
     if (top5.length === 0) {
-      Alert.alert('Nothing to rebalance', 'Add some holdings first.');
+      const targetCoins = state.coins.filter(c => c.symbol !== 'USDC').slice(0, 5);
+      if (targetCoins.length === 0 || state.cash < 50) {
+        Alert.alert('Not enough cash', 'You need at least $50 cash to build a balanced portfolio.');
+        return;
+      }
+      const investable = state.cash * 0.95;
+      const perCoin    = investable / targetCoins.length;
+      const lines: RebalanceLine[] = targetCoins.map(c => ({
+        symbol:     c.symbol,
+        side:       'buy',
+        amount:     perCoin,
+        currentPct: 0,
+        targetPct:  Math.round(95 / targetCoins.length),
+      }));
+      setRebalanceLines(lines);
+      setRebalanceTarget(perCoin);
+      setRebalanceVisible(true);
       return;
     }
 
