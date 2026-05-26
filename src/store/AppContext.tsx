@@ -253,7 +253,9 @@ function reducer(state: AppState, action: Action): AppState {
         ...merged,
         activeTournament: null,
         coachNudges: recomputedNudges,
-        dismissedNudgeIds: [],
+        // dismissedNudgeIds preserved — login shouldn't un-dismiss nudges the
+        // user already closed. The subscription fires after every saveProfile,
+        // which would otherwise re-pop every dismissed nudge.
       };
     }
     case 'BUY': {
@@ -288,7 +290,8 @@ function reducer(state: AppState, action: Action): AppState {
         user: { ...state.user, xp: state.user.xp + 25 },
         riskScore: computeRiskScore(holdings, newCash, newBankroll, state.coins, state.stopLosses),
         coachNudges: newNudges,
-        dismissedNudgeIds: [],
+        // dismissedNudgeIds preserved — a dismissed conc-BTC stays dismissed
+        // even if the BTC concentration is still flagged after this trade.
       };
     }
     case 'SELL': {
@@ -322,7 +325,7 @@ function reducer(state: AppState, action: Action): AppState {
         stopLosses: newStopLosses,
         riskScore: computeRiskScore(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses),
         coachNudges: sellNudges,
-        dismissedNudgeIds: [],
+        // dismissedNudgeIds preserved — see BUY for rationale.
       };
     }
     case 'SET_ONBOARDED':
