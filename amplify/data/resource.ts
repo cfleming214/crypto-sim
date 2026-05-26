@@ -32,7 +32,7 @@ const schema = a.schema({
     pnlPct: a.float(),
     league: a.string(),
   }).authorization(allow => [
-    allow.authenticated().to(['read', 'list']),
+    allow.authenticated().to(['read']),
     allow.owner(),
   ]),
 });
