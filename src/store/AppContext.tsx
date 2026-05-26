@@ -219,7 +219,9 @@ function reducer(state: AppState, action: Action): AppState {
     case 'UPDATE_PRICES': {
       const coins = state.coins.map(coin => {
         const pd = action.prices.find(p => p.symbol === coin.symbol);
-        if (!pd || coin.symbol === 'USDC') return coin;
+        // Skip coins with no price update (or zero/negative — would zero out
+        // any holdings in that coin and crash the bankroll value).
+        if (!pd || coin.symbol === 'USDC' || !(pd.price > 0)) return coin;
         const newHistory = [...coin.history.slice(-19), pd.price];
         return {
           ...coin,

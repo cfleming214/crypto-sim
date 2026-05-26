@@ -30,11 +30,16 @@ export async function fetchPrices(): Promise<PriceData[]> {
   if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
   const json = await res.json();
 
-  return Object.entries(COINGECKO_IDS).map(([symbol, geckoId]) => ({
-    symbol,
-    price:        json[geckoId]?.usd              ?? 0,
-    change24h:    json[geckoId]?.usd_24h_change   ?? 0,
-    marketCapRaw: json[geckoId]?.usd_market_cap   ?? 0,
-    volumeRaw:    json[geckoId]?.usd_24h_vol      ?? 0,
-  }));
+  // Drop entries CoinGecko didn't return a real price for. Falling back to 0
+  // would zero out the user's holdings in that coin and crash their bankroll
+  // on the next UPDATE_PRICES.
+  return Object.entries(COINGECKO_IDS)
+    .filter(([, geckoId]) => typeof json[geckoId]?.usd === 'number' && json[geckoId].usd > 0)
+    .map(([symbol, geckoId]) => ({
+      symbol,
+      price:        json[geckoId].usd,
+      change24h:    json[geckoId].usd_24h_change   ?? 0,
+      marketCapRaw: json[geckoId].usd_market_cap   ?? 0,
+      volumeRaw:    json[geckoId].usd_24h_vol      ?? 0,
+    }));
 }
