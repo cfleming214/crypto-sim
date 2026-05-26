@@ -145,7 +145,7 @@ export function CompeteScreen() {
       {/* Open brackets */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Open brackets</Text>
-        <TouchableOpacity onPress={() => nav.navigate('League')}>
+        <TouchableOpacity onPress={() => nav.navigate('Brackets')}>
           <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3 }}>See all →</Text>
         </TouchableOpacity>
       </View>

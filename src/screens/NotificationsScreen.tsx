@@ -7,7 +7,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Button } from '../components/ui/Button';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { Trophy, Shield, User, Flame, Star, ArrowUp, ArrowDown } from 'lucide-react-native';
+import { Trophy, Shield, User, Flame, Star, ArrowUp, ArrowDown, Bell } from 'lucide-react-native';
 
 type NotifType = 'compete' | 'trade' | 'social';
 
@@ -89,7 +89,7 @@ function NotifRow({ Icon, color, title, sub, time, unread, last, onPress }: {
 
 export function NotificationsScreen() {
   const { colors } = useTheme();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const [tab, setTab] = useState('All');
   const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
@@ -133,7 +133,31 @@ export function NotificationsScreen() {
     }] : []),
   ];
 
+  // Price alert notifications (triggered alerts surfaced as unread)
+  const alertNotifs: Notif[] = state.triggeredAlerts.slice(0, 8).map(a => {
+    const coin = state.coins.find(c => c.symbol === a.symbol);
+    const priceStr = a.targetPrice < 0.01
+      ? `$${a.targetPrice.toFixed(8)}`
+      : `$${a.targetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return {
+      key: a.id,
+      Icon: Bell,
+      color: 'warn' as const,
+      title: `${a.symbol} alert triggered`,
+      sub: `Price ${a.direction === 'above' ? 'rose above' : 'fell below'} ${priceStr}`,
+      time: a.triggeredAt ? relTime(a.triggeredAt) : 'just now',
+      unread: true,
+      type: 'trade' as NotifType,
+      onPress: () => {
+        dispatch({ type: 'DISMISS_PRICE_ALERT', alertId: a.id });
+        dispatch({ type: 'SET_TRADE_SYMBOL', symbol: a.symbol });
+        nav.navigate('MainTabs', { screen: 'Trade' });
+      },
+    };
+  });
+
   const allNotifs: Notif[] = [
+    ...alertNotifs,
     ...tradeNotifs,
     ...STATIC_NOTIFS.map(n => ({
       ...n,

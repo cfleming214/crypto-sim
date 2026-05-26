@@ -71,6 +71,15 @@ export interface PendingOrder {
   createdAt: number;
 }
 
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  targetPrice: number;
+  direction: 'above' | 'below';
+  createdAt: number;
+  triggeredAt?: number;
+}
+
 export interface AppState {
   user: {
     handle: string;
@@ -93,6 +102,8 @@ export interface AppState {
   watchlist: string[];
   riskScore: number;
   stopLosses: Record<string, number>;
+  priceAlerts: PriceAlert[];
+  triggeredAlerts: PriceAlert[];
   hasOnboarded: boolean;
   tradeSymbol: string;
 }

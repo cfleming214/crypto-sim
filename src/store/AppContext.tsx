@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
-import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder } from './types';
+import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade } from '../services/portfolioService';
 import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
@@ -63,6 +63,8 @@ const INITIAL_STATE: AppState = {
   watchlist: ['BTC', 'ETH'],
   riskScore: computeRiskScore(INITIAL_HOLDINGS, 1163.67, 10847.32, INITIAL_COINS, {}),
   stopLosses: {},
+  priceAlerts: [],
+  triggeredAlerts: [],
   hasOnboarded: false,
   tradeSymbol: 'BTC',
 };
@@ -86,7 +88,9 @@ type Action =
   | { type: 'SET_HANDLE'; handle: string }
   | { type: 'SET_AVATAR_COLOR'; color: string }
   | { type: 'PLACE_LIMIT_ORDER'; symbol: string; side: 'buy' | 'sell'; amount: number; limitPrice: number }
-  | { type: 'CANCEL_LIMIT_ORDER'; orderId: string };
+  | { type: 'CANCEL_LIMIT_ORDER'; orderId: string }
+  | { type: 'ADD_PRICE_ALERT'; symbol: string; targetPrice: number; direction: 'above' | 'below' }
+  | { type: 'DISMISS_PRICE_ALERT'; alertId: string };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -155,6 +159,27 @@ function reducer(state: AppState, action: Action): AppState {
           }
         }
         newState = { ...newState, pendingOrders: newState.pendingOrders.filter(o => o.id !== order.id) };
+      }
+
+      // Evaluate price alerts
+      const nowMs = Date.now();
+      const stillActive: PriceAlert[] = [];
+      const justTriggered: PriceAlert[] = [];
+      for (const alert of newState.priceAlerts) {
+        const coin = newState.coins.find(c => c.symbol === alert.symbol);
+        if (!coin) { stillActive.push(alert); continue; }
+        const fired = alert.direction === 'above'
+          ? coin.price >= alert.targetPrice
+          : coin.price <= alert.targetPrice;
+        if (fired) justTriggered.push({ ...alert, triggeredAt: nowMs });
+        else stillActive.push(alert);
+      }
+      if (justTriggered.length > 0) {
+        newState = {
+          ...newState,
+          priceAlerts: stillActive,
+          triggeredAlerts: [...justTriggered, ...newState.triggeredAlerts],
+        };
       }
 
       const holdingsValue = newState.holdings.reduce((sum, h) => {
@@ -366,6 +391,22 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, joinedTournamentIds: state.joinedTournamentIds.filter(id => id !== action.tournamentId) };
     case 'SET_LEADERBOARD':
       return { ...state, leaderboard: { ...state.leaderboard, [action.competitionId]: action.entries } };
+    case 'ADD_PRICE_ALERT': {
+      const alert: PriceAlert = {
+        id: `ALT-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+        symbol: action.symbol,
+        targetPrice: action.targetPrice,
+        direction: action.direction,
+        createdAt: Date.now(),
+      };
+      return { ...state, priceAlerts: [...state.priceAlerts, alert] };
+    }
+    case 'DISMISS_PRICE_ALERT':
+      return {
+        ...state,
+        priceAlerts: state.priceAlerts.filter(a => a.id !== action.alertId),
+        triggeredAlerts: state.triggeredAlerts.filter(a => a.id !== action.alertId),
+      };
     default:
       return state;
   }

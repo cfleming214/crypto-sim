@@ -15,11 +15,117 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
 import { loadProfile } from '../services/portfolioService';
-import { Shield, X } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react-native';
 
 const STOP_OPTIONS = [5, 10, 15];
 
 const DONUT_COLORS = ['#F7931A', '#627EEA', '#9945FF', '#BA9F33', '#2775CA', '#00D632'];
+
+interface RebalanceLine {
+  symbol: string;
+  side: 'buy' | 'sell';
+  amount: number;
+  currentPct: number;
+  targetPct: number;
+}
+
+function RebalanceSheet({ visible, onClose, lines, targetPerCoin, onConfirm }: {
+  visible: boolean;
+  onClose: () => void;
+  lines: RebalanceLine[];
+  targetPerCoin: number;
+  onConfirm: () => void;
+}) {
+  const { colors } = useTheme();
+
+  const handleConfirm = () => {
+    onConfirm();
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Rebalance</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+              Equal weight · ${targetPerCoin.toFixed(0)} per coin
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 8 }}>
+          {lines.length === 0 ? (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <Text style={{ color: colors.ink3 }}>Already balanced — each position within 5%</Text>
+            </View>
+          ) : lines.map(line => (
+            <View
+              key={line.symbol}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                backgroundColor: colors.surface2,
+                borderRadius: 14,
+                padding: 14,
+              }}
+            >
+              <CoinGlyph symbol={line.symbol} size={36} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{line.symbol}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                  <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                    {line.currentPct.toFixed(0)}% → {line.targetPct.toFixed(0)}%
+                  </Text>
+                </View>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: line.side === 'sell' ? colors.downSoft ?? `${colors.down}18` : colors.upSoft ?? `${colors.up}18`,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                }}>
+                  {line.side === 'sell'
+                    ? <ArrowUpRight color={colors.down} size={13} strokeWidth={2} />
+                    : <ArrowDownLeft color={colors.up} size={13} strokeWidth={2} />}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: line.side === 'sell' ? colors.down : colors.up }}>
+                    ${line.amount.toFixed(0)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                  {line.side === 'sell' ? 'Sell' : 'Buy'}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
+        {lines.length > 0 && (
+          <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 8 }}>
+            <Text style={{ fontSize: 11, color: colors.ink3, textAlign: 'center' }}>
+              {lines.length} trade{lines.length > 1 ? 's' : ''} will execute at current market price
+            </Text>
+            <Button variant="brand" onPress={handleConfirm}>Rebalance now</Button>
+          </View>
+        )}
+        {lines.length === 0 && (
+          <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+            <Button variant="ghost" onPress={onClose}>Close</Button>
+          </View>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
 
 function StopSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { colors } = useTheme();
@@ -117,6 +223,9 @@ export function PortfolioScreen() {
   const [tf, setTf] = useState('7D');
   const [view, setView] = useState('List');
   const [stopSheetVisible, setStopSheetVisible] = useState(false);
+  const [rebalanceVisible, setRebalanceVisible] = useState(false);
+  const [rebalanceLines, setRebalanceLines] = useState<RebalanceLine[]>([]);
+  const [rebalanceTarget, setRebalanceTarget] = useState(0);
 
   const totalEquity = state.bankroll;
   const startEquity = 10000;
@@ -178,31 +287,37 @@ export function PortfolioScreen() {
 
     const holdingValues = top5.map(h => {
       const coin = getCoin(h.symbol)!;
-      return { symbol: h.symbol, currentValue: h.units * coin.price, price: coin.price };
+      const currentValue = h.units * coin.price;
+      return { symbol: h.symbol, currentValue, price: coin.price };
     });
     const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
     const targetPerCoin = totalInvested / top5.length;
 
-    const lines: string[] = [];
+    const lines: RebalanceLine[] = [];
     for (const h of holdingValues) {
       const diff = h.currentValue - targetPerCoin;
-      if (diff > 5)  lines.push(`Sell $${diff.toFixed(0)} of ${h.symbol}`);
-      if (diff < -5) lines.push(`Buy $${Math.abs(diff).toFixed(0)} of ${h.symbol}`);
+      if (diff > 5) {
+        lines.push({
+          symbol: h.symbol,
+          side: 'sell',
+          amount: diff,
+          currentPct: Math.round((h.currentValue / totalEquity) * 100),
+          targetPct: Math.round((targetPerCoin / totalEquity) * 100),
+        });
+      } else if (diff < -5) {
+        lines.push({
+          symbol: h.symbol,
+          side: 'buy',
+          amount: Math.abs(diff),
+          currentPct: Math.round((h.currentValue / totalEquity) * 100),
+          targetPct: Math.round((targetPerCoin / totalEquity) * 100),
+        });
+      }
     }
 
-    if (lines.length === 0) {
-      Alert.alert('Already balanced', 'Each position is within 5% of equal weight.');
-      return;
-    }
-
-    Alert.alert(
-      'Rebalance to Equal Weight',
-      `Target: 20% per coin ($${targetPerCoin.toFixed(0)} each)\n\n${lines.join('\n')}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Rebalance', onPress: () => dispatch({ type: 'REBALANCE' }) },
-      ],
-    );
+    setRebalanceLines(lines);
+    setRebalanceTarget(targetPerCoin);
+    setRebalanceVisible(true);
   };
 
   // Dynamic risk card
@@ -331,6 +446,13 @@ export function PortfolioScreen() {
       </Card>
 
       <StopSheet visible={stopSheetVisible} onClose={() => setStopSheetVisible(false)} />
+      <RebalanceSheet
+        visible={rebalanceVisible}
+        onClose={() => setRebalanceVisible(false)}
+        lines={rebalanceLines}
+        targetPerCoin={rebalanceTarget}
+        onConfirm={() => dispatch({ type: 'REBALANCE' })}
+      />
     </ScreenShell>
   );
 }

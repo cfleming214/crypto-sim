@@ -5,6 +5,7 @@ import { WalkthroughNavigator } from './WalkthroughNavigator';
 import { TradeDetailScreen } from '../screens/TradeDetailScreen';
 import { TournamentDetailScreen } from '../screens/TournamentDetailScreen';
 import { LeagueScreen } from '../screens/LeagueScreen';
+import { BracketsScreen } from '../screens/BracketsScreen';
 import { CopyTradeScreen } from '../screens/CopyTradeScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
@@ -19,6 +20,7 @@ export type RootStackParamList = {
   TradeDetail: { symbol: string };
   TournamentDetail: { id: string };
   League: undefined;
+  Brackets: undefined;
   CopyTrade: { traderId: string };
   Replay: { eraId?: string };
   Notifications: undefined;
@@ -53,6 +55,7 @@ export function RootNavigator({ hasOnboarded }: RootNavigatorProps) {
       <Stack.Screen name="TradeDetail" component={TradeDetailScreen} />
       <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
       <Stack.Screen name="League" component={LeagueScreen} />
+      <Stack.Screen name="Brackets" component={BracketsScreen} />
       <Stack.Screen name="CopyTrade" component={CopyTradeScreen} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />

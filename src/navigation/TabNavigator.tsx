@@ -4,6 +4,7 @@ import { TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
+import { useApp } from '../store/AppContext';
 import { PortfolioScreen } from '../screens/PortfolioScreen';
 import { MarketsScreen } from '../screens/MarketsScreen';
 import { TradeScreen } from '../screens/TradeScreen';
@@ -28,7 +29,18 @@ function BellButton() {
 
 export function TabNavigator() {
   const { colors } = useTheme();
+  const { state } = useApp();
   const { bottom } = useSafeAreaInsets();
+
+  // Compete dot: user is in a live competition
+  const hasCompeteDot = state.joinedTournamentIds.some(id =>
+    state.competitions.find(c => c.id === id && c.status === 'live')
+  );
+
+  // Profile dot: there are triggered price alerts or a new achievement
+  const hasProfileDot = state.triggeredAlerts.length > 0 ||
+    (state.trades.length === 1) ||
+    (state.user.streak >= 7 && state.trades.length > 0);
 
   return (
     <Tab.Navigator
@@ -68,12 +80,18 @@ export function TabNavigator() {
         options={{
           tabBarIcon: ({ color }) => <Trophy color={color} size={22} strokeWidth={1.75} />,
           headerShown: false,
+          tabBarBadge: hasCompeteDot ? '' : undefined,
+          tabBarBadgeStyle: { minWidth: 8, height: 8, borderRadius: 4, fontSize: 0, top: 2, right: 2 },
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ tabBarIcon: ({ color }) => <User color={color} size={22} strokeWidth={1.75} /> }}
+        options={{
+          tabBarIcon: ({ color }) => <User color={color} size={22} strokeWidth={1.75} />,
+          tabBarBadge: hasProfileDot ? '' : undefined,
+          tabBarBadgeStyle: { minWidth: 8, height: 8, borderRadius: 4, fontSize: 0, top: 2, right: 2 },
+        }}
       />
     </Tab.Navigator>
   );

@@ -11,7 +11,7 @@ import { CandleChart, type Indicator } from '../components/charts/CandleChart';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { Star, MoreHorizontal, Shield, Check, X, ChevronDown } from 'lucide-react-native';
+import { Star, MoreHorizontal, Shield, Check, X, ChevronDown, Bell, Share2, ExternalLink } from 'lucide-react-native';
 
 const QUICK_AMOUNTS = [50, 100, 250, 500];
 
@@ -177,6 +177,145 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
   );
 }
 
+function PriceAlertSheet({ visible, symbol, currentPrice, onClose }: {
+  visible: boolean; symbol: string; currentPrice: number; onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const { dispatch } = useApp();
+  const [targetStr, setTargetStr] = useState('');
+  const [direction, setDirection] = useState<'above' | 'below'>('above');
+
+  const targetPrice = parseFloat(targetStr) || 0;
+
+  const handleSet = () => {
+    if (targetPrice <= 0) return;
+    dispatch({ type: 'ADD_PRICE_ALERT', symbol, targetPrice, direction });
+    setTargetStr('');
+    onClose();
+    Alert.alert('Alert set', `You'll be notified when ${symbol} goes ${direction} $${targetPrice.toLocaleString()}.`);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Price alert</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+              Current: ${currentPrice.toLocaleString('en-US', { maximumFractionDigits: currentPrice < 0.01 ? 8 : 2 })}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, gap: 16 }}>
+          {/* Direction toggle */}
+          <View style={{ flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: 10, padding: 3 }}>
+            {(['above', 'below'] as const).map(d => (
+              <TouchableOpacity
+                key={d}
+                style={{
+                  flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 8,
+                  backgroundColor: direction === d ? colors.surface : 'transparent',
+                }}
+                onPress={() => setDirection(d)}
+              >
+                <Text style={{ fontWeight: '600', fontSize: 13, color: direction === d ? colors.ink : colors.ink3, textTransform: 'capitalize' }}>
+                  {d === 'above' ? '↑ Above' : '↓ Below'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Target price input */}
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Target price (USD)
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 }}>
+              <Text style={{ fontSize: 16, color: colors.ink3 }}>$</Text>
+              <TextInput
+                value={targetStr}
+                onChangeText={setTargetStr}
+                placeholder={currentPrice.toFixed(currentPrice < 0.01 ? 6 : 2)}
+                placeholderTextColor={colors.ink3}
+                keyboardType="decimal-pad"
+                style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.ink, marginLeft: 4 }}
+                autoFocus
+              />
+            </View>
+          </View>
+
+          <Button
+            variant="brand"
+            onPress={handleSet}
+            disabled={targetPrice <= 0}
+          >
+            Set alert for {symbol}
+          </Button>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function MoreSheet({ visible, symbol, currentPrice, onClose, onSetAlert }: {
+  visible: boolean; symbol: string; currentPrice: number; onClose: () => void; onSetAlert: () => void;
+}) {
+  const { colors } = useTheme();
+
+  const options: { Icon: any; label: string; sub: string; onPress: () => void; color?: string }[] = [
+    {
+      Icon: Bell,
+      label: 'Set price alert',
+      sub: `Notify me when ${symbol} hits a target`,
+      onPress: () => { onClose(); onSetAlert(); },
+    },
+    {
+      Icon: Share2,
+      label: 'Share',
+      sub: `Share ${symbol} trade idea`,
+      onPress: () => { onClose(); Alert.alert('Share', 'Sharing coming soon!'); },
+    },
+    {
+      Icon: ExternalLink,
+      label: 'View on CoinGecko',
+      sub: `Open ${symbol} market page`,
+      onPress: () => { onClose(); Alert.alert('External link', 'Opens in browser in production.'); },
+    },
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>{symbol}</Text>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+        <View style={{ paddingHorizontal: 20, gap: 8 }}>
+          {options.map(opt => (
+            <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.75}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.surface2, borderRadius: 14, padding: 16 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+                  <opt.Icon color={opt.color ?? colors.ink} size={20} strokeWidth={1.75} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '600', color: colors.ink }}>{opt.label}</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{opt.sub}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export function TradeScreen() {
   const { colors } = useTheme();
   const { state, getCoin, dispatch } = useApp();
@@ -185,15 +324,17 @@ export function TradeScreen() {
   const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
 
   const toggleIndicator = (ind: Indicator) => {
     setActiveIndicators(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
   };
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
-  const watchlisted = state.watchlist.includes(symbol);
 
   const symbol = state.tradeSymbol;
+  const watchlisted = state.watchlist.includes(symbol);
   const coin = getCoin(symbol);
   if (!coin) return null;
 
@@ -221,6 +362,7 @@ export function TradeScreen() {
   };
 
   if (showSuccess && lastTrade) {
+    const hasStop = !!state.stopLosses[symbol];
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
@@ -235,6 +377,40 @@ export function TradeScreen() {
             <Text style={{ fontSize: 13, color: colors.ink3 }}>at ${price.toLocaleString('en-US', { maximumFractionDigits: 2 })} · just now</Text>
             <Chip variant="up">+25 XP</Chip>
           </View>
+
+          {/* Trailing stop CTA — only shown after a buy without an existing stop */}
+          {lastTrade.side === 'buy' && !hasStop && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => dispatch({ type: 'SET_STOP_LOSS', symbol, pct: 5 })}
+            >
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 14,
+                backgroundColor: colors.warnSoft, borderRadius: 16, padding: 16,
+                borderWidth: 1, borderColor: `${colors.warn}40`,
+              }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+                  <Shield color={colors.warn} size={20} strokeWidth={1.75} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: colors.ink }}>Set a 5% stop-loss?</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                    Auto-sell {symbol} if it drops 5% from here
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 20, color: colors.ink3 }}>→</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {lastTrade.side === 'buy' && hasStop && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.upSoft, borderRadius: 12, padding: 12 }}>
+              <Shield color={colors.up} size={16} strokeWidth={1.75} />
+              <Text style={{ fontSize: 13, color: colors.up, fontWeight: '600' }}>
+                {state.stopLosses[symbol]}% stop-loss active
+              </Text>
+            </View>
+          )}
+
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
             <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}>View portfolio</Button>
@@ -261,7 +437,7 @@ export function TradeScreen() {
                 fill={watchlisted ? colors.warn : 'none'}
               />
             </TouchableOpacity>
-            <TouchableOpacity style={{ padding: 8 }} onPress={() => Alert.alert('More options', 'Share · Set alert · View on-chain data', [{ text: 'Close' }])}>
+            <TouchableOpacity style={{ padding: 8 }} onPress={() => setMoreOpen(true)}>
               <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
             </TouchableOpacity>
           </>
@@ -378,6 +554,19 @@ export function TradeScreen() {
         symbol={symbol}
         onClose={() => setModalSide(null)}
         onConfirm={handleConfirm}
+      />
+      <MoreSheet
+        visible={moreOpen}
+        symbol={symbol}
+        currentPrice={price}
+        onClose={() => setMoreOpen(false)}
+        onSetAlert={() => setAlertOpen(true)}
+      />
+      <PriceAlertSheet
+        visible={alertOpen}
+        symbol={symbol}
+        currentPrice={price}
+        onClose={() => setAlertOpen(false)}
       />
     </>
   );
