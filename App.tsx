@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureAmplify } from './src/lib/amplify';
@@ -12,18 +11,6 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 configureAmplify();
 
 export default function App() {
-  const [hasOnboarded, setHasOnboarded] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    AsyncStorage.getItem('hasOnboarded').then(val => {
-      setHasOnboarded(val === 'true');
-      setLoading(false);
-    });
-  }, []);
-
-  if (loading) return null;
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -31,7 +18,7 @@ export default function App() {
           <AppProvider>
             <ThemeProvider>
               <NavigationContainer>
-                <RootNavigator hasOnboarded={hasOnboarded} />
+                <RootNavigator />
               </NavigationContainer>
             </ThemeProvider>
           </AppProvider>

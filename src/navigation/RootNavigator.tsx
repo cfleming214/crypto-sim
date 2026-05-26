@@ -1,7 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
-import { WalkthroughNavigator } from './WalkthroughNavigator';
 import { TradeDetailScreen } from '../screens/TradeDetailScreen';
 import { TournamentDetailScreen } from '../screens/TournamentDetailScreen';
 import { LeagueScreen } from '../screens/LeagueScreen';
@@ -16,7 +15,6 @@ import { useAuth } from '../store/AuthContext';
 
 export type RootStackParamList = {
   Auth: undefined;
-  Walkthrough: undefined;
   MainTabs: { screen?: string; params?: any } | undefined;
   TradeDetail: { symbol: string };
   TournamentDetail: { id: string };
@@ -31,11 +29,7 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-interface RootNavigatorProps {
-  hasOnboarded: boolean;
-}
-
-export function RootNavigator({ hasOnboarded }: RootNavigatorProps) {
+export function RootNavigator() {
   const { status } = useAuth();
 
   if (status === 'loading') return null;
@@ -50,9 +44,6 @@ export function RootNavigator({ hasOnboarded }: RootNavigatorProps) {
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!hasOnboarded ? (
-        <Stack.Screen name="Walkthrough" component={WalkthroughNavigator} />
-      ) : null}
       <Stack.Screen name="MainTabs" component={TabNavigator} />
       <Stack.Screen name="TradeDetail" component={TradeDetailScreen} />
       <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
