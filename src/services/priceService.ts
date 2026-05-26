@@ -22,9 +22,11 @@ const COINGECKO_IDS: Record<string, string> = {
   PEPE: 'pepe',
 };
 
-// Map UI timeframe labels to CoinGecko's `days` parameter for the OHLC endpoint.
-// Allowed days: 1, 7, 14, 30, 90, 180, 365.
-// Granularity returned: days=1 -> 30-min, days<=90 -> 4-hour, days>=180 -> 4-day.
+// Map UI timeframe labels to CoinGecko's `days` parameter for the
+// market_chart endpoint. Granularity is auto-determined by days:
+//   days=1   -> 5-minute close prices  (~288 points)
+//   days<=90 -> hourly close prices
+//   days>90  -> daily close prices
 const TIMEFRAME_DAYS: Record<string, number> = {
   '24H': 1,
   '7D':  7,
@@ -33,10 +35,14 @@ const TIMEFRAME_DAYS: Record<string, number> = {
   '1Y':  365,
 };
 
-// Simple in-memory cache so changing timeframes doesn't hammer CoinGecko's
-// free 30-req/min rate limit. Keyed by symbol+timeframe.
+// 5-min cache so flipping timeframes / coming back to a coin doesn't burn
+// the free-tier rate budget. Keyed by symbol+timeframe.
 const ohlcCache = new Map<string, { fetchedAt: number; candles: OhlcCandle[] }>();
-const OHLC_TTL_MS = 60 * 1000;
+const OHLC_TTL_MS = 5 * 60 * 1000;
+
+// Most recent rate-limit hit timestamp — prevents a flurry of follow-up
+// requests after one 429.
+let rateLimitedUntil = 0;
 
 export async function fetchOhlc(symbol: string, timeframe: string): Promise<OhlcCandle[]> {
   const geckoId = COINGECKO_IDS[symbol];
@@ -47,17 +53,43 @@ export async function fetchOhlc(symbol: string, timeframe: string): Promise<Ohlc
   if (cached && Date.now() - cached.fetchedAt < OHLC_TTL_MS) {
     return cached.candles;
   }
+  // If a recent request got 429'd, don't issue another for 60s — just return
+  // whatever cache we have (possibly empty) and let the chart show empty.
+  if (Date.now() < rateLimitedUntil) {
+    return cached?.candles ?? [];
+  }
   try {
+    // market_chart returns close prices at fine granularity and is much more
+    // forgiving rate-limit-wise than the /ohlc endpoint.
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${geckoId}/ohlc?vs_currency=usd&days=${days}`,
+      `https://api.coingecko.com/api/v3/coins/${geckoId}/market_chart?vs_currency=usd&days=${days}`,
       { headers: { Accept: 'application/json' } },
     );
-    if (!res.ok) throw new Error(`CoinGecko OHLC ${res.status}`);
-    const raw = await res.json();
-    const candles: OhlcCandle[] = (raw as unknown[]).map(arr => {
-      const a = arr as [number, number, number, number, number];
-      return { timestamp: a[0], open: a[1], high: a[2], low: a[3], close: a[4] };
-    });
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + 60 * 1000;
+      console.warn('CoinGecko market_chart 429 — backing off 60s');
+      return cached?.candles ?? [];
+    }
+    if (!res.ok) throw new Error(`CoinGecko market_chart ${res.status}`);
+    const json = await res.json();
+    const prices: Array<[number, number]> = json.prices ?? [];
+
+    // Synthesize candles from close prices: each entry becomes a candle where
+    // open = previous close, close = this close, high/low = min/max of the
+    // pair. This produces honest price-action bars with no wicks (no real
+    // intra-bar high/low data from this endpoint).
+    const candles: OhlcCandle[] = [];
+    for (let i = 1; i < prices.length; i++) {
+      const open  = prices[i - 1][1];
+      const close = prices[i][1];
+      candles.push({
+        timestamp: prices[i][0],
+        open,
+        high: Math.max(open, close),
+        low:  Math.min(open, close),
+        close,
+      });
+    }
     ohlcCache.set(cacheKey, { fetchedAt: Date.now(), candles });
     return candles;
   } catch (e) {
