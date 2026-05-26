@@ -64,6 +64,14 @@ const schema = a.schema({
     allow.authenticated().to(['read']),
     allow.owner(),
   ]),
+
+  Mirror: a.model({
+    leaderId: a.string().required(),   // owner (userId) of the trader being copied
+    followerId: a.string().required(), // userId of the copier
+    allocation: a.float().required(),  // dollar amount allocated to mirror
+    maxPositionPct: a.float(),         // max % of allocation in any one coin (0–1)
+    active: a.boolean(),
+  }).authorization(allow => [allow.owner()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

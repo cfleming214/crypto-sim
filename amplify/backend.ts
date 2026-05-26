@@ -79,7 +79,10 @@ execFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
 
 // --- runMirror: DynamoDB stream trigger on Trade table, copies trades to followers ---
 const mirrorFn = backend.runMirror.resources.lambda;
+const mirrorTable = backend.data.resources.tables['Mirror'];
 profileTable.grantReadWriteData(mirrorFn);
 tradeTable.grantWriteData(mirrorFn);
+mirrorTable.grantReadData(mirrorFn);
 mirrorFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 mirrorFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
+mirrorFn.addEnvironment('MIRROR_TABLE_NAME', mirrorTable.tableName);
