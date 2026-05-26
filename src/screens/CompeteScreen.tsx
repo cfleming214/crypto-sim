@@ -77,7 +77,7 @@ export function CompeteScreen() {
                   Live · ends in 2h 14m
                 </Text>
               </View>
-              <Button variant="ghost" size="sm">Resume</Button>
+              <Button variant="ghost" size="sm" onPress={() => nav.navigate('TournamentDetail', { id: 'ww-1' })}>Resume</Button>
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>

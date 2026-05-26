@@ -54,4 +54,5 @@ export interface AppState {
   activeTournament: Tournament | null;
   riskScore: number;
   hasOnboarded: boolean;
+  tradeSymbol: string;
 }

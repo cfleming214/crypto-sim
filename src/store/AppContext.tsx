@@ -35,6 +35,7 @@ const INITIAL_STATE: AppState = {
   },
   riskScore: 62,
   hasOnboarded: false,
+  tradeSymbol: 'BTC',
 };
 
 type Action =
@@ -42,7 +43,8 @@ type Action =
   | { type: 'BUY'; symbol: string; amount: number }
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
-  | { type: 'ADD_XP'; amount: number };
+  | { type: 'ADD_XP'; amount: number }
+  | { type: 'SET_TRADE_SYMBOL'; symbol: string };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -112,6 +114,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, hasOnboarded: true };
     case 'ADD_XP':
       return { ...state, user: { ...state.user, xp: state.user.xp + action.amount } };
+    case 'SET_TRADE_SYMBOL':
+      return { ...state, tradeSymbol: action.symbol };
     default:
       return state;
   }

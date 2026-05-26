@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -7,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
-import { MoreHorizontal } from 'lucide-react-native';
+import { MoreHorizontal, Pause } from 'lucide-react-native';
 
 const tags = ['Day trader', 'High risk', 'Memecoins', '+2'];
 const perf = [
@@ -24,13 +25,41 @@ const mirrorSettings = [
 
 export function CopyTradeScreen() {
   const { colors } = useTheme();
+  const nav = useNavigation<any>();
+  const [paused, setPaused] = useState(false);
+
+  const handleEdit = () => {
+    Alert.alert(
+      'Edit Mirror Settings',
+      'Adjust your allocation, position limits, and stop conditions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save changes', onPress: () => {} },
+      ],
+    );
+  };
+
+  const handleTogglePause = () => {
+    const next = !paused;
+    setPaused(next);
+    Alert.alert(
+      next ? 'Copy trading paused' : 'Copy trading resumed',
+      next
+        ? '@degenking\'s new trades will not be mirrored until you resume.'
+        : 'You are now mirroring @degenking with $2,000.',
+      [{ text: 'OK' }],
+    );
+  };
 
   return (
     <ScreenShell
       eyebrow="Copy trade"
       title="@degenking"
       rightActions={
-        <TouchableOpacity style={{ padding: 8 }}>
+        <TouchableOpacity
+          style={{ padding: 8 }}
+          onPress={() => Alert.alert('More options', 'Block trader · Report · Share profile', [{ text: 'Close' }])}
+        >
           <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
         </TouchableOpacity>
       }
@@ -48,6 +77,16 @@ export function CopyTradeScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Status banner when paused */}
+      {paused && (
+        <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Pause color={colors.warn} size={16} strokeWidth={1.75} />
+          <Text style={{ fontWeight: '600', color: colors.ink, flex: 1 }}>
+            Copy trading paused — new trades won't be mirrored
+          </Text>
+        </Card>
+      )}
 
       {/* Tags */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -94,7 +133,7 @@ export function CopyTradeScreen() {
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={{ fontWeight: '700', color: colors.ink }}>Mirror settings</Text>
-          <Button variant="ghost" size="sm">Edit</Button>
+          <Button variant="ghost" size="sm" onPress={handleEdit}>Edit</Button>
         </View>
         {mirrorSettings.map(([label, value], i) => (
           <View key={label}>
@@ -111,8 +150,22 @@ export function CopyTradeScreen() {
 
       {/* Footer */}
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Button variant="ghost" style={{ flex: 1 }}>Pause</Button>
-        <Button variant="brand" style={{ flex: 1 }}>Mirroring · $2,000</Button>
+        <Button variant="ghost" style={{ flex: 1 }} onPress={handleTogglePause}>
+          {paused ? 'Resume' : 'Pause'}
+        </Button>
+        <Button
+          variant={paused ? 'surface' : 'brand'}
+          style={{ flex: 1 }}
+          onPress={() => {
+            if (paused) {
+              Alert.alert('Paused', 'Resume copy trading to mirror new positions.', [{ text: 'OK' }]);
+            } else {
+              Alert.alert('Active mirror', 'You are mirroring $2,000 across @degenking\'s positions.\n\nYour funds are automatically allocated proportionally to their trades.', [{ text: 'OK' }]);
+            }
+          }}
+        >
+          {paused ? 'Paused' : 'Mirroring · $2,000'}
+        </Button>
       </View>
     </ScreenShell>
   );

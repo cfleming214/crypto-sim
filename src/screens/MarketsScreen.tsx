@@ -7,16 +7,43 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { useNavigation } from '@react-navigation/native';
 
 const categories = ['All', 'Top 10', 'DeFi', 'Layer 1', 'Meme', 'Stables'];
 
+const categorySymbols: Record<string, string[]> = {
+  'Meme':    ['DOGE', 'PEPE'],
+  'Layer 1': ['BTC', 'ETH', 'SOL'],
+  'Stables': ['USDC'],
+};
+
+const sortOrders = ['Market cap ↓', 'Price ↓', 'Change ↓'];
+
 export function MarketsScreen() {
   const { colors } = useTheme();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
+  const nav = useNavigation<any>();
   const [cat, setCat] = useState('All');
+  const [sortIdx, setSortIdx] = useState(0);
 
-  const coins = state.coins;
-  const movers = [...coins].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 5);
+  const allCoins = state.coins;
+
+  const filtered = (cat === 'All' || cat === 'Top 10' || cat === 'DeFi')
+    ? allCoins
+    : allCoins.filter(c => categorySymbols[cat]?.includes(c.symbol));
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortIdx === 1) return b.price - a.price;
+    if (sortIdx === 2) return Math.abs(b.change24h) - Math.abs(a.change24h);
+    return 0;
+  });
+
+  const movers = [...allCoins].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 5);
+
+  const handleCoinTap = (symbol: string) => {
+    dispatch({ type: 'SET_TRADE_SYMBOL', symbol });
+    nav.navigate('Trade');
+  };
 
   return (
     <ScreenShell eyebrow="Markets" title="Crypto">
@@ -54,48 +81,61 @@ export function MarketsScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
         <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
           {movers.map(a => (
-            <Card key={a.symbol} variant="compact" style={{ width: 120, gap: 6 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <CoinGlyph symbol={a.symbol} size={24} />
-                <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-              </View>
-              <Sparkline data={a.history} down={a.change24h < 0} width={96} height={28} />
-              <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-              </Text>
-            </Card>
+            <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
+              <Card variant="compact" style={{ width: 120, gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <CoinGlyph symbol={a.symbol} size={24} />
+                  <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                </View>
+                <Sparkline data={a.history} down={a.change24h < 0} width={96} height={28} />
+                <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                  {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                </Text>
+              </Card>
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
       {/* All assets */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>All assets</Text>
-        <Text style={{ fontSize: 11, color: colors.ink3 }}>Sort: Market cap ↓</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>
+          {cat === 'All' ? 'All assets' : cat}
+          {sorted.length < allCoins.length ? ` (${sorted.length})` : ''}
+        </Text>
+        <TouchableOpacity onPress={() => setSortIdx(i => (i + 1) % sortOrders.length)}>
+          <Text style={{ fontSize: 11, color: colors.ink3 }}>Sort: {sortOrders[sortIdx]}</Text>
+        </TouchableOpacity>
       </View>
 
       <Card variant="noPad">
-        {coins.map((a, i) => (
-          <CardSection key={a.symbol} last={i === coins.length - 1}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <CoinGlyph symbol={a.symbol} />
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-                  <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                    ${a.price < 0.01 ? a.price.toFixed(8) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
+        {sorted.length === 0 ? (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: colors.ink3 }}>No coins in this category</Text>
+          </View>
+        ) : sorted.map((a, i) => (
+          <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
+            <CardSection last={i === sorted.length - 1}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <CoinGlyph symbol={a.symbol} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                    <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                      ${a.price < 0.01 ? a.price.toFixed(8) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name} · MC {a.marketCap}</Text>
+                    <Text style={{ fontSize: 12, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                      {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                  <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name} · MC {a.marketCap}</Text>
-                  <Text style={{ fontSize: 12, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                    {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                  </Text>
-                </View>
+                <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
               </View>
-              <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
-            </View>
-          </CardSection>
+            </CardSection>
+          </TouchableOpacity>
         ))}
       </Card>
     </ScreenShell>

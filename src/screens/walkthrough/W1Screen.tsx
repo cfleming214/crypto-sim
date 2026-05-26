@@ -6,12 +6,18 @@ import { Button } from '../../components/ui/Button';
 import { useTheme } from '../../theme/ThemeContext';
 import { Trophy } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 
 type Props = NativeStackScreenProps<WalkthroughParamList, 'W1'>;
 
 export function W1Screen({ navigation }: Props) {
   const { colors } = useTheme();
+  const rootNav = useNavigation<any>();
+
+  const skipToApp = async () => {
+    await AsyncStorage.setItem('hasOnboarded', 'true');
+    rootNav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs' }] }));
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
@@ -52,6 +58,7 @@ export function W1Screen({ navigation }: Props) {
             variant="ghost"
             style={{ borderColor: 'rgba(255,255,255,0.25)' }}
             textStyle={{ color: colors.brandOn }}
+            onPress={skipToApp}
           >
             I already have an account
           </Button>

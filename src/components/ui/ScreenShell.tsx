@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, StatusBar, SafeAreaView, ViewStyle } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, StatusBar, SafeAreaView, ViewStyle, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { ChevronLeft } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing, fontSize } from '../../theme/tokens';
 
@@ -25,6 +27,8 @@ export function ScreenShell({
   brand = false,
 }: ScreenShellProps) {
   const { colors, isDark } = useTheme();
+  const navigation = useNavigation();
+  const canGoBack = navigation.canGoBack();
   const bg = brand ? colors.brand : colors.surface;
   const ink = brand ? colors.brandOn : colors.ink;
 
@@ -39,8 +43,13 @@ export function ScreenShell({
       <StatusBar barStyle={isDark || brand ? 'light-content' : 'dark-content'} backgroundColor={bg} />
 
       {/* Header */}
-      {(eyebrow || title || rightActions) && (
+      {(eyebrow || title || rightActions || canGoBack) && (
         <View style={styles.header}>
+          {canGoBack && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 4, padding: 4 }}>
+              <ChevronLeft color={ink} size={26} strokeWidth={1.75} />
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1 }}>
             {eyebrow && (
               <Text style={[styles.eyebrow, { color: brand ? `${colors.brandOn}99` : colors.ink3 }]}>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, SafeAreaView, ScrollView, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, SafeAreaView, ScrollView, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -61,7 +62,7 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
               <Chip variant="outline">{symbol}</Chip>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {QUICK_AMOUNTS.map((a, i) => (
+              {QUICK_AMOUNTS.map((a) => (
                 <TouchableOpacity key={a} style={{ flex: 1 }} onPress={() => setAmount(String(a))}>
                   <Chip
                     variant={parsedAmount === a ? 'brand' : 'outline'}
@@ -120,12 +121,14 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
 export function TradeScreen() {
   const { colors } = useTheme();
   const { state, getCoin, dispatch } = useApp();
+  const nav = useNavigation<any>();
   const [tf, setTf] = useState('5M');
-  const [symbol] = useState('BTC');
   const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
+  const [watchlisted, setWatchlisted] = useState(false);
 
+  const symbol = state.tradeSymbol;
   const coin = getCoin(symbol);
   if (!coin) return null;
 
@@ -159,7 +162,7 @@ export function TradeScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
-            <Button variant="brand" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>View portfolio</Button>
+            <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}>View portfolio</Button>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -175,20 +178,44 @@ export function TradeScreen() {
         style={{ flex: 1 }}
         rightActions={
           <>
-            <TouchableOpacity style={{ padding: 8 }}>
-              <Star color={colors.ink} size={20} strokeWidth={1.75} />
+            <TouchableOpacity style={{ padding: 8 }} onPress={() => setWatchlisted(w => !w)}>
+              <Star
+                color={watchlisted ? colors.warn : colors.ink}
+                size={20}
+                strokeWidth={1.75}
+                fill={watchlisted ? colors.warn : 'none'}
+              />
             </TouchableOpacity>
-            <TouchableOpacity style={{ padding: 8 }}>
+            <TouchableOpacity style={{ padding: 8 }} onPress={() => Alert.alert('More options', 'Share · Set alert · View on-chain data', [{ text: 'Close' }])}>
               <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
             </TouchableOpacity>
           </>
         }
       >
         <View style={{ flex: 1, gap: 14, paddingHorizontal: 20 }}>
+          {/* Coin selector */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
+              {state.coins.filter(c => c.symbol !== 'USDC').map(c => (
+                <TouchableOpacity
+                  key={c.symbol}
+                  onPress={() => dispatch({ type: 'SET_TRADE_SYMBOL', symbol: c.symbol })}
+                >
+                  <Chip
+                    variant={c.symbol === symbol ? 'brand' : 'outline'}
+                    style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
+                  >
+                    {c.symbol}
+                  </Chip>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
           {/* Price */}
           <View>
             <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: -0.7 }}>
-              ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: price < 0.01 ? 8 : 2 })}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
               <Chip variant={isUp ? 'up' : 'down'}>
@@ -204,18 +231,20 @@ export function TradeScreen() {
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Segmented options={['1M', '5M', '1H', '1D', '1W']} value={tf} onChange={setTf} />
-            <Button variant="ghost" size="sm">Indicators</Button>
+            <Button variant="ghost" size="sm" onPress={() => Alert.alert('Indicators', 'RSI, MACD, Bollinger Bands and more coming in the next update!', [{ text: 'OK' }])}>
+              Indicators
+            </Button>
           </View>
 
           {/* Stats grid */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, backgroundColor: colors.surface2, borderRadius: 12, padding: 14 }}>
             {[
-              ['24h High', `$${(price * 1.01).toFixed(0)}`],
-              ['24h Low',  `$${(price * 0.97).toFixed(0)}`],
+              ['24h High', `$${(price * 1.01).toFixed(price < 0.01 ? 8 : 0)}`],
+              ['24h Low',  `$${(price * 0.97).toFixed(price < 0.01 ? 8 : 0)}`],
               ['Volume',   coin.volume],
               ['Mkt Cap',  coin.marketCap],
               ['RSI 14',   '64.2'],
-              ['Your pos.', '+$320'],
+              ['Your pos.', (() => { const h = state.holdings.find(x => x.symbol === symbol); if (!h) return '—'; const pnl = h.units * price - h.units * h.avgCost; return `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`; })()],
             ].map(([label, value]) => (
               <View key={label} style={{ width: '30%' }}>
                 <Text style={{ fontSize: 11, color: colors.ink3 }}>{label}</Text>

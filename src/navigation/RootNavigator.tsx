@@ -8,16 +8,18 @@ import { LeagueScreen } from '../screens/LeagueScreen';
 import { CopyTradeScreen } from '../screens/CopyTradeScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { ActivityScreen } from '../screens/ActivityScreen';
 
 export type RootStackParamList = {
   Walkthrough: undefined;
-  MainTabs: undefined;
+  MainTabs: { screen?: string; params?: any } | undefined;
   TradeDetail: { symbol: string };
   TournamentDetail: { id: string };
   League: undefined;
   CopyTrade: { traderId: string };
-  Replay: { eraId: string };
+  Replay: { eraId?: string };
   Notifications: undefined;
+  Activity: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -39,6 +41,7 @@ export function RootNavigator({ hasOnboarded }: RootNavigatorProps) {
       <Stack.Screen name="CopyTrade" component={CopyTradeScreen} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Activity" component={ActivityScreen} />
     </Stack.Navigator>
   );
 }

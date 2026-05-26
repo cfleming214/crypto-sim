@@ -3,9 +3,10 @@ import { View, Text } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Segmented } from '../components/ui/Segmented';
+import { Chip } from '../components/ui/Chip';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { ArrowUp, ArrowDown, Shield, User } from 'lucide-react-native';
+import { ArrowUp, ArrowDown, Shield, User, Star, Flame, Trophy } from 'lucide-react-native';
 
 function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
   const { colors } = useTheme();
@@ -28,6 +29,20 @@ function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
   );
 }
 
+const xpEvents = [
+  { Icon: ArrowUp,  label: 'Bought BTC',         xp: '+25 XP',  time: 'Today · 10:42 AM' },
+  { Icon: Flame,    label: '12-day streak bonus',  xp: '+50 XP',  time: 'Today · 12:00 AM' },
+  { Icon: Trophy,   label: 'Rank #43 in Weekend Warriors', xp: '+100 XP', time: 'Yesterday' },
+  { Icon: Star,     label: 'Achievement: First $', xp: '+200 XP', time: '2 days ago' },
+  { Icon: ArrowDown,label: 'Sold ETH',             xp: '+10 XP',  time: '3 days ago' },
+];
+
+const earnings = [
+  { label: 'Tournament prize — Quick Sprint',  amount: '+$0',   time: '3 days ago', type: 'neutral' },
+  { label: 'Referral bonus',                   amount: '+$5',   time: '1 week ago', type: 'up' },
+  { label: 'Season 2 — Platinum I finish',     amount: '+$420', time: 'Last season', type: 'up' },
+];
+
 export function ActivityScreen() {
   const { colors } = useTheme();
   const { state } = useApp();
@@ -35,7 +50,6 @@ export function ActivityScreen() {
 
   const today = state.trades.filter(t => Date.now() - t.timestamp < 24 * 60 * 60 * 1000);
   const earlier = state.trades.filter(t => Date.now() - t.timestamp >= 24 * 60 * 60 * 1000);
-
   const totalPnl = state.trades.reduce((sum, t) => sum + (t.side === 'sell' ? t.amount - t.units * t.price : 0), 0);
 
   return (
@@ -56,40 +70,112 @@ export function ActivityScreen() {
         ))}
       </Card>
 
-      {state.trades.length === 0 ? (
-        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
-          <Text style={{ fontSize: 16, color: colors.ink3 }}>No trades yet</Text>
-          <Text style={{ fontSize: 13, color: colors.ink4 }}>Head to the Trade tab to make your first trade</Text>
-        </View>
-      ) : (
-        <>
-          {today.length > 0 && (
-            <>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Today</Text>
-              <Card variant="noPad">
-                {today.map((t, i) => (
-                  <CardSection key={t.id} last={i === today.length - 1}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <TradeIcon side={t.side} />
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                          <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
-                          <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                          <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                            {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                          </Text>
-                          <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+      {tab === 'Trades' && (
+        state.trades.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Text style={{ fontSize: 16, color: colors.ink3 }}>No trades yet</Text>
+            <Text style={{ fontSize: 13, color: colors.ink4 }}>Head to the Trade tab to make your first trade</Text>
+          </View>
+        ) : (
+          <>
+            {today.length > 0 && (
+              <>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Today</Text>
+                <Card variant="noPad">
+                  {today.map((t, i) => (
+                    <CardSection key={t.id} last={i === today.length - 1}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <TradeIcon side={t.side} />
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
+                            <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                            <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                              {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  </CardSection>
-                ))}
-              </Card>
-            </>
-          )}
-        </>
+                    </CardSection>
+                  ))}
+                </Card>
+              </>
+            )}
+            {earlier.length > 0 && (
+              <>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Earlier</Text>
+                <Card variant="noPad">
+                  {earlier.map((t, i) => (
+                    <CardSection key={t.id} last={i === earlier.length - 1}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <TradeIcon side={t.side} />
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
+                            <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                            <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                              {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleDateString()}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </CardSection>
+                  ))}
+                </Card>
+              </>
+            )}
+          </>
+        )
+      )}
+
+      {tab === 'Orders' && (
+        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+          <Text style={{ fontSize: 16, color: colors.ink3 }}>No open orders</Text>
+          <Text style={{ fontSize: 13, color: colors.ink4 }}>Limit and stop orders will appear here</Text>
+        </View>
+      )}
+
+      {tab === 'Earnings' && (
+        <Card variant="noPad">
+          {earnings.map((e, i) => (
+            <CardSection key={e.label} last={i === earnings.length - 1}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '600', color: colors.ink }}>{e.label}</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{e.time}</Text>
+                </View>
+                <Text style={{ fontWeight: '700', color: e.type === 'up' ? colors.up : colors.ink, fontVariant: ['tabular-nums'] }}>
+                  {e.amount}
+                </Text>
+              </View>
+            </CardSection>
+          ))}
+        </Card>
+      )}
+
+      {tab === 'XP log' && (
+        <Card variant="noPad">
+          {xpEvents.map(({ Icon, label, xp, time }, i) => (
+            <CardSection key={label} last={i === xpEvents.length - 1}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon color={colors.ink2} size={18} strokeWidth={1.75} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '600', color: colors.ink }}>{label}</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{time}</Text>
+                </View>
+                <Chip variant="up" style={{ paddingVertical: 2 }}>{xp}</Chip>
+              </View>
+            </CardSection>
+          ))}
+        </Card>
       )}
     </ScreenShell>
   );

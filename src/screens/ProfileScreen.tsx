@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -7,7 +8,6 @@ import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { useNavigation } from '@react-navigation/native';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity } from 'lucide-react-native';
 
 const achievements = [
@@ -45,7 +45,10 @@ export function ProfileScreen() {
     <ScreenShell
       title="Profile"
       rightActions={
-        <TouchableOpacity style={{ padding: 8 }}>
+        <TouchableOpacity
+          style={{ padding: 8 }}
+          onPress={() => Alert.alert('More options', 'Share profile · Export trading history · Sign out', [{ text: 'Close' }])}
+        >
           <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
         </TouchableOpacity>
       }
@@ -60,7 +63,13 @@ export function ProfileScreen() {
             <Text style={{ fontSize: 12, color: colors.ink3 }}>Joined Mar '26</Text>
           </View>
         </View>
-        <Button variant="ghost" size="sm">Edit</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onPress={() => Alert.alert('Edit Profile', 'Change your display name, avatar, and bio.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Save', onPress: () => {} }])}
+        >
+          Edit
+        </Button>
       </View>
 
       {/* Stat grid */}
@@ -114,17 +123,22 @@ export function ProfileScreen() {
           </View>
         </CardSection>
 
-        <CardSection last>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Activity color={colors.ink} size={18} strokeWidth={1.75} />
-              <Text style={{ fontWeight: '600', color: colors.ink }}>XP this season</Text>
+        <TouchableOpacity onPress={() => nav.navigate('Activity')}>
+          <CardSection last>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Activity color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>XP this season</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontWeight: '700', color: colors.up, fontVariant: ['tabular-nums'] }}>
+                  {state.user.xp.toLocaleString()} XP
+                </Text>
+                <Text style={{ color: colors.ink3 }}>›</Text>
+              </View>
             </View>
-            <Text style={{ fontWeight: '700', color: colors.up, fontVariant: ['tabular-nums'] }}>
-              {state.user.xp.toLocaleString()} XP
-            </Text>
-          </View>
-        </CardSection>
+          </CardSection>
+        </TouchableOpacity>
       </Card>
 
       {/* Achievements */}
@@ -134,7 +148,15 @@ export function ProfileScreen() {
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {achievements.map(({ Icon, name, earned }) => (
-          <View key={name} style={{ width: '22%', alignItems: 'center', opacity: earned ? 1 : 0.35 }}>
+          <TouchableOpacity
+            key={name}
+            style={{ width: '22%', alignItems: 'center', opacity: earned ? 1 : 0.35 }}
+            onPress={() => earned
+              ? Alert.alert(name, 'Achievement unlocked! You earned this badge for your progress.', [{ text: 'Nice!' }])
+              : Alert.alert(name, 'Keep trading to unlock this achievement!', [{ text: 'OK' }])
+            }
+            activeOpacity={0.75}
+          >
             <View style={{
               width: '100%', aspectRatio: 1, borderRadius: 14,
               backgroundColor: earned ? colors.surface2 : 'transparent',
@@ -146,7 +168,7 @@ export function ProfileScreen() {
               <Icon color={earned ? colors.ink : colors.ink3} size={22} strokeWidth={1.75} />
             </View>
             <Text style={{ fontSize: 10, color: colors.ink3, marginTop: 6, textAlign: 'center' }}>{name}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
 

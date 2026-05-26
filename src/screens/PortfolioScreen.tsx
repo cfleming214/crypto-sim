@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -14,7 +15,8 @@ import { Shield } from 'lucide-react-native';
 
 export function PortfolioScreen() {
   const { colors } = useTheme();
-  const { state, getCoin, getHolding } = useApp();
+  const { state, getCoin, getHolding, dispatch } = useApp();
+  const nav = useNavigation<any>();
   const [tf, setTf] = useState('7D');
   const [view, setView] = useState('List');
 
@@ -49,6 +51,25 @@ export function PortfolioScreen() {
       units: state.cash.toFixed(2),
     },
   ];
+
+  const handleHoldingTap = (symbol: string) => {
+    if (symbol === 'USDC') return;
+    dispatch({ type: 'SET_TRADE_SYMBOL', symbol });
+    nav.navigate('Trade');
+  };
+
+  const handleRebalance = () => {
+    dispatch({ type: 'SET_TRADE_SYMBOL', symbol: 'BTC' });
+    nav.navigate('Trade');
+  };
+
+  const handleSetStops = () => {
+    Alert.alert(
+      'Set Stop-Loss',
+      'Trailing stops automatically sell a position if it falls by a set percentage, locking in gains.\n\nExample: Set a 5% trailing stop on BTC to sell if price drops 5% from its peak.\n\nStop-loss orders are coming in Season 4!',
+      [{ text: 'Got it' }],
+    );
+  };
 
   return (
     <ScreenShell
@@ -87,8 +108,8 @@ export function PortfolioScreen() {
           BTC concentration high · no stop-loss set · low cash buffer
         </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button variant="ghost" size="sm" style={{ flex: 1 }}>Rebalance</Button>
-          <Button variant="brand" size="sm" style={{ flex: 1 }}>Set stops</Button>
+          <Button variant="ghost" size="sm" style={{ flex: 1 }} onPress={handleRebalance}>Rebalance</Button>
+          <Button variant="brand" size="sm" style={{ flex: 1 }} onPress={handleSetStops}>Set stops</Button>
         </View>
       </Card>
 
@@ -100,23 +121,38 @@ export function PortfolioScreen() {
 
       <Card variant="noPad">
         {holdingRows.map((h, i) => (
-          <CardSection key={h.symbol} last={i === holdingRows.length - 1}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <CoinGlyph symbol={h.symbol} />
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
-                  <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${h.value}</Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                  <Text style={{ fontSize: 12, color: colors.ink3 }}>{h.units} {h.symbol}</Text>
-                  <Text style={{ fontSize: 12, color: h.down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
-                    {h.change} · {h.pct}%
-                  </Text>
+          <TouchableOpacity
+            key={h.symbol}
+            onPress={() => handleHoldingTap(h.symbol)}
+            activeOpacity={h.symbol === 'USDC' ? 1 : 0.75}
+          >
+            <CardSection last={i === holdingRows.length - 1}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <CoinGlyph symbol={h.symbol} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
+                    <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${h.value}</Text>
+                  </View>
+                  {view === 'List' ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                      <Text style={{ fontSize: 12, color: colors.ink3 }}>{h.units} {h.symbol}</Text>
+                      <Text style={{ fontSize: 12, color: h.down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
+                        {h.change} · {h.pct}%
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 6, gap: 4 }}>
+                      <View style={{ height: 4, backgroundColor: colors.surface2, borderRadius: 999, overflow: 'hidden' }}>
+                        <View style={{ height: '100%', width: `${h.pct}%`, backgroundColor: h.down ? colors.down : colors.brand, borderRadius: 999 }} />
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{h.pct}% of portfolio</Text>
+                    </View>
+                  )}
                 </View>
               </View>
-            </View>
-          </CardSection>
+            </CardSection>
+          </TouchableOpacity>
         ))}
       </Card>
     </ScreenShell>

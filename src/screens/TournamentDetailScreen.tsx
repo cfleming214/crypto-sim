@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { Bell, MoreHorizontal } from 'lucide-react-native';
+import { Alert } from 'react-native';
 
 const rules = [
   ['Starting bankroll', '$10,000'],
@@ -25,6 +27,7 @@ const payouts = [
 
 export function TournamentDetailScreen() {
   const { colors } = useTheme();
+  const nav = useNavigation<any>();
 
   return (
     <ScreenShell
@@ -32,10 +35,16 @@ export function TournamentDetailScreen() {
       title="Live · 2h 14m left"
       rightActions={
         <>
-          <TouchableOpacity style={{ padding: 8 }}>
+          <TouchableOpacity
+            style={{ padding: 8 }}
+            onPress={() => Alert.alert('Alerts', 'You will be notified when the tournament ends and when your rank changes significantly.', [{ text: 'OK' }])}
+          >
             <Bell color={colors.ink} size={20} strokeWidth={1.75} />
           </TouchableOpacity>
-          <TouchableOpacity style={{ padding: 8 }}>
+          <TouchableOpacity
+            style={{ padding: 8 }}
+            onPress={() => Alert.alert('Share Tournament', 'Share this tournament with friends to invite them to compete!', [{ text: 'Close' }])}
+          >
             <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
           </TouchableOpacity>
         </>
@@ -109,8 +118,8 @@ export function TournamentDetailScreen() {
 
       {/* Footer */}
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Button variant="ghost" style={{ flex: 1 }}>Leaderboard</Button>
-        <Button variant="brand" style={{ flex: 1 }}>Trade now</Button>
+        <Button variant="ghost" style={{ flex: 1 }} onPress={() => nav.navigate('League')}>Leaderboard</Button>
+        <Button variant="brand" style={{ flex: 1 }} onPress={() => nav.navigate('MainTabs', { screen: 'Trade' })}>Trade now</Button>
       </View>
     </ScreenShell>
   );
