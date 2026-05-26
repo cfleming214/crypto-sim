@@ -235,22 +235,32 @@ export function CopyTradeScreen() {
           ))}
         </Card>
 
-        {/* Chart vs you */}
+        {/* Trader equity curve */}
         <Card variant="noPad">
           <CardSection>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equity · 30D vs you</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 8, height: 2, backgroundColor: colors.up }} />
-                <Text style={{ fontSize: 11, color: colors.ink }}>{traderHandle} {trader.pnlPct >= 0 ? '+' : ''}{trader.pnlPct.toFixed(1)}%</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 8, height: 2, backgroundColor: colors.ink3 }} />
-                <Text style={{ fontSize: 11, color: colors.ink3 }}>@{state.user.handle} {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%</Text>
-              </View>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {traderHandle} equity
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+              <Text style={{ fontSize: 11, color: colors.ink }}>
+                {trader.equityHistory.length > 1
+                  ? `${trader.equityHistory.length} hourly snapshots`
+                  : 'Not enough history yet'}
+              </Text>
+              <Text style={{ fontSize: 11, color: trader.pnlPct >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                {trader.pnlPct >= 0 ? '+' : ''}{trader.pnlPct.toFixed(1)}%
+              </Text>
             </View>
             <View style={{ marginTop: 10 }}>
-              <AreaChart height={120} />
+              {trader.equityHistory.length >= 2 ? (
+                <AreaChart height={120} data={trader.equityHistory} down={trader.pnlPct < 0} />
+              ) : (
+                <View style={{ height: 120, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                    Trader hasn't accumulated enough trades for a chart yet.
+                  </Text>
+                </View>
+              )}
             </View>
           </CardSection>
         </Card>

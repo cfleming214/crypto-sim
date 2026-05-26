@@ -923,6 +923,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "equityHistoryJson": {
+              "name": "equityHistoryJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,

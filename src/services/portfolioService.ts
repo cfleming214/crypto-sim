@@ -222,6 +222,27 @@ export async function saveProfile(state: AppState): Promise<void> {
     }).length;
     const winRate    = sellTrades.length > 0 ? (winningSells / sellTrades.length) * 100 : 0;
     const pnlPct     = ((state.bankroll - 10000) / 10000) * 100;
+    const { data: existingPublic } = await client.models.PublicProfile.list();
+    // Build the rolling equity history. Append a new {t, v} point if we
+    // haven't recorded one in the last hour, capped at the last 168 entries
+    // (~1 week of hourly snapshots).
+    let history: { t: number; v: number }[] = [];
+    if (existingPublic.length && (existingPublic[0] as any).equityHistoryJson) {
+      try { history = JSON.parse((existingPublic[0] as any).equityHistoryJson); }
+      catch { history = []; }
+    }
+    const now = Date.now();
+    const lastPoint = history[history.length - 1];
+    const hourMs = 60 * 60 * 1000;
+    if (!lastPoint || now - lastPoint.t >= hourMs) {
+      history.push({ t: now, v: state.bankroll });
+    } else {
+      // Within the same hour — overwrite the last point so the chart reflects
+      // the most recent value within the bucket.
+      history[history.length - 1] = { t: now, v: state.bankroll };
+    }
+    history = history.slice(-168);
+
     const publicPayload = {
       handle:      state.user.handle,
       league:      state.user.league,
@@ -231,8 +252,8 @@ export async function saveProfile(state: AppState): Promise<void> {
       tradeCount:  state.trades.length,
       avatarKey:   state.user.avatarKey,
       avatarColor: state.user.avatarColor,
+      equityHistoryJson: JSON.stringify(history),
     };
-    const { data: existingPublic } = await client.models.PublicProfile.list();
     if (existingPublic.length) {
       await client.models.PublicProfile.update({ id: existingPublic[0].id, ...publicPayload });
     } else {
@@ -255,6 +276,7 @@ export interface PublicTrader {
   avatarKey?:  string;
   avatarColor?: string;
   avatarUrl?:  string;       // signed S3 URL resolved at fetch time
+  equityHistory: number[];   // bankroll values over time (most recent last)
 }
 
 export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[]> {
@@ -278,6 +300,13 @@ export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[
           // Avatar resolution is best-effort.
         }
       }
+      let history: number[] = [];
+      if (d.equityHistoryJson) {
+        try {
+          const parsed = JSON.parse(d.equityHistoryJson);
+          history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
+        } catch { history = []; }
+      }
       return {
         id:          d.id,
         owner:       d.owner,
@@ -290,6 +319,7 @@ export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[
         avatarKey:   d.avatarKey ?? undefined,
         avatarColor: d.avatarColor ?? undefined,
         avatarUrl,
+        equityHistory: history,
       };
     }));
     return traders.sort((a, b) => b.pnlPct - a.pnlPct).slice(0, limit);
@@ -319,6 +349,13 @@ export async function fetchTrader(traderId: string): Promise<PublicTrader | null
         // best-effort
       }
     }
+    let history: number[] = [];
+    if (d.equityHistoryJson) {
+      try {
+        const parsed = JSON.parse(d.equityHistoryJson);
+        history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
+      } catch { history = []; }
+    }
     return {
       id:          d.id,
       owner:       d.owner,
@@ -331,6 +368,7 @@ export async function fetchTrader(traderId: string): Promise<PublicTrader | null
       avatarKey:   d.avatarKey ?? undefined,
       avatarColor: d.avatarColor ?? undefined,
       avatarUrl,
+      equityHistory: history,
     };
   } catch (e) {
     console.warn('fetchTrader failed:', e);

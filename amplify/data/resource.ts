@@ -103,6 +103,10 @@ const schema = a.schema({
     tradeCount:  a.integer(),
     avatarKey:   a.string(),
     avatarColor: a.string(),
+    // Rolling equity history for the trader's chart. JSON array of {t, v}
+    // where t is ms epoch and v is bankroll at that moment. Capped to last
+    // 168 points (~1 week of hourly snapshots) to keep the doc bounded.
+    equityHistoryJson: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
