@@ -550,8 +550,8 @@ export function TradeScreen() {
           </Card>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
-            <Button variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
             <Button variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
+            <Button variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
           </View>
         </View>
       </ScreenShell>
