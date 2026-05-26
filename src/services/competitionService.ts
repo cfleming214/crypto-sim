@@ -113,7 +113,26 @@ export async function fetchCompetitions(): Promise<Competition[]> {
   try {
     const { data } = await client.models.Competition.list();
     const remote = (data as any[]).map(mapCompetition);
-    return remote.length > 0 ? remote : SEED_COMPETITIONS;
+    if (remote.length > 0) return remote;
+
+    // Cloud table is empty — auto-seed the canonical competitions so every
+    // signed-in user sees them. Runs once; subsequent fetches return the
+    // persisted rows. Errors are ignored (e.g. concurrent seeders).
+    await Promise.all(SEED_COMPETITIONS.map(c => client.models.Competition.create({
+      name:       c.name,
+      type:       c.type,
+      status:     c.status,
+      prizePool:  c.prizePool,
+      maxPlayers: c.maxPlayers,
+      stake:      c.stake,
+      startAt:    new Date(c.startAt).toISOString(),
+      endAt:      new Date(c.endAt).toISOString(),
+      entryCount: c.entryCount,
+    }).catch(() => null)));
+
+    const { data: seeded } = await client.models.Competition.list();
+    const persisted = (seeded as any[]).map(mapCompetition);
+    return persisted.length > 0 ? persisted : SEED_COMPETITIONS;
   } catch {
     return SEED_COMPETITIONS;
   }

@@ -103,12 +103,32 @@ export function LeagueScreen() {
   const div = DIVISION_LABELS[state.user.division] ?? '';
   const divisionLabel = `${league} ${div}`.trim();
 
+  // "Your division" pulls live entries from the most recently joined
+  // competition's leaderboard (subscribed real-time by AppContext).
+  // Falls back to the seeded mock list when there's no joined comp yet.
+  const liveCompId = state.joinedTournamentIds[state.joinedTournamentIds.length - 1];
+  const liveEntries = liveCompId ? state.leaderboard[liveCompId] ?? [] : [];
+  const livePlayers = liveEntries.map(e => ({
+    rank: e.rank,
+    handle: e.handle.startsWith('@') ? e.handle : `@${e.handle}`,
+    name: e.handle,
+    pnl: `${e.pnlPct >= 0 ? '+' : ''}${e.pnlPct.toFixed(1)}%`,
+    xpRaw: Math.max(0, Math.round(e.bankroll)),
+    trend: e.pnlPct >= 0 ? 'up' : 'down',
+    tag: e.handle === state.user.handle ? 'you' : null,
+  }));
+
   const players = tab === 'Friends' ? FRIENDS_PLAYERS
     : tab === 'Global' ? GLOBAL_PLAYERS
-    : DIVISION_PLAYERS;
+    : (livePlayers.length > 0 ? livePlayers : DIVISION_PLAYERS);
 
-  const userRank = tab === 'Global' ? 112 : tab === 'Friends' ? 2 : 8;
-  const totalPlayers = tab === 'Global' ? 48200 : tab === 'Friends' ? 4 : 30;
+  const liveYouEntry = liveEntries.find(e => e.handle === state.user.handle);
+  const userRank = tab === 'Global' ? 112
+    : tab === 'Friends' ? 2
+    : (liveYouEntry?.rank ?? 8);
+  const totalPlayers = tab === 'Global' ? 48200
+    : tab === 'Friends' ? 4
+    : (liveEntries.length > 0 ? liveEntries.length : 30);
   const promoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 1 : 5;
   const demoteCount = tab === 'Global' ? 0 : 5;
 

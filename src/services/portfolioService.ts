@@ -80,7 +80,25 @@ export async function loadProfile(): Promise<Partial<AppState> | null> {
   if (!client) return null;
   try {
     const { data: profiles } = await client.models.UserProfile.list();
-    if (!profiles.length) return null;
+    if (!profiles.length) {
+      // First sign-in — create a clean starter profile in DynamoDB so the
+      // user lands on a fresh $10K / 0 holdings / Bronze I state instead of
+      // the demo's pre-loaded INITIAL_STATE.
+      const starter = {
+        handle:       'newtrader',
+        xp:           0,
+        league:       'Bronze',
+        division:     1,
+        streak:       0,
+        cash:         10000,
+        bankroll:     10000,
+        riskScore:    100,
+        holdingsJson: '[]',
+        avatarColor:  '#6366F1',
+      };
+      await client.models.UserProfile.create(starter);
+      return profileFromRecord(starter);
+    }
     return profileFromRecord(profiles[0]);
   } catch {
     return null;

@@ -251,8 +251,28 @@ function reducer(state: AppState, action: Action): AppState {
       }, 0);
       return { ...state, coins, bankroll: state.cash + holdingsValue };
     }
-    case 'LOAD_PROFILE':
-      return { ...state, ...action.profile };
+    case 'LOAD_PROFILE': {
+      // Merge cloud profile over current state, then clear the demo's mock
+      // tournament + recompute nudges from the loaded holdings so a fresh
+      // user doesn't inherit "Diamond III rank #47" or stale risk warnings.
+      const merged = { ...state, ...action.profile };
+      const holdings = merged.holdings;
+      const recomputedNudges = computeCoachNudges(
+        holdings,
+        merged.cash,
+        merged.bankroll,
+        merged.coins,
+        merged.stopLosses,
+        merged.trades.length,
+      );
+      return {
+        ...merged,
+        joinedTournamentIds: [],
+        activeTournament: null,
+        coachNudges: recomputedNudges,
+        dismissedNudgeIds: [],
+      };
+    }
     case 'BUY': {
       const coin = state.coins.find(c => c.symbol === action.symbol);
       if (!coin || state.cash < action.amount) return state;
@@ -513,12 +533,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch(action);
   };
 
-  // Always-on: price simulation and competition seed list. These don't need auth.
+  // Always-on: price simulation. Competition fetch moved to auth-gated effect
+  // because Competition's GraphQL schema is owner-scoped for writes and the
+  // auto-seeder needs to persist rows on first run.
   useEffect(() => {
-    fetchCompetitions().then(competitions => {
-      dispatch({ type: 'SET_COMPETITIONS', competitions });
-    });
-
     tickRef.current = setInterval(() => dispatch({ type: 'TICK_PRICES' }), 2000);
 
     const doFetch = async () => {
@@ -546,6 +564,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     loadProfile().then(profile => {
       if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
+    });
+
+    fetchCompetitions().then(competitions => {
+      dispatch({ type: 'SET_COMPETITIONS', competitions });
     });
 
     let unsubProfile: () => void = () => {};
