@@ -106,7 +106,11 @@ export function PortfolioScreen() {
     <ScreenShell
       eyebrow="Weekend Warriors · Day 4"
       title={`$${totalEquity.toFixed(2)}`}
-      rightActions={<Avatar initials={state.user.handle.slice(0, 2).toUpperCase()} size="sm" brand />}
+      rightActions={
+        <TouchableOpacity onPress={() => nav.navigate('Profile')}>
+          <Avatar initials={state.user.handle.slice(0, 2).toUpperCase()} size="sm" brand />
+        </TouchableOpacity>
+      }
     >
       {/* P&L */}
       <Chip variant={pnlPositive ? 'up' : 'down'}>

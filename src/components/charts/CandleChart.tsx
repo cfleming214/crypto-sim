@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, ViewStyle } from 'react-native';
-import Svg, { Rect, Line } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
 
 interface Candle {
@@ -69,7 +69,6 @@ function generateCandles(timeframe: string, endPrice: number): Candle[] {
 export function CandleChart({ height = 220, data, timeframe, basePrice, style }: CandleChartProps) {
   const { colors } = useTheme();
 
-  // Capture basePrice at the moment timeframe changes, not on every price tick
   const basePriceRef = useRef(basePrice ?? 64210);
   useEffect(() => {
     if (basePrice !== undefined) basePriceRef.current = basePrice;
@@ -78,46 +77,34 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, style }:
   const candles = useMemo(() => {
     if (data) return data;
     return generateCandles(timeframe ?? '5M', basePriceRef.current);
-  }, [timeframe, data]); // re-generate only on timeframe change
+  }, [timeframe, data]);
 
-  const allValues = candles.flatMap(c => [c.high, c.low]);
-  const minVal = Math.min(...allValues);
-  const maxVal = Math.max(...allValues);
-  const range = maxVal - minVal || 1;
-
+  const closes = candles.map(c => c.close);
   const W = 300;
-  const chartH = height * 0.82;
-  const volH = height * 0.12;
-  const gap = height * 0.06;
+  const isUp = closes[closes.length - 1] >= closes[0];
+  const color = isUp ? colors.up : colors.down;
 
-  const toY = (v: number) => chartH - ((v - minVal) / range) * chartH * 0.9 - chartH * 0.05;
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const range = max - min || 1;
+  const points = closes.map((v, i) => ({
+    x: (i / (closes.length - 1)) * W,
+    y: height - ((v - min) / range) * height * 0.85 - height * 0.075,
+  }));
 
-  const candleW = (W / candles.length) * 0.55;
-  const spacing = W / candles.length;
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    const cpx = points[i - 1].x + (points[i].x - points[i - 1].x) * 0.5;
+    d += ` C ${cpx} ${points[i - 1].y}, ${cpx} ${points[i].y}, ${points[i].x} ${points[i].y}`;
+  }
+
+  const last = points[points.length - 1];
 
   return (
     <View style={[{ height }, style]}>
       <Svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none">
-        {candles.map((c, i) => {
-          const x = i * spacing + spacing / 2;
-          const bull = c.close >= c.open;
-          const color = bull ? colors.up : colors.down;
-          const bodyTop = toY(Math.max(c.open, c.close));
-          const bodyBot = toY(Math.min(c.open, c.close));
-          const bodyH = Math.max(2, bodyBot - bodyTop);
-
-          const maxVol = Math.max(...candles.map(cc => cc.volume ?? 0.5));
-          const vol = (c.volume ?? 0.5) / maxVol;
-          const volY = chartH + gap + volH * (1 - vol);
-
-          return (
-            <React.Fragment key={i}>
-              <Line x1={x} y1={toY(c.high)} x2={x} y2={toY(c.low)} stroke={color} strokeWidth="1" />
-              <Rect x={x - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={color} rx="1" />
-              <Rect x={x - candleW / 2} y={volY} width={candleW} height={chartH + gap + volH - volY} fill={color} opacity="0.35" rx="1" />
-            </React.Fragment>
-          );
-        })}
+        <Path d={d} stroke={color} strokeWidth="2" fill="none" />
+        <Circle cx={last.x} cy={last.y} r="3.5" fill={color} />
       </Svg>
     </View>
   );

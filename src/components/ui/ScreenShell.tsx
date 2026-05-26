@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { ChevronLeft } from 'lucide-react-native';
@@ -30,8 +30,6 @@ export function ScreenShell({
 }: ScreenShellProps) {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-  const isInStack = navigation.getState()?.type === 'stack';
   const canGoBack = navigation.canGoBack();
   const bg = brand ? colors.brand : colors.surface;
   const ink = brand ? colors.brandOn : colors.ink;
@@ -71,7 +69,7 @@ export function ScreenShell({
       {scrollable ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ gap: 14, paddingHorizontal: 20, paddingBottom: 32 + (isInStack ? insets.bottom : 0), paddingTop: 4 }}
+          contentContainerStyle={{ gap: 14, paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 }}
         >
           {children}
         </ScrollView>

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, ViewStyle } from 'react-native';
-import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
 
 interface AreaChartProps {
@@ -99,13 +99,6 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   return (
     <View style={[{ height }, style]}>
       <Svg width="100%" height={height} viewBox={`0 0 300 ${height}`} preserveAspectRatio="none">
-        <Defs>
-          <LinearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={color} stopOpacity="0.18" />
-            <Stop offset="100%" stopColor={color} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-        <Path d={generatePath(chartData, 300, height, true)} fill="url(#areaGrad)" />
         <Path d={generatePath(chartData, 300, height, false)} stroke={color} strokeWidth="2" fill="none" />
         {showDot && (() => {
           const last = chartData[chartData.length - 1];
