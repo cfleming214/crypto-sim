@@ -9,8 +9,11 @@ import { CopyTradeScreen } from '../screens/CopyTradeScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
+import { AuthScreen } from '../screens/AuthScreen';
+import { useAuth } from '../store/AuthContext';
 
 export type RootStackParamList = {
+  Auth: undefined;
   Walkthrough: undefined;
   MainTabs: { screen?: string; params?: any } | undefined;
   TradeDetail: { symbol: string };
@@ -29,6 +32,18 @@ interface RootNavigatorProps {
 }
 
 export function RootNavigator({ hasOnboarded }: RootNavigatorProps) {
+  const { status } = useAuth();
+
+  if (status === 'loading') return null;
+
+  if (status === 'unauthenticated') {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Auth" component={AuthScreen} />
+      </Stack.Navigator>
+    );
+  }
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!hasOnboarded ? (

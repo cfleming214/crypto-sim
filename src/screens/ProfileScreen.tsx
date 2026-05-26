@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../store/AuthContext';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity } from 'lucide-react-native';
 
 const achievements = [
@@ -30,6 +31,7 @@ const seasons = [
 export function ProfileScreen() {
   const { colors, isDark, toggle } = useTheme();
   const { state } = useApp();
+  const { signOut, status } = useAuth();
   const nav = useNavigation<any>();
 
   const stats = [
@@ -47,7 +49,15 @@ export function ProfileScreen() {
       rightActions={
         <TouchableOpacity
           style={{ padding: 8 }}
-          onPress={() => Alert.alert('More options', 'Share profile · Export trading history · Sign out', [{ text: 'Close' }])}
+          onPress={() => Alert.alert('More options', 'Share profile · Export trading history · Sign out', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Share profile', onPress: () => Alert.alert('Share', 'Sharing coming soon!') },
+            {
+              text: 'Sign out',
+              style: 'destructive',
+              onPress: () => status !== 'unauthenticated' && signOut(),
+            },
+          ])}
         >
           <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
         </TouchableOpacity>

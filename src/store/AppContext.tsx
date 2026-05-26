@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import { AppState, Coin, Holding, Trade } from './types';
+import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
+import { loadProfile, saveProfile, saveTrade } from '../services/portfolioService';
 
 const INITIAL_COINS: Coin[] = [
   { symbol: 'BTC',  name: 'Bitcoin',   price: 64210.48, change24h: 2.41,  marketCap: '$1.26T', volume: '$1.24B', history: [58000,60000,61500,63000,62000,64000,63500,64210] },
@@ -40,6 +42,8 @@ const INITIAL_STATE: AppState = {
 
 type Action =
   | { type: 'TICK_PRICES' }
+  | { type: 'UPDATE_PRICES'; prices: PriceData[] }
+  | { type: 'LOAD_PROFILE'; profile: Partial<AppState> }
   | { type: 'BUY'; symbol: string; amount: number }
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
@@ -50,7 +54,7 @@ type Action =
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
     if (coin.symbol === 'USDC') return coin;
-    const volatility = coin.symbol === 'PEPE' || coin.symbol === 'DOGE' ? 0.004 : 0.001;
+    const volatility = coin.symbol === 'PEPE' || coin.symbol === 'DOGE' ? 0.0004 : 0.0001;
     const delta = coin.price * (Math.random() - 0.5) * volatility;
     const newPrice = Math.max(0.00001, coin.price + delta);
     const newHistory = [...coin.history.slice(-19), newPrice];
@@ -62,14 +66,34 @@ function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'TICK_PRICES': {
       const coins = tickPrices(state.coins);
-      // Recalculate bankroll
       const holdingsValue = state.holdings.reduce((sum, h) => {
         const coin = coins.find(c => c.symbol === h.symbol);
         return sum + (coin ? coin.price * h.units : 0);
       }, 0);
-      const bankroll = state.cash + holdingsValue;
-      return { ...state, coins, bankroll };
+      return { ...state, coins, bankroll: state.cash + holdingsValue };
     }
+    case 'UPDATE_PRICES': {
+      const coins = state.coins.map(coin => {
+        const pd = action.prices.find(p => p.symbol === coin.symbol);
+        if (!pd || coin.symbol === 'USDC') return coin;
+        const newHistory = [...coin.history.slice(-19), pd.price];
+        return {
+          ...coin,
+          price:     pd.price,
+          change24h: pd.change24h,
+          marketCap: pd.marketCapRaw > 0 ? formatLargeNumber(pd.marketCapRaw) : coin.marketCap,
+          volume:    pd.volumeRaw    > 0 ? formatLargeNumber(pd.volumeRaw)    : coin.volume,
+          history:   newHistory,
+        };
+      });
+      const holdingsValue = state.holdings.reduce((sum, h) => {
+        const coin = coins.find(c => c.symbol === h.symbol);
+        return sum + (coin ? coin.price * h.units : 0);
+      }, 0);
+      return { ...state, coins, bankroll: state.cash + holdingsValue };
+    }
+    case 'LOAD_PROFILE':
+      return { ...state, ...action.profile };
     case 'BUY': {
       const coin = state.coins.find(c => c.symbol === action.symbol);
       if (!coin || state.cash < action.amount) return state;
@@ -121,19 +145,17 @@ function reducer(state: AppState, action: Action): AppState {
       const top5 = state.holdings.slice(0, 5);
       if (top5.length === 0) return state;
 
-      // Calculate current values
       const holdingValues = top5.map(h => {
         const coin = state.coins.find(c => c.symbol === h.symbol)!;
         return { ...h, coin, currentValue: h.units * coin.price };
       });
       const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
-      const targetPerCoin = totalInvested / top5.length; // equal weight
+      const targetPerCoin = totalInvested / top5.length;
 
       let newHoldings = [...state.holdings];
       let newCash = state.cash;
       const newTrades = [...state.trades];
 
-      // Step 1: sell overweight positions
       for (const h of holdingValues) {
         const excess = h.currentValue - targetPerCoin;
         if (excess <= 5) continue;
@@ -150,7 +172,6 @@ function reducer(state: AppState, action: Action): AppState {
         });
       }
 
-      // Step 2: buy underweight positions (using freed cash)
       for (const h of holdingValues) {
         const deficit = targetPerCoin - h.currentValue;
         if (deficit <= 5 || newCash < deficit) continue;
@@ -207,12 +228,57 @@ const AppContext = createContext<AppContextValue>({
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const priceRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const lastActionRef = useRef<Action | null>(null);
+
+  // Wrap dispatch to track trade actions for cloud sync
+  const wrappedDispatch = (action: Action) => {
+    if (['BUY', 'SELL', 'REBALANCE'].includes(action.type)) {
+      lastActionRef.current = action;
+    }
+    dispatch(action);
+  };
 
   useEffect(() => {
-    intervalRef.current = setInterval(() => dispatch({ type: 'TICK_PRICES' }), 2000);
-    return () => clearInterval(intervalRef.current);
+    // Load cloud portfolio on mount
+    loadProfile().then(profile => {
+      if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
+    });
+
+    // Simulated micro-tick for UI fluidity
+    tickRef.current = setInterval(() => dispatch({ type: 'TICK_PRICES' }), 2000);
+
+    // Real prices from CoinGecko every 30s
+    const doFetch = async () => {
+      try {
+        const prices = await fetchPrices();
+        dispatch({ type: 'UPDATE_PRICES', prices });
+      } catch {
+        // Silent — simulated tick keeps UI alive
+      }
+    };
+    doFetch();
+    priceRef.current = setInterval(doFetch, 30000);
+
+    return () => {
+      clearInterval(tickRef.current);
+      clearInterval(priceRef.current);
+    };
   }, []);
+
+  // Sync portfolio to cloud after each trade
+  useEffect(() => {
+    const action = lastActionRef.current;
+    if (!action) return;
+    lastActionRef.current = null;
+
+    saveProfile(state);
+
+    if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
+      saveTrade(state.trades[0]);
+    }
+  }, [state.trades, state.cash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getCoin = (symbol: string) => state.coins.find(c => c.symbol === symbol);
 
@@ -228,7 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AppContext.Provider value={{ state, dispatch, getCoin, getHolding }}>
+    <AppContext.Provider value={{ state, dispatch: wrappedDispatch, getCoin, getHolding }}>
       {children}
     </AppContext.Provider>
   );
