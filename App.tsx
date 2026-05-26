@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider } from './src/theme/ThemeContext';
+import { AppProvider } from './src/store/AppContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 export default function App() {
@@ -20,11 +21,13 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <NavigationContainer>
-          <RootNavigator hasOnboarded={hasOnboarded} />
-        </NavigationContainer>
-      </ThemeProvider>
+      <AppProvider>
+        <ThemeProvider>
+          <NavigationContainer>
+            <RootNavigator hasOnboarded={hasOnboarded} />
+          </NavigationContainer>
+        </ThemeProvider>
+      </AppProvider>
     </GestureHandlerRootView>
   );
 }
