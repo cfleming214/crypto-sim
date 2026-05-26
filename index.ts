@@ -1,3 +1,7 @@
+// crypto.getRandomValues polyfill — required by Amplify Cognito SRP auth on
+// React Native. Must come before any aws-amplify import. Without this, sign-in
+// fails with the generic "An unknown error has occurred" from Cognito.
+import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 import { registerRootComponent } from 'expo';
 
