@@ -159,12 +159,11 @@ export function CompeteScreen() {
               </View>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {['JK', 'MA', 'TR', 'SP'].map((initial, idx) => (
-                    <Avatar key={initial} initials={initial} size="sm" style={{ marginLeft: idx === 0 ? 0 : -10, borderWidth: 1.5, borderColor: colors.surface }} />
-                  ))}
-                  <Text style={{ fontSize: 12, color: colors.ink3, marginLeft: 10 }}>+{(activeLive.entryCount - 4).toLocaleString()} playing</Text>
-                </View>
+                <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                  {activeLive.entryCount === 0
+                    ? 'Be the first to join'
+                    : `${activeLive.entryCount.toLocaleString()} ${activeLive.entryCount === 1 ? 'player' : 'players'}`}
+                </Text>
                 <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{activeLive.prizePool}</Text>
               </View>
             </CardSection>
