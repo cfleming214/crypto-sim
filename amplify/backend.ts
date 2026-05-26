@@ -4,6 +4,7 @@ import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
+import { storage } from './storage/resource.js';
 import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
@@ -15,6 +16,7 @@ import { runMirror } from './functions/run-mirror/resource.js';
 const backend = defineBackend({
   auth,
   data,
+  storage,
   tickLeaderboard,
   closeCompetition,
   createCompetition,
@@ -67,8 +69,11 @@ resetFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
 
 // --- evaluateCoach: DynamoDB stream trigger on Trade table ---
 const coachFn = backend.evaluateCoach.resources.lambda;
+const coachNudgeTable = backend.data.resources.tables['CoachNudge'];
 profileTable.grantReadData(coachFn);
+coachNudgeTable.grantWriteData(coachFn);
 coachFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+coachFn.addEnvironment('COACH_NUDGE_TABLE_NAME', coachNudgeTable.tableName);
 
 // --- executeTrade: user-invoked, server-side validated trade execution ---
 const execFn = backend.executeTrade.resources.lambda;

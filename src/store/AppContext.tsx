@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge } from './types';
 import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfile, saveProfile, saveTrade } from '../services/portfolioService';
+import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard } from '../services/portfolioService';
 import { fetchCompetitions, SEED_COMPETITIONS } from '../services/competitionService';
 
 const INITIAL_COINS: Coin[] = [
@@ -130,7 +130,9 @@ type Action =
   | { type: 'DISMISS_PRICE_ALERT'; alertId: string }
   | { type: 'RESET_DEMO' }
   | { type: 'DISMISS_NUDGE'; nudgeId: string }
-  | { type: 'SET_AVATAR_URI'; uri: string };
+  | { type: 'SET_AVATAR_URI'; uri: string }
+  | { type: 'SET_AVATAR'; uri: string; key: string }
+  | { type: 'SET_CLOUD_NUDGES'; nudges: CoachNudge[] };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -421,6 +423,16 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, user: { ...state.user, avatarColor: action.color } };
     case 'SET_AVATAR_URI':
       return { ...state, user: { ...state.user, avatarUri: action.uri } };
+    case 'SET_AVATAR':
+      return { ...state, user: { ...state.user, avatarUri: action.uri, avatarKey: action.key } };
+    case 'SET_CLOUD_NUDGES': {
+      // Merge server-side nudges with locally-computed ones, dedupe by id, drop dismissed
+      const merged = [...action.nudges, ...state.coachNudges]
+        .filter(n => !state.dismissedNudgeIds.includes(n.id))
+        .filter((n, i, arr) => arr.findIndex(x => x.id === n.id) === i)
+        .slice(0, 3);
+      return { ...state, coachNudges: merged };
+    }
     case 'TOGGLE_WATCHLIST': {
       const inList = state.watchlist.includes(action.symbol);
       return {
@@ -510,6 +522,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'SET_COMPETITIONS', competitions });
     });
 
+    // Real-time subscriptions (no-op when Amplify isn't configured)
+    let unsubProfile: () => void = () => {};
+    let unsubNudges:  () => void = () => {};
+    subscribeToProfile(profile => dispatch({ type: 'LOAD_PROFILE', profile }))
+      .then(unsub => { unsubProfile = unsub; });
+    subscribeToCoachNudges(nudges => dispatch({ type: 'SET_CLOUD_NUDGES', nudges }))
+      .then(unsub => { unsubNudges = unsub; });
+
     // Simulated micro-tick for UI fluidity
     tickRef.current = setInterval(() => dispatch({ type: 'TICK_PRICES' }), 2000);
 
@@ -528,8 +548,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       clearInterval(tickRef.current);
       clearInterval(priceRef.current);
+      unsubProfile();
+      unsubNudges();
     };
   }, []);
+
+  // Live-subscribe to leaderboard for every joined competition. The
+  // tickLeaderboard cron rewrites ranks every 5 min server-side, so this
+  // pushes updates into state without polling. Re-subscribes whenever the
+  // joined-set changes (join/leave).
+  useEffect(() => {
+    const unsubs: (() => void)[] = [];
+    state.joinedTournamentIds.forEach(competitionId => {
+      subscribeToLeaderboard(competitionId, entries => {
+        dispatch({ type: 'SET_LEADERBOARD', competitionId, entries });
+      }).then(unsub => unsubs.push(unsub));
+    });
+    return () => unsubs.forEach(u => u());
+  }, [state.joinedTournamentIds]);
 
   // Sync portfolio to cloud after each trade
   useEffect(() => {

@@ -95,7 +95,8 @@ export interface AppState {
     division: number;
     streak: number;
     avatarColor: string;
-    avatarUri?: string;
+    avatarUri?: string;   // resolvable URL (signed if from S3, local file:// if just picked)
+    avatarKey?: string;   // stable S3 key for cloud persistence (e.g. "profile.jpg")
   };
   bankroll: number;
   cash: number;

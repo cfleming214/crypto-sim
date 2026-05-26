@@ -12,6 +12,8 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadAvatarPhoto } from '../services/portfolioService';
+import { isAmplifyConfigured } from '../lib/amplify';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -24,6 +26,8 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   const [handle, setHandle] = useState(state.user.handle);
   const [avatarColor, setAvatarColor] = useState(state.user.avatarColor);
   const [photoUri, setPhotoUri] = useState<string | null>(state.user.avatarUri ?? null);
+  const [pickedLocalUri, setPickedLocalUri] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const handlePickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -39,13 +43,32 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
     });
     if (!result.canceled && result.assets.length > 0) {
       setPhotoUri(result.assets[0].uri);
+      setPickedLocalUri(result.assets[0].uri);
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setSaving(true);
     dispatch({ type: 'SET_HANDLE', handle });
     dispatch({ type: 'SET_AVATAR_COLOR', color: avatarColor });
-    if (photoUri) dispatch({ type: 'SET_AVATAR_URI', uri: photoUri });
+
+    // If the user picked a new local photo this session, upload it to S3
+    if (pickedLocalUri) {
+      if (isAmplifyConfigured) {
+        const result = await uploadAvatarPhoto(pickedLocalUri);
+        if (result) {
+          dispatch({ type: 'SET_AVATAR', uri: result.url, key: result.key });
+        } else {
+          // Upload failed — fall back to local URI for this session
+          dispatch({ type: 'SET_AVATAR_URI', uri: pickedLocalUri });
+          Alert.alert('Upload failed', 'Your photo will only be visible on this device until you try again.', [{ text: 'OK' }]);
+        }
+      } else {
+        // Offline mode — keep the local URI
+        dispatch({ type: 'SET_AVATAR_URI', uri: pickedLocalUri });
+      }
+    }
+    setSaving(false);
     onClose();
   };
 
@@ -121,7 +144,9 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             <Text style={{ fontSize: 11, color: colors.ink3 }}>Letters, numbers, underscores only · max 20 chars</Text>
           </View>
 
-          <Button variant="brand" onPress={handleSave}>Save changes</Button>
+          <Button variant="brand" onPress={handleSave} disabled={saving} loading={saving}>
+            Save changes
+          </Button>
         </ScrollView>
       </SafeAreaView>
     </Modal>

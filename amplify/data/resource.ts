@@ -11,6 +11,8 @@ const schema = a.schema({
     bankroll: a.float(),
     riskScore: a.integer(),
     holdingsJson: a.string(),
+    avatarKey: a.string(),       // S3 storage key (e.g. "profile.jpg") — full path is avatars/{identityId}/{avatarKey}
+    avatarColor: a.string(),
   }).authorization(allow => [allow.owner()]),
 
   Trade: a.model({
@@ -71,6 +73,13 @@ const schema = a.schema({
     allocation: a.float().required(),  // dollar amount allocated to mirror
     maxPositionPct: a.float(),         // max % of allocation in any one coin (0–1)
     active: a.boolean(),
+  }).authorization(allow => [allow.owner()]),
+
+  CoachNudge: a.model({
+    message: a.string().required(),
+    severity: a.string().required(),   // 'info' | 'warn' | 'tip'
+    createdAt: a.string().required(),  // ISO timestamp
+    dismissed: a.boolean(),
   }).authorization(allow => [allow.owner()]),
 });
 
