@@ -242,7 +242,7 @@ export function TradeScreen() {
           </View>
 
           <View style={{ marginHorizontal: -20 }}>
-            <CandleChart height={220} />
+            <CandleChart height={220} timeframe={tf} basePrice={price} />
           </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

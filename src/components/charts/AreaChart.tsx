@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { View, ViewStyle } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
@@ -6,6 +6,8 @@ import { useTheme } from '../../theme/ThemeContext';
 interface AreaChartProps {
   height?: number;
   data?: number[];
+  timeframe?: string;
+  baseValue?: number;
   down?: boolean;
   showDot?: boolean;
   style?: ViewStyle;
@@ -31,17 +33,67 @@ function generatePath(data: number[], w: number, h: number, closed = false): str
   }
 
   if (closed) {
-    d += ` L ${points[points.length - 1].x} ${h} L ${points[0].x} ${h} Z`;
+    d += ` L ${points[points.length - 1].x} ${h} L ${points[points.length - 1].x} ${h} L ${points[0].x} ${h} Z`;
   }
 
   return d;
 }
 
-const DEFAULT_DATA = [100, 108, 104, 115, 111, 122, 118, 130, 125, 140, 135, 148];
+const TF_CONFIG: Record<string, { points: number; volatility: number; drawdown: number }> = {
+  '1H':  { points: 24,  volatility: 0.0008, drawdown: 0.008 },
+  '1D':  { points: 48,  volatility: 0.003,  drawdown: 0.025 },
+  '7D':  { points: 56,  volatility: 0.010,  drawdown: 0.07  },
+  '30D': { points: 60,  volatility: 0.020,  drawdown: 0.15  },
+  'SEA': { points: 90,  volatility: 0.035,  drawdown: 0.25  },
+  'ALL': { points: 120, volatility: 0.050,  drawdown: 0.35  },
+};
 
-export function AreaChart({ height = 170, data, down = false, showDot = true, style }: AreaChartProps) {
+function generateData(timeframe: string, endValue: number): number[] {
+  const cfg = TF_CONFIG[timeframe] ?? TF_CONFIG['7D'];
+  const { points, volatility, drawdown } = cfg;
+
+  // Seed from timeframe string for deterministic but different shapes
+  const seed = timeframe.split('').reduce((s, c, i) => s + c.charCodeAt(0) * (i + 1), 0);
+
+  const startValue = endValue * (1 - drawdown);
+  const data: number[] = [];
+  let v = startValue;
+
+  for (let i = 0; i <= points; i++) {
+    const progress = i / points;
+    // Smooth trend toward endValue
+    const trend = progress * (endValue - startValue);
+    // Deterministic noise using sin/cos with seed
+    const noise = (
+      Math.sin((i + seed) * 1.7) * 0.6 +
+      Math.sin((i + seed) * 0.4) * 0.3 +
+      Math.cos((i + seed) * 3.1) * 0.1
+    ) * volatility * endValue;
+
+    v = startValue + trend + noise;
+    v = Math.max(v, endValue * 0.3);
+    data.push(v);
+  }
+
+  // Pin last point to exact current value
+  data[data.length - 1] = endValue;
+  return data;
+}
+
+export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style }: AreaChartProps) {
   const { colors } = useTheme();
-  const chartData = data ?? DEFAULT_DATA;
+
+  // Capture baseValue at the moment timeframe changes, not on every price tick
+  const baseValueRef = useRef(baseValue ?? 10847);
+  useEffect(() => {
+    if (baseValue !== undefined) baseValueRef.current = baseValue;
+  }, [timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chartData = useMemo(() => {
+    if (data) return data;
+    return generateData(timeframe ?? '7D', baseValueRef.current);
+  }, [timeframe, data]); // re-generate only on timeframe change
+
   const color = down ? colors.down : colors.up;
 
   return (

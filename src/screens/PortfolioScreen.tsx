@@ -84,7 +84,7 @@ export function PortfolioScreen() {
 
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
-        <AreaChart height={170} />
+        <AreaChart height={170} timeframe={tf} baseValue={totalEquity} />
       </View>
 
       <Segmented

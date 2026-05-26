@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { View, ViewStyle } from 'react-native';
 import Svg, { Rect, Line } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
@@ -14,23 +14,71 @@ interface Candle {
 interface CandleChartProps {
   height?: number;
   data?: Candle[];
+  timeframe?: string;
+  basePrice?: number;
   style?: ViewStyle;
 }
 
-const DEFAULT_CANDLES: Candle[] = [
-  { open: 62000, high: 63200, low: 61500, close: 62800, volume: 0.6 },
-  { open: 62800, high: 64100, low: 62400, close: 63900, volume: 0.8 },
-  { open: 63900, high: 64800, low: 63200, close: 63400, volume: 0.5 },
-  { open: 63400, high: 64200, low: 62900, close: 64100, volume: 0.7 },
-  { open: 64100, high: 65000, low: 63800, close: 64500, volume: 0.9 },
-  { open: 64500, high: 65200, low: 63900, close: 64200, volume: 0.6 },
-  { open: 64200, high: 64900, low: 63600, close: 64890, volume: 1.0 },
-  { open: 64890, high: 65400, low: 64000, close: 64210, volume: 0.75 },
-];
+const TF_CONFIG: Record<string, { count: number; volatility: number }> = {
+  '1M': { count: 40, volatility: 0.0015 },
+  '5M': { count: 32, volatility: 0.004  },
+  '1H': { count: 24, volatility: 0.012  },
+  '1D': { count: 30, volatility: 0.030  },
+  '1W': { count: 20, volatility: 0.075  },
+};
 
-export function CandleChart({ height = 220, data, style }: CandleChartProps) {
+function generateCandles(timeframe: string, endPrice: number): Candle[] {
+  const cfg = TF_CONFIG[timeframe] ?? TF_CONFIG['5M'];
+  const { count, volatility } = cfg;
+
+  const seed = timeframe.split('').reduce((s, c, i) => s + c.charCodeAt(0) * (i + 1), 0);
+
+  // Work backwards from endPrice so the chart always ends at current price
+  const prices: number[] = [endPrice];
+  for (let i = 1; i < count + 1; i++) {
+    const noise = (
+      Math.sin((i + seed) * 1.9) * 0.55 +
+      Math.cos((i + seed) * 0.8) * 0.35 +
+      Math.sin((i + seed) * 4.1) * 0.1
+    ) * volatility;
+    const prev = prices[prices.length - 1];
+    // Slight downward bias going back (so trend is up going forward)
+    const step = prev * (1 + noise - 0.0003);
+    prices.push(Math.max(step, endPrice * 0.3));
+  }
+
+  // Reverse so oldest is first
+  prices.reverse();
+
+  const candles: Candle[] = [];
+  for (let i = 0; i < count; i++) {
+    const open = prices[i];
+    const close = prices[i + 1];
+    const s1 = Math.abs(Math.sin((i + seed) * 2.3));
+    const s2 = Math.abs(Math.cos((i + seed) * 1.5));
+    const bodyRange = Math.abs(close - open);
+    const high = Math.max(open, close) + bodyRange * 0.3 + Math.max(open, close) * volatility * s1 * 0.5;
+    const low  = Math.min(open, close) - bodyRange * 0.3 - Math.min(open, close) * volatility * s2 * 0.5;
+    const volume = 0.25 + s1 * 0.75;
+    candles.push({ open, close, high, low, volume });
+  }
+
+  return candles;
+}
+
+export function CandleChart({ height = 220, data, timeframe, basePrice, style }: CandleChartProps) {
   const { colors } = useTheme();
-  const candles = data ?? DEFAULT_CANDLES;
+
+  // Capture basePrice at the moment timeframe changes, not on every price tick
+  const basePriceRef = useRef(basePrice ?? 64210);
+  useEffect(() => {
+    if (basePrice !== undefined) basePriceRef.current = basePrice;
+  }, [timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const candles = useMemo(() => {
+    if (data) return data;
+    return generateCandles(timeframe ?? '5M', basePriceRef.current);
+  }, [timeframe, data]); // re-generate only on timeframe change
 
   const allValues = candles.flatMap(c => [c.high, c.low]);
   const minVal = Math.min(...allValues);
@@ -58,18 +106,14 @@ export function CandleChart({ height = 220, data, style }: CandleChartProps) {
           const bodyBot = toY(Math.min(c.open, c.close));
           const bodyH = Math.max(2, bodyBot - bodyTop);
 
-          // volume bar
           const maxVol = Math.max(...candles.map(cc => cc.volume ?? 0.5));
           const vol = (c.volume ?? 0.5) / maxVol;
           const volY = chartH + gap + volH * (1 - vol);
 
           return (
             <React.Fragment key={i}>
-              {/* wick */}
               <Line x1={x} y1={toY(c.high)} x2={x} y2={toY(c.low)} stroke={color} strokeWidth="1" />
-              {/* body */}
               <Rect x={x - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={color} rx="1" />
-              {/* volume */}
               <Rect x={x - candleW / 2} y={volY} width={candleW} height={chartH + gap + volH - volY} fill={color} opacity="0.35" rx="1" />
             </React.Fragment>
           );
