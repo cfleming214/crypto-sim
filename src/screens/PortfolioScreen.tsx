@@ -14,7 +14,6 @@ import { DonutChart } from '../components/charts/DonutChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
-import { loadProfile } from '../services/portfolioService';
 import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb } from 'lucide-react-native';
 
 const STOP_OPTIONS = [5, 10, 15];
@@ -262,14 +261,16 @@ export function PortfolioScreen() {
   ];
 
   const handleRefresh = async () => {
+    // Only re-fetch coin prices. Profile (cash, holdings, trades, joined
+    // comps) is kept in sync by the UserProfile real-time subscription, so
+    // re-dispatching LOAD_PROFILE here just causes a redundant merge that
+    // can flash a stale bankroll until the next TICK_PRICES recomputes.
     try {
       const prices = await fetchPrices();
       dispatch({ type: 'UPDATE_PRICES', prices });
-    } catch {}
-    try {
-      const profile = await loadProfile();
-      if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
-    } catch {}
+    } catch {
+      // Silent — simulated tick keeps prices alive
+    }
   };
 
   const handleHoldingTap = (symbol: string) => {
