@@ -52,11 +52,70 @@ export function TournamentDetailScreen() {
 
   const joined = isJoined(competitionId);
   const entries = leaderboard[competitionId] ?? [];
-  const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
 
-  const userRank = state.activeTournament?.id === competitionId
-    ? state.activeTournament.userRank
-    : (joined ? '—' : null);
+  // Pull the contest portfolio: active state if currently selected, else
+  // the stashed slice from state.portfolios. Falls back to a fresh $10K
+  // shape for not-yet-joined contests so the chart still renders something.
+  const contestPortfolio = state.activePortfolioId === competitionId
+    ? { cash: state.cash, holdings: state.holdings, trades: state.trades }
+    : (state.portfolios[competitionId] ?? { cash: 10000, holdings: [], trades: [] });
+  const contestBankroll = contestPortfolio.cash + contestPortfolio.holdings.reduce((s, h) => {
+    const c = state.coins.find(x => x.symbol === h.symbol);
+    return s + (c ? c.price * h.units : 0);
+  }, 0);
+  const pnlPct = ((contestBankroll - 10000) / 10000) * 100;
+
+  // Live player count derives from the subscribed leaderboard rather than the
+  // cached competition.entryCount (which was snapshotted at fetch time).
+  const playerCount = entries.length || competition.entryCount || 0;
+
+  // Top performer's P&L from the leaderboard. Empty when no entries yet.
+  const leaderEntry = [...entries].sort((a, b) => b.pnlPct - a.pnlPct)[0];
+  const leaderPct = leaderEntry?.pnlPct ?? 0;
+
+  // Determine the user's rank from the live leaderboard.
+  const meEntry = entries.find(e => e.handle === state.user.handle);
+  const userRank: number | string | null = meEntry?.rank ?? (joined ? '—' : null);
+
+  // Derive a real equity-since-start chart from this contest's trade
+  // history. Walks trades chronologically, using each trade's price as the
+  // last-known price for that symbol; snapshots bankroll at each trade.
+  const chartData = React.useMemo(() => {
+    const sorted = [...contestPortfolio.trades].sort((a, b) => a.timestamp - b.timestamp);
+    let cash = 10000;
+    const holdings = new Map<string, { units: number; avgCost: number }>();
+    const lastPrice = new Map<string, number>();
+    const snaps: number[] = [10000];
+    for (const tr of sorted) {
+      lastPrice.set(tr.symbol, tr.price);
+      if (tr.side === 'buy') {
+        cash -= tr.amount;
+        const ex = holdings.get(tr.symbol);
+        if (ex) {
+          const u = ex.units + tr.units;
+          holdings.set(tr.symbol, { units: u, avgCost: (ex.avgCost * ex.units + tr.amount) / u });
+        } else {
+          holdings.set(tr.symbol, { units: tr.units, avgCost: tr.price });
+        }
+      } else {
+        cash += tr.amount;
+        const ex = holdings.get(tr.symbol);
+        if (ex) {
+          const u = ex.units - tr.units;
+          if (u <= 1e-6) holdings.delete(tr.symbol);
+          else holdings.set(tr.symbol, { units: u, avgCost: ex.avgCost });
+        }
+      }
+      let bankroll = cash;
+      for (const [sym, h] of holdings) {
+        const price = lastPrice.get(sym) ?? state.coins.find(c => c.symbol === sym)?.price ?? 0;
+        bankroll += h.units * price;
+      }
+      snaps.push(bankroll);
+    }
+    snaps.push(contestBankroll);
+    return snaps.length >= 2 ? snaps : [10000, contestBankroll];
+  }, [contestPortfolio.trades, contestBankroll, state.coins]);
 
   useEffect(() => {
     refreshLeaderboard(competitionId);
@@ -113,7 +172,7 @@ export function TournamentDetailScreen() {
       <Card variant="noPad" style={{ flexDirection: 'row' }}>
         {[
           ['Prize pool', competition.prizePool],
-          ['Players', competition.entryCount.toLocaleString()],
+          ['Players', playerCount.toLocaleString()],
           ['Your rank', userRank !== null ? `#${userRank}` : '—'],
         ].map(([label, value], i) => (
           <View
@@ -137,16 +196,20 @@ export function TournamentDetailScreen() {
                   <View style={{ width: 8, height: 2, backgroundColor: colors.ink }} />
                   <Text style={{ fontSize: 11 }}>You {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <View style={{ width: 8, height: 2, backgroundColor: colors.up }} />
-                  <Text style={{ fontSize: 11, color: colors.ink3 }}>Leader +52%</Text>
-                </View>
+                {leaderEntry && leaderEntry.handle !== state.user.handle && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View style={{ width: 8, height: 2, backgroundColor: colors.up }} />
+                    <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                      Leader {leaderPct >= 0 ? '+' : ''}{leaderPct.toFixed(1)}%
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>${state.bankroll.toFixed(0)}</Text>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>${contestBankroll.toFixed(0)}</Text>
           </View>
           <View style={{ marginTop: 10 }}>
-            <AreaChart height={110} />
+            <AreaChart height={110} data={chartData} down={pnlPct < 0} />
           </View>
         </CardSection>
       </Card>
