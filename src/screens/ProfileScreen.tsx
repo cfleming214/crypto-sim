@@ -10,7 +10,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAvatarPhoto } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
@@ -369,6 +369,30 @@ export function ProfileScreen() {
           </CardSection>
         ))}
       </Card>
+
+      {/* Sign out */}
+      {status !== 'unauthenticated' && (
+        <TouchableOpacity
+          onPress={() => Alert.alert(
+            'Sign out?',
+            `You'll be signed out of @${state.user.handle}. Your portfolio is saved in the cloud.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+            ],
+          )}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            gap: 8, paddingVertical: 14, marginTop: 8,
+            borderRadius: 12, borderWidth: 1, borderColor: colors.hairline,
+            backgroundColor: colors.surface,
+          }}
+          activeOpacity={0.7}
+        >
+          <LogOut color={colors.down} size={18} strokeWidth={1.75} />
+          <Text style={{ fontWeight: '600', color: colors.down }}>Sign out</Text>
+        </TouchableOpacity>
+      )}
 
       <EditProfileModal visible={editVisible} onClose={() => setEditVisible(false)} />
     </ScreenShell>
