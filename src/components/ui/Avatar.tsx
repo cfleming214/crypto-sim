@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, Image, StyleSheet, ViewStyle } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { coinColors, coinColorsDark } from '../../theme/tokens';
 
@@ -10,16 +10,25 @@ interface AvatarProps {
   size?: AvatarSize;
   square?: boolean;
   brand?: boolean;
+  uri?: string;
   style?: ViewStyle;
 }
 
 const sizeMap: Record<AvatarSize, number> = { sm: 28, default: 36, lg: 52, xl: 64 };
 const fontSizeMap: Record<AvatarSize, number> = { sm: 11, default: 14, lg: 18, xl: 22 };
 
-export function Avatar({ initials = '?', size = 'default', square, brand, style }: AvatarProps) {
+export function Avatar({ initials = '?', size = 'default', square, brand, uri, style }: AvatarProps) {
   const { colors, isDark } = useTheme();
   const dim = sizeMap[size];
   const br = square ? 10 : dim / 2;
+
+  if (uri) {
+    return (
+      <View style={[{ width: dim, height: dim, borderRadius: br, overflow: 'hidden' }, style]}>
+        <Image source={{ uri }} style={{ width: dim, height: dim }} />
+      </View>
+    );
+  }
 
   return (
     <View

@@ -129,7 +129,8 @@ type Action =
   | { type: 'ADD_PRICE_ALERT'; symbol: string; targetPrice: number; direction: 'above' | 'below' }
   | { type: 'DISMISS_PRICE_ALERT'; alertId: string }
   | { type: 'RESET_DEMO' }
-  | { type: 'DISMISS_NUDGE'; nudgeId: string };
+  | { type: 'DISMISS_NUDGE'; nudgeId: string }
+  | { type: 'SET_AVATAR_URI'; uri: string };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -418,6 +419,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, user: { ...state.user, handle: action.handle.trim() || state.user.handle } };
     case 'SET_AVATAR_COLOR':
       return { ...state, user: { ...state.user, avatarColor: action.color } };
+    case 'SET_AVATAR_URI':
+      return { ...state, user: { ...state.user, avatarUri: action.uri } };
     case 'TOGGLE_WATCHLIST': {
       const inList = state.watchlist.includes(action.symbol);
       return {

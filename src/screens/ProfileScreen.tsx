@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -10,7 +10,8 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -22,10 +23,29 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   const { state, dispatch } = useApp();
   const [handle, setHandle] = useState(state.user.handle);
   const [avatarColor, setAvatarColor] = useState(state.user.avatarColor);
+  const [photoUri, setPhotoUri] = useState<string | null>(state.user.avatarUri ?? null);
+
+  const handlePickPhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to set your avatar.', [{ text: 'OK' }]);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
 
   const handleSave = () => {
     dispatch({ type: 'SET_HANDLE', handle });
     dispatch({ type: 'SET_AVATAR_COLOR', color: avatarColor });
+    if (photoUri) dispatch({ type: 'SET_AVATAR_URI', uri: photoUri });
     onClose();
   };
 
@@ -41,12 +61,31 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 20 }}>
           {/* Avatar preview */}
           <View style={{ alignItems: 'center', gap: 16 }}>
-            <Avatar
-              initials={handle.slice(0, 2).toUpperCase() || '??'}
-              size="xl"
-              style={{ backgroundColor: avatarColor }}
-            />
-            <Text style={{ fontSize: 12, color: colors.ink3 }}>Choose a color</Text>
+            <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.8} style={{ position: 'relative' }}>
+              {photoUri ? (
+                <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden' }}>
+                  <Image source={{ uri: photoUri }} style={{ width: 80, height: 80 }} />
+                </View>
+              ) : (
+                <Avatar
+                  initials={handle.slice(0, 2).toUpperCase() || '??'}
+                  size="xl"
+                  style={{ backgroundColor: avatarColor }}
+                />
+              )}
+              <View style={{
+                position: 'absolute', bottom: 0, right: 0,
+                width: 26, height: 26, borderRadius: 13,
+                backgroundColor: colors.brand,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 2, borderColor: colors.surface,
+              }}>
+                <Camera color={colors.brandOn} size={13} strokeWidth={2} />
+              </View>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 12, color: colors.ink3 }}>
+              {photoUri ? 'Tap to change photo · or choose a color below' : 'Tap to upload photo · or choose a color'}
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
               {AVATAR_COLORS.map(c => (
                 <TouchableOpacity key={c} onPress={() => setAvatarColor(c)}>
@@ -164,7 +203,7 @@ export function ProfileScreen() {
     >
       {/* Identity */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="xl" style={{ backgroundColor: state.user.avatarColor }} />
+        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="xl" uri={state.user.avatarUri} style={{ backgroundColor: state.user.avatarColor }} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>

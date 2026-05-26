@@ -95,6 +95,7 @@ export interface AppState {
     division: number;
     streak: number;
     avatarColor: string;
+    avatarUri?: string;
   };
   bankroll: number;
   cash: number;

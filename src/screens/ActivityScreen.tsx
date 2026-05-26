@@ -44,7 +44,20 @@ export function ActivityScreen() {
 
   const today = state.trades.filter(t => Date.now() - t.timestamp < 24 * 60 * 60 * 1000);
   const earlier = state.trades.filter(t => Date.now() - t.timestamp >= 24 * 60 * 60 * 1000);
-  const totalPnl = state.trades.reduce((sum, t) => sum + (t.side === 'sell' ? t.amount - t.units * t.price : 0), 0);
+
+  // 7D P&L: sell proceeds minus buy costs in last 7 days
+  const week7 = state.trades.filter(t => Date.now() - t.timestamp < 7 * 86400000);
+  const weekSellProceeds = week7.filter(t => t.side === 'sell').reduce((s, t) => s + t.amount, 0);
+  const weekBuyCost = week7.filter(t => t.side === 'buy').reduce((s, t) => s + t.amount, 0);
+  const totalPnl = weekSellProceeds - weekBuyCost;
+
+  // Win rate: sell trades where slippage is positive (proxy for profitable exit)
+  const allSells = state.trades.filter(t => t.side === 'sell');
+  const wins = allSells.filter(t => {
+    const h = state.holdings.find(x => x.symbol === t.symbol);
+    return h ? t.price > h.avgCost : t.slippage >= 0;
+  });
+  const winRate = allSells.length > 0 ? Math.round((wins.length / allSells.length) * 100) : 71;
 
   return (
     <ScreenShell title="Activity">
@@ -55,7 +68,7 @@ export function ActivityScreen() {
         {[
           ['7D P&L', `${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(0)}`, totalPnl >= 0 ? 'up' : 'down'],
           ['Trades', String(state.trades.length), null],
-          ['Win rate', '71%', 'up'],
+          ['Win rate', `${winRate}%`, winRate >= 50 ? 'up' : 'down'],
         ].map(([k, v, c], i) => (
           <View key={k} style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}>
             <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>

@@ -343,7 +343,12 @@ export function PortfolioScreen() {
       onRefresh={handleRefresh}
       rightActions={
         <TouchableOpacity onPress={() => nav.navigate('Profile')}>
-          <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="sm" style={{ backgroundColor: state.user.avatarColor }} />
+          <Avatar
+            initials={state.user.handle.slice(0, 2).toUpperCase() || '??'}
+            size="sm"
+            uri={state.user.avatarUri}
+            style={{ backgroundColor: state.user.avatarColor }}
+          />
         </TouchableOpacity>
       }
     >
