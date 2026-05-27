@@ -44,7 +44,7 @@ export function ScreenShell({
   const ink = brand ? colors.brandOn : colors.ink;
 
   const content = (
-    <View style={[{ flex: 1, gap: 14, paddingHorizontal: 20, paddingBottom: 20 }, contentStyle]}>
+    <View style={[{ flex: 1, gap: 14, paddingHorizontal: 20, paddingBottom: 8 }, contentStyle]}>
       {children}
     </View>
   );
@@ -78,7 +78,7 @@ export function ScreenShell({
       {scrollable ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ gap: 14, paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 }}
+          contentContainerStyle={{ gap: 14, paddingHorizontal: 20, paddingBottom: 8, paddingTop: 4 }}
           refreshControl={onRefresh ? (
             <RNRefreshControl
               refreshing={refreshing}
