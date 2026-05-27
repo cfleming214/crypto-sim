@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useEffect } from 'react';
-import { View, ViewStyle } from 'react-native';
-import Svg, { Path, Circle } from 'react-native-svg';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { View, ViewStyle, PanResponder, Text } from 'react-native';
+import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
 
 interface AreaChartProps {
@@ -11,6 +11,8 @@ interface AreaChartProps {
   down?: boolean;
   showDot?: boolean;
   style?: ViewStyle;
+  timestamps?: number[];   // optional ms-epoch per data point — enables date in crosshair tooltip
+  crosshair?: boolean;     // enable touch-driven inspection (default true when data supplied)
 }
 
 function generatePath(data: number[], w: number, h: number, closed = false): string {
@@ -61,9 +63,7 @@ function generateData(timeframe: string, endValue: number): number[] {
 
   for (let i = 0; i <= points; i++) {
     const progress = i / points;
-    // Smooth trend toward endValue
     const trend = progress * (endValue - startValue);
-    // Deterministic noise using sin/cos with seed
     const noise = (
       Math.sin((i + seed) * 1.7) * 0.6 +
       Math.sin((i + seed) * 0.4) * 0.3 +
@@ -75,15 +75,25 @@ function generateData(timeframe: string, endValue: number): number[] {
     data.push(v);
   }
 
-  // Pin last point to exact current value
   data[data.length - 1] = endValue;
   return data;
 }
 
-export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style }: AreaChartProps) {
+function formatTooltipTime(ts: number): string {
+  const d = new Date(ts);
+  const now = Date.now();
+  const ageMs = now - ts;
+  // < 24h: show time only; otherwise date
+  if (ageMs < 24 * 60 * 60 * 1000) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' · ' +
+         d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair }: AreaChartProps) {
   const { colors } = useTheme();
 
-  // Capture baseValue at the moment timeframe changes, not on every price tick
   const baseValueRef = useRef(baseValue ?? 10847);
   useEffect(() => {
     if (baseValue !== undefined) baseValueRef.current = baseValue;
@@ -92,23 +102,101 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const chartData = useMemo(() => {
     if (data) return data;
     return generateData(timeframe ?? '7D', baseValueRef.current);
-  }, [timeframe, data]); // re-generate only on timeframe change
+  }, [timeframe, data]);
 
   const color = down ? colors.down : colors.up;
+  const crosshairEnabled = crosshair !== false && !!data && chartData.length >= 2;
+
+  // Real on-screen width of the chart, captured via onLayout. Touch x is in this
+  // coordinate space; the SVG viewBox is fixed at 0..300 with
+  // preserveAspectRatio="none", so we just scale.
+  const [layoutWidth, setLayoutWidth] = useState(300);
+  const [crosshairIdx, setCrosshairIdx] = useState<number | null>(null);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => crosshairEnabled,
+    onMoveShouldSetPanResponder:  () => crosshairEnabled,
+    onPanResponderGrant: (e) => {
+      const x = e.nativeEvent.locationX;
+      const ratio = Math.max(0, Math.min(1, x / Math.max(1, layoutWidth)));
+      setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
+    },
+    onPanResponderMove: (e) => {
+      const x = e.nativeEvent.locationX;
+      const ratio = Math.max(0, Math.min(1, x / Math.max(1, layoutWidth)));
+      setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
+    },
+    onPanResponderRelease: () => setCrosshairIdx(null),
+    onPanResponderTerminate: () => setCrosshairIdx(null),
+  }), [crosshairEnabled, layoutWidth, chartData.length]);
+
+  // Precompute layout helpers for crosshair rendering
+  const min = Math.min(...chartData);
+  const max = Math.max(...chartData);
+  const range = max - min || 1;
+  const yForValue = (v: number) => height - ((v - min) / range) * height * 0.85 - height * 0.075;
+  const xForIdx = (i: number) => (i / (chartData.length - 1)) * 300;
+
+  const hoverIdx = crosshairIdx;
+  const hoverValue = hoverIdx !== null ? chartData[hoverIdx] : null;
+  const hoverTs = (hoverIdx !== null && timestamps) ? timestamps[hoverIdx] : null;
 
   return (
-    <View style={[{ height }, style]}>
+    <View
+      style={[{ height }, style]}
+      onLayout={e => setLayoutWidth(e.nativeEvent.layout.width)}
+      {...panResponder.panHandlers}
+    >
       <Svg width="100%" height={height} viewBox={`0 0 300 ${height}`} preserveAspectRatio="none">
         <Path d={generatePath(chartData, 300, height, false)} stroke={color} strokeWidth="2" fill="none" />
-        {showDot && (() => {
+        {showDot && hoverIdx === null && (() => {
           const last = chartData[chartData.length - 1];
-          const min = Math.min(...chartData);
-          const max = Math.max(...chartData);
-          const range = max - min || 1;
-          const dotY = height - ((last - min) / range) * height * 0.85 - height * 0.075;
-          return <Circle cx="300" cy={dotY} r="3.5" fill={color} />;
+          return <Circle cx="300" cy={yForValue(last)} r="3.5" fill={color} />;
         })()}
+        {hoverIdx !== null && hoverValue !== null && (
+          <>
+            <Line
+              x1={xForIdx(hoverIdx)} y1={0}
+              x2={xForIdx(hoverIdx)} y2={height}
+              stroke={colors.ink3}
+              strokeWidth="1"
+              strokeDasharray="3,3"
+            />
+            <Circle cx={xForIdx(hoverIdx)} cy={yForValue(hoverValue)} r="4.5" fill={color} stroke={colors.surface} strokeWidth="2" />
+          </>
+        )}
       </Svg>
+
+      {/* Crosshair tooltip rendered above the chart in real pixel coords */}
+      {hoverIdx !== null && hoverValue !== null && (() => {
+        const tooltipX = (hoverIdx / Math.max(1, chartData.length - 1)) * layoutWidth;
+        // Keep tooltip within bounds — 140px wide approx
+        const left = Math.max(4, Math.min(layoutWidth - 140, tooltipX - 70));
+        return (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 6,
+              left,
+              backgroundColor: colors.ink,
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 8,
+              minWidth: 90,
+            }}
+          >
+            <Text style={{ color: colors.brandOn, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+              ${hoverValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            {hoverTs !== null && (
+              <Text style={{ color: `${colors.brandOn}99`, fontSize: 10, marginTop: 1 }}>
+                {formatTooltipTime(hoverTs)}
+              </Text>
+            )}
+          </View>
+        );
+      })()}
     </View>
   );
 }

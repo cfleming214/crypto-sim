@@ -293,7 +293,7 @@ export function PortfolioScreen() {
     '30D':  30 * 24 * 60 * 60 * 1000,
     'MAX':  Number.MAX_SAFE_INTEGER,
   };
-  const chartData = React.useMemo(() => {
+  const { chartData, chartTimestamps } = React.useMemo(() => {
     const cutoff = Date.now() - (TF_WINDOW_MS[tf] ?? TF_WINDOW_MS['7D']);
     const windowed = historySnapshots.filter(s => s.t >= cutoff);
     // Guarantee a starting anchor: if the first snapshot is after cutoff,
@@ -302,8 +302,14 @@ export function PortfolioScreen() {
       const pre = historySnapshots.filter(s => s.t < cutoff).slice(-1)[0];
       if (pre) windowed.unshift({ t: cutoff, v: pre.v });
     }
-    const values = (windowed.length >= 2 ? windowed : historySnapshots).map(s => s.v);
-    return values.length >= 2 ? values : [startEquity, totalEquity];
+    const series = windowed.length >= 2 ? windowed : historySnapshots;
+    if (series.length >= 2) {
+      return { chartData: series.map(s => s.v), chartTimestamps: series.map(s => s.t) };
+    }
+    return {
+      chartData:       [startEquity, totalEquity],
+      chartTimestamps: [Date.now() - (TF_WINDOW_MS[tf] ?? 0), Date.now()],
+    };
   }, [historySnapshots, tf]);
 
   const holdingRows = [
@@ -499,7 +505,7 @@ export function PortfolioScreen() {
 
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
-        <AreaChart height={170} data={chartData} down={!pnlPositive} />
+        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} down={!pnlPositive} />
       </View>
 
       <Segmented
