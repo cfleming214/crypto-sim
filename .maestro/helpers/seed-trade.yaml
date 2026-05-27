@@ -4,25 +4,26 @@ appId: com.cfleming.cryptosim
 # need an existing trade to test against (view holding, activity history,
 # trade detail screen).
 #
-# Caller passes:
+# Caller passes via env:
 #   SYMBOL   e.g. BTC
 #   AMOUNT   dollar amount as a string e.g. "100"
-#   SIDE     "buy" or "sell" (default: buy)
-- tapOn: { text: "Trade" }          # switch to Trade tab
-# Symbol switching is handled by the Markets tab tap-to-trade in real flows;
-# for the seed helper we trust the current symbol matches what the test wants.
-- tapOn:
-    id: ${'trade-' + (SIDE == 'sell' ? 'sell' : 'buy') + '-btn'}
+#   SIDE     "buy" (default) — sell handled by a separate helper if needed
+#
+# (Maestro YAML doesn't allow ternaries inside an id: scalar — keeping the
+# helper buy-only and using a sibling helper for sells avoids that pitfall.)
+- tapOn: { text: "Trade" }
+- tapOn: { id: "trade-buy-btn" }
 - assertVisible: { id: "trade-place-order-btn" }
-# Enter the dollar amount key-by-key via the NumPad.
+
+# Type the dollar amount one digit at a time via the NumPad.
 - evalScript: ${output.digits = AMOUNT.split('')}
+- evalScript: ${output.i = 0}
 - repeat:
     times: ${output.digits.length}
     commands:
       - tapOn:
-          id: ${'numpad-key-' + output.digits[output.index]}
-      - evalScript: ${output.index = (output.index || 0) + 1}
+          id: "numpad-key-${output.digits[output.i]}"
+      - evalScript: ${output.i = output.i + 1}
 - tapOn: { id: "trade-place-order-btn" }
-# Order success screen
 - assertVisible:
     text: "Order filled"

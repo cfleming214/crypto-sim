@@ -24,6 +24,9 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Lint Maestro flows
+        run: npm run test:e2e:lint
+
       - name: Install Maestro CLI
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
