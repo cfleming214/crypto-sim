@@ -1,0 +1,234 @@
+appId: com.cfleming.cryptosim
+tags:
+  - journey
+  - full
+---
+# Comprehensive single-user journey.
+#
+# Spawns a fresh test-{uuid}@example.com user and walks them through every
+# major surface of the app: cold-start rebalance, 10 individual trades (mix
+# of buy/sell across all 5 coins), watchlist, filter, contest join,
+# leaderboard view, copy-trade browse + mirror, profile edit, notifications,
+# sign-out.
+#
+# Designed to be run in parallel for N users by scripts/run-multi-user-e2e.mjs.
+# Each parallel invocation gets its own email so DynamoDB / Cognito don't
+# collide across users — cleanup script wipes everything afterward.
+
+# ---------- 1. Sign-up ----------
+- runFlow: ../helpers/sign-up-fresh.yaml
+
+# At this point the user is on the confirm-code screen. In a test pool with
+# auto-confirm enabled the next signIn from autoSignIn lands on Portfolio.
+# Without auto-confirm, the rest of the journey is skipped (the code-input
+# screen has no Portfolio elements so subsequent steps fail-fast).
+- assertVisible:
+    id: "portfolio-rebalance-btn"
+    timeout: 30000
+
+# ---------- 2. Cold-start rebalance ----------
+# Builds 5 holdings from $10K cash.
+- tapOn: { id: "portfolio-rebalance-btn" }
+- assertVisible: { id: "rebalance-confirm-btn" }
+- tapOn: { id: "rebalance-confirm-btn" }
+- assertVisible: { id: "portfolio-holding-row-BTC" }
+- assertVisible: { id: "portfolio-holding-row-ETH" }
+- assertVisible: { id: "portfolio-holding-row-SOL" }
+- assertVisible: { id: "portfolio-holding-row-DOGE" }
+- assertVisible: { id: "portfolio-holding-row-PEPE" }
+
+# ---------- 3-12. Ten trades ----------
+# Mix of buys and sells across all five coins. Each is a market order via
+# the Markets tab → coin row → buy/sell button → numpad amount → confirm.
+# Amounts are deliberately small ($10–$50) so the user's cash buffer can
+# sustain all 10 trades without exhausting the wallet.
+
+# Trade 1: BUY $50 BTC
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "View portfolio"
+    optional: true
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 2: BUY $30 ETH
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-ETH" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-3" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 3: BUY $20 SOL
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-SOL" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-2" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 4: BUY $15 DOGE
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-DOGE" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-1" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 5: BUY $10 PEPE
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-PEPE" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-1" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 6: SELL $30 BTC (partial)
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+- tapOn: { id: "trade-sell-btn" }
+- tapOn: { id: "numpad-key-3" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 7: SELL $20 ETH
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-ETH" }
+- tapOn: { id: "trade-sell-btn" }
+- tapOn: { id: "numpad-key-2" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 8: SELL $10 SOL
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-SOL" }
+- tapOn: { id: "trade-sell-btn" }
+- tapOn: { id: "numpad-key-1" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 9: BUY $25 BTC (round trip back into BTC)
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-2" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# Trade 10: SELL $5 DOGE
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-DOGE" }
+- tapOn: { id: "trade-sell-btn" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible: { text: "Order filled" }
+- tapOn:
+    text: "Trade more"
+    optional: true
+
+# ---------- 13. Markets: watchlist toggle ----------
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-watchlist-star-PEPE" }
+
+# ---------- 14. Markets: filter sheet ----------
+- tapOn: { id: "markets-filter-btn" }
+- tapOn:
+    text: "Close"
+    optional: true
+- tapOn:
+    text: "X"
+    optional: true
+
+# ---------- 15. Compete: join first contest ----------
+- runFlow: ../helpers/join-first-contest.yaml
+
+# ---------- 16. Leaderboard visible ----------
+- assertVisible:
+    text: "Leaderboard"
+
+# ---------- 17. Copy-trade: browse top traders ----------
+- tapOn: { text: "Compete" }
+- tapOn: { id: "compete-top-traders-link" }
+- assertVisible:
+    text: "Top traders"
+
+# ---------- 18. Open first trader (if any exist) ----------
+- tapOn:
+    id: "top-traders-row-.*"
+    index: 0
+    optional: true
+
+# ---------- 19. Edit mirror allocation (only if on CopyTradeScreen) ----------
+- tapOn:
+    id: "copytrade-edit-mirror-btn"
+    optional: true
+- tapOn:
+    id: "mirror-allocation-input"
+    optional: true
+- inputText:
+    text: "500"
+    optional: true
+- tapOn:
+    id: "mirror-save-btn"
+    optional: true
+
+# ---------- 20. Profile: edit handle ----------
+- tapOn: { text: "Profile" }
+- tapOn: { id: "profile-edit-btn" }
+- tapOn: { id: "profile-handle-input" }
+- eraseText: 30
+- inputText: "auto${Math.random().toString(36).slice(2, 6)}"
+- tapOn: { id: "profile-save-btn" }
+
+# ---------- 21. Notifications: open list ----------
+- tapOn:
+    text: "Notifications"
+    optional: true
+- assertVisible:
+    text: "Notifications"
+    optional: true
+
+# ---------- 22. Sign-out ----------
+- runFlow: ../helpers/sign-out.yaml
+
+# Final assertion: back on AuthScreen
+- assertVisible: { id: "auth-email-input" }

@@ -40,6 +40,9 @@ yarn-error.*
 /ios
 /android
 
+# Maestro run logs
+.maestro-runs/
+
 # Amplify CDK build artifacts
 .amplify/
 amplify/amplify_outputs.json
