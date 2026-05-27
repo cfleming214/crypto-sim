@@ -50,7 +50,7 @@ export function ScreenShell({
   );
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: bg }, style]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[{ flex: 1, backgroundColor: bg }, style]}>
       <StatusBar style={isDark || brand ? 'light' : 'dark'} />
 
       {/* Header */}
