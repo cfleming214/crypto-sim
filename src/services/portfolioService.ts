@@ -94,12 +94,32 @@ async function loadUserTrades(client: any): Promise<import('../store/types').Tra
   }
 }
 
+// CompetitionEntry has allow.authenticated().to(['read']) so list() returns
+// rows from every user (needed for leaderboards). For this user's own joined
+// competitions we have to filter by the owner field client-side.
+async function getCurrentOwnerId(): Promise<string | null> {
+  try {
+    const { fetchAuthSession } = await import('aws-amplify/auth');
+    const session = await fetchAuthSession();
+    return (session.userSub as string | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function ownedByMe(record: any, ownerId: string | null): boolean {
+  if (!ownerId) return false;
+  // Amplify Gen 2 stores owner as "{sub}::{username}" by default. Match by prefix.
+  const owner: string | undefined = record.owner;
+  return typeof owner === 'string' && owner.startsWith(ownerId);
+}
+
 async function loadJoinedCompetitions(client: any): Promise<string[]> {
   try {
+    const ownerId = await getCurrentOwnerId();
     const { data } = await client.models.CompetitionEntry.list();
-    // CompetitionEntry has owner-scoped read, so list() only returns mine
     return (data as any[])
-      .filter(e => e.isActive !== false)
+      .filter(e => e.isActive !== false && ownedByMe(e, ownerId))
       .map(e => e.competitionId);
   } catch {
     return [];
@@ -110,10 +130,12 @@ export async function loadContestPortfolios(): Promise<Record<string, PortfolioS
   const client = await getClient();
   if (!client) return {};
   try {
+    const ownerId = await getCurrentOwnerId();
     const { data } = await client.models.CompetitionEntry.list();
     const out: Record<string, PortfolioSlice> = {};
     for (const e of data as any[]) {
       if (e.isActive === false) continue;
+      if (!ownedByMe(e, ownerId)) continue;
       out[e.competitionId] = {
         cash:     typeof e.cash === 'number' ? e.cash : 10000,
         holdings: e.holdingsJson ? JSON.parse(e.holdingsJson) : [],
@@ -130,11 +152,14 @@ export async function saveContestPortfolio(competitionId: string, slice: Portfol
   const client = await getClient();
   if (!client) return;
   try {
-    // Find the user's CompetitionEntry for this contest
+    // Find THIS USER's CompetitionEntry for this contest. The list query with
+    // a competitionId filter returns all users' entries (allow.authenticated
+    // read), so we have to narrow by owner client-side.
+    const ownerId = await getCurrentOwnerId();
     const { data: entries } = await client.models.CompetitionEntry.list({
       filter: { competitionId: { eq: competitionId } },
     });
-    const own = (entries as any[]).find(e => e.competitionId === competitionId);
+    const own = (entries as any[]).find(e => e.competitionId === competitionId && ownedByMe(e, ownerId));
     if (!own) return; // user hasn't joined this contest — nothing to save against
     await client.models.CompetitionEntry.update({
       id: own.id,
