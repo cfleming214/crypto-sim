@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Segmented } from '../components/ui/Segmented';
@@ -31,15 +32,10 @@ function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
 }
 
 
-const earnings = [
-  { label: 'Tournament prize — Quick Sprint',  amount: '+$0',   time: '3 days ago', type: 'neutral' },
-  { label: 'Referral bonus',                   amount: '+$5',   time: '1 week ago', type: 'up' },
-  { label: 'Season 2 — Platinum I finish',     amount: '+$420', time: 'Last season', type: 'up' },
-];
-
 export function ActivityScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
+  const nav = useNavigation<any>();
   const [tab, setTab] = useState('Trades');
 
   const today = state.trades.filter(t => Date.now() - t.timestamp < 24 * 60 * 60 * 1000);
@@ -57,7 +53,7 @@ export function ActivityScreen() {
     const h = state.holdings.find(x => x.symbol === t.symbol);
     return h ? t.price > h.avgCost : t.slippage >= 0;
   });
-  const winRate = allSells.length > 0 ? Math.round((wins.length / allSells.length) * 100) : 71;
+  const winRate = allSells.length > 0 ? Math.round((wins.length / allSells.length) * 100) : 0;
 
   return (
     <ScreenShell title="Activity">
@@ -90,23 +86,29 @@ export function ActivityScreen() {
                 <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Today</Text>
                 <Card variant="noPad">
                   {today.map((t, i) => (
-                    <CardSection key={t.id} last={i === today.length - 1}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        <TradeIcon side={t.side} />
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
-                            <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
-                          </View>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                            <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                              {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                            </Text>
-                            <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+                    <TouchableOpacity
+                      key={t.id}
+                      activeOpacity={0.75}
+                      onPress={() => nav.navigate('TradeDetail', { tradeId: t.id })}
+                    >
+                      <CardSection last={i === today.length - 1}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                          <TradeIcon side={t.side} />
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
+                              <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                              <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                                {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    </CardSection>
+                      </CardSection>
+                    </TouchableOpacity>
                   ))}
                 </Card>
               </>
@@ -116,23 +118,29 @@ export function ActivityScreen() {
                 <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Earlier</Text>
                 <Card variant="noPad">
                   {earlier.map((t, i) => (
-                    <CardSection key={t.id} last={i === earlier.length - 1}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        <TradeIcon side={t.side} />
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
-                            <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
-                          </View>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                            <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                              {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleDateString()}
-                            </Text>
-                            <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+                    <TouchableOpacity
+                      key={t.id}
+                      activeOpacity={0.75}
+                      onPress={() => nav.navigate('TradeDetail', { tradeId: t.id })}
+                    >
+                      <CardSection last={i === earlier.length - 1}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                          <TradeIcon side={t.side} />
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
+                              <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                              <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                                {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleDateString()}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    </CardSection>
+                      </CardSection>
+                    </TouchableOpacity>
                   ))}
                 </Card>
               </>
@@ -187,21 +195,12 @@ export function ActivityScreen() {
       )}
 
       {tab === 'Earnings' && (
-        <Card variant="noPad">
-          {earnings.map((e, i) => (
-            <CardSection key={e.label} last={i === earnings.length - 1}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '600', color: colors.ink }}>{e.label}</Text>
-                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{e.time}</Text>
-                </View>
-                <Text style={{ fontWeight: '700', color: e.type === 'up' ? colors.up : colors.ink, fontVariant: ['tabular-nums'] }}>
-                  {e.amount}
-                </Text>
-              </View>
-            </CardSection>
-          ))}
-        </Card>
+        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+          <Text style={{ fontSize: 16, color: colors.ink3 }}>No earnings yet</Text>
+          <Text style={{ fontSize: 13, color: colors.ink4, textAlign: 'center', paddingHorizontal: 40 }}>
+            Finish a contest in the prize positions to see your payouts here.
+          </Text>
+        </View>
       )}
 
       {tab === 'XP log' && (() => {

@@ -6,6 +6,8 @@ export interface Coin {
   marketCap: string;
   volume: string;
   history: number[];
+  high24h?: number;     // raw USD from CoinGecko, undefined until first UPDATE_PRICES
+  low24h?: number;
 }
 
 export interface Holding {
@@ -108,6 +110,7 @@ export interface AppState {
     avatarColor: string;
     avatarUri?: string;   // resolvable URL (signed if from S3, local file:// if just picked)
     avatarKey?: string;   // stable S3 key for cloud persistence (e.g. "profile.jpg")
+    createdAt?: number;   // ms epoch — when this UserProfile row was created in DynamoDB
   };
   bankroll: number;
   cash: number;
@@ -134,4 +137,7 @@ export interface AppState {
   dismissedNudgeIds: string[];
   hasOnboarded: boolean;
   tradeSymbol: string;
+  // External market context, refreshed alongside fetchPrices.
+  globalStats?: { totalMarketCap: number; change24h: number };
+  fearGreed?:   { value: number; label: string };
 }

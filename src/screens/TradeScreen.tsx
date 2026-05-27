@@ -9,6 +9,7 @@ import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { CandleChart, type Indicator } from '../components/charts/CandleChart';
 import { fetchOhlc, type OhlcCandle } from '../services/priceService';
+import { latestRSI } from '../lib/indicators';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
@@ -537,36 +538,64 @@ export function TradeScreen() {
             </View>
           )}
 
-          {/* Stats grid */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, backgroundColor: colors.surface2, borderRadius: 12, padding: 14 }}>
-            {[
-              ['24h High', `$${(price * 1.01).toFixed(price < 0.01 ? 8 : 0)}`],
-              ['24h Low',  `$${(price * 0.97).toFixed(price < 0.01 ? 8 : 0)}`],
-              ['Volume',   coin.volume],
-              ['Mkt Cap',  coin.marketCap],
-              ['RSI 14',   '64.2'],
-              ['Your pos.', (() => { const h = state.holdings.find(x => x.symbol === symbol); if (!h) return '—'; const pnl = h.units * price - h.units * h.avgCost; return `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`; })()],
-            ].map(([label, value]) => (
-              <View key={label} style={{ width: '30%' }}>
-                <Text style={{ fontSize: 11, color: colors.ink3 }}>{label}</Text>
-                <Text style={{ fontWeight: '600', color: label === 'Your pos.' ? colors.up : colors.ink, fontVariant: ['tabular-nums'] }}>
-                  {value}
-                </Text>
-              </View>
-            ))}
-          </View>
+          {/* Stats grid — all values now derived from real CoinGecko data */}
+          {(() => {
+            const fmt = (n: number) => `$${n.toLocaleString('en-US', {
+              minimumFractionDigits: n < 0.01 ? 6 : 2,
+              maximumFractionDigits: n < 0.01 ? 8 : 2,
+            })}`;
+            const rsi = latestRSI(coin.history, 14);
+            const ownHolding = state.holdings.find(x => x.symbol === symbol);
+            const ownPnl    = ownHolding ? ownHolding.units * price - ownHolding.units * ownHolding.avgCost : 0;
+            const ownValue  = ownHolding ? ownHolding.units * price : 0;
 
-          <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-            <Shield color={colors.warn} size={16} strokeWidth={1.75} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: '600', fontSize: 12, color: colors.ink }}>
-                A $1,000 buy raises your risk score {state.riskScore} → {state.riskScore + 5}
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
-                {symbol} would be 43% of portfolio · still within bracket limits
-              </Text>
-            </View>
-          </Card>
+            // Concentration if user adds another $1,000 of this coin (the risk card below).
+            const hypotheticalHoldingValue = ownValue + 1000;
+            const hypotheticalBankroll = state.bankroll + 0; // bankroll already includes ownValue
+            const concentrationPct = hypotheticalBankroll > 0 ? (hypotheticalHoldingValue / hypotheticalBankroll) * 100 : 0;
+
+            const stats = [
+              ['24h High',  coin.high24h ? fmt(coin.high24h) : '—'],
+              ['24h Low',   coin.low24h  ? fmt(coin.low24h)  : '—'],
+              ['Volume',    coin.volume],
+              ['Mkt Cap',   coin.marketCap],
+              ['RSI 14',    rsi !== null ? rsi.toFixed(1) : '—'],
+              ['Your pos.', ownHolding ? `${ownPnl >= 0 ? '+' : ''}$${Math.abs(ownPnl).toFixed(0)}` : '—'],
+            ];
+
+            return (
+              <>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, backgroundColor: colors.surface2, borderRadius: 12, padding: 14 }}>
+                  {stats.map(([label, value]) => (
+                    <View key={label} style={{ width: '30%' }}>
+                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{label}</Text>
+                      <Text style={{
+                        fontWeight: '600',
+                        color: label === 'Your pos.'
+                          ? (ownPnl >= 0 ? colors.up : colors.down)
+                          : colors.ink,
+                        fontVariant: ['tabular-nums'],
+                      }}>
+                        {value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <Shield color={colors.warn} size={16} strokeWidth={1.75} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 12, color: colors.ink }}>
+                      A $1,000 buy raises your risk score {state.riskScore} → {Math.max(0, state.riskScore - 5)}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
+                      {symbol} would be {concentrationPct.toFixed(0)}% of portfolio
+                    </Text>
+                  </View>
+                </Card>
+              </>
+            );
+          })()}
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
             <Button variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>

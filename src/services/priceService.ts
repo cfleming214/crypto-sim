@@ -5,6 +5,18 @@ export interface PriceData {
   marketCapRaw: number;
   volumeRaw: number;
   sparkline24h: number[];  // hourly closes for the last ~24 hours
+  high24h: number;
+  low24h: number;
+}
+
+export interface GlobalMarketStats {
+  totalMarketCap: number;
+  change24h: number;
+}
+
+export interface FearGreedReading {
+  value: number;   // 0..100
+  label: string;   // 'Extreme Fear' | 'Fear' | 'Neutral' | 'Greed' | 'Extreme Greed'
 }
 
 export interface OhlcCandle {
@@ -138,6 +150,68 @@ export async function fetchPrices(): Promise<PriceData[]> {
         marketCapRaw: c.market_cap ?? 0,
         volumeRaw:    c.total_volume ?? 0,
         sparkline24h,
+        high24h:      typeof c.high_24h === 'number' && c.high_24h > 0 ? c.high_24h : c.current_price,
+        low24h:       typeof c.low_24h  === 'number' && c.low_24h  > 0 ? c.low_24h  : c.current_price,
       };
     });
+}
+
+// 5-minute cache for the global aggregate. Hammering /global on every 30s
+// price poll would burn the rate budget; once every few polls is plenty since
+// the total market cap barely moves second-to-second.
+let globalCache: { fetchedAt: number; data: GlobalMarketStats } | null = null;
+const GLOBAL_TTL_MS = 5 * 60 * 1000;
+
+export async function fetchGlobalMarketStats(): Promise<GlobalMarketStats | null> {
+  if (globalCache && Date.now() - globalCache.fetchedAt < GLOBAL_TTL_MS) {
+    return globalCache.data;
+  }
+  if (Date.now() < rateLimitedUntil) return globalCache?.data ?? null;
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/global', {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + 60 * 1000;
+      return globalCache?.data ?? null;
+    }
+    if (!res.ok) throw new Error(`CoinGecko global ${res.status}`);
+    const json = await res.json();
+    const totalMarketCap = json?.data?.total_market_cap?.usd;
+    const change24h      = json?.data?.market_cap_change_percentage_24h_usd;
+    if (typeof totalMarketCap !== 'number' || typeof change24h !== 'number') return globalCache?.data ?? null;
+    const data: GlobalMarketStats = { totalMarketCap, change24h };
+    globalCache = { fetchedAt: Date.now(), data };
+    return data;
+  } catch (e) {
+    console.warn('fetchGlobalMarketStats failed:', e);
+    return globalCache?.data ?? null;
+  }
+}
+
+// Fear & Greed index from alternative.me — free, no key, ~hourly updates.
+let fearGreedCache: { fetchedAt: number; data: FearGreedReading } | null = null;
+const FNG_TTL_MS = 30 * 60 * 1000;   // updates ~hourly upstream
+
+export async function fetchFearGreedIndex(): Promise<FearGreedReading | null> {
+  if (fearGreedCache && Date.now() - fearGreedCache.fetchedAt < FNG_TTL_MS) {
+    return fearGreedCache.data;
+  }
+  try {
+    const res = await fetch('https://api.alternative.me/fng/?limit=1', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`alternative.me fng ${res.status}`);
+    const json = await res.json();
+    const row = json?.data?.[0];
+    const value = row?.value ? parseInt(row.value, 10) : NaN;
+    const label = row?.value_classification as string | undefined;
+    if (!Number.isFinite(value) || !label) return fearGreedCache?.data ?? null;
+    const data: FearGreedReading = { value, label };
+    fearGreedCache = { fetchedAt: Date.now(), data };
+    return data;
+  } catch (e) {
+    console.warn('fetchFearGreedIndex failed:', e);
+    return fearGreedCache?.data ?? null;
+  }
 }

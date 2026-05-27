@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card } from '../components/ui/Card';
@@ -7,6 +7,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { fetchTopTraders, subscribeToTopTraders, type PublicTrader } from '../services/portfolioService';
 import { Filter } from 'lucide-react-native';
 
 const DIVISION_LABELS = ['', 'I', 'II', 'III', 'IV'];
@@ -22,21 +23,6 @@ const DIVISION_PLAYERS = [
   { rank: 8,  handle: null,         name: null,          pnl: null,     xpRaw: null,  trend: 'flat', tag: 'you' },
   { rank: 9,  handle: '@nakamoto',  name: 'Sam G.',      pnl: '+7.0%',  xpRaw: 4610,  trend: 'down', tag: null },
   { rank: 10, handle: '@moonlord',  name: 'Casey T.',    pnl: '+4.1%',  xpRaw: 3870,  trend: 'flat', tag: null },
-];
-
-const FRIENDS_PLAYERS = [
-  { rank: 1, handle: '@orca',    name: 'Diana K.',  pnl: '+71.4%', xpRaw: 12840, trend: 'up',   tag: null },
-  { rank: 2, handle: null,       name: null,         pnl: null,     xpRaw: null,  trend: 'flat', tag: 'you' },
-  { rank: 3, handle: '@quanto',  name: 'J. Sato',   pnl: '+22.3%', xpRaw: 7310,  trend: 'up',   tag: null },
-  { rank: 4, handle: '@mira',    name: 'Mira F.',   pnl: '+17.6%', xpRaw: 6490,  trend: 'flat', tag: null },
-];
-
-const GLOBAL_PLAYERS = [
-  { rank: 1,   handle: '@satoshi2', name: 'H. Park',    pnl: '+312%', xpRaw: 94200, trend: 'up',   tag: null },
-  { rank: 2,   handle: '@whale99',  name: 'T. Reeves',  pnl: '+284%', xpRaw: 88100, trend: 'up',   tag: null },
-  { rank: 3,   handle: '@moonmath', name: 'R. Patel',   pnl: '+197%', xpRaw: 71400, trend: 'up',   tag: null },
-  { rank: 7,   handle: '@orca',     name: 'Diana K.',   pnl: '+71.4%',xpRaw: 12840, trend: 'up',   tag: null },
-  { rank: 112, handle: null,        name: null,         pnl: null,    xpRaw: null,  trend: 'flat', tag: 'you' },
 ];
 
 function PlayerRow({ rank, handle, name, pnl, xpRaw, trend, tag, last, userHandle, userXp, userPnlPct, userAvatarUri, userAvatarColor }: {
@@ -97,6 +83,16 @@ export function LeagueScreen() {
   const { colors } = useTheme();
   const { state } = useApp();
   const [tab, setTab] = useState('Your division');
+  const [globalTraders, setGlobalTraders] = useState<PublicTrader[]>([]);
+
+  // Global tab: live PublicProfile collection ranked by P&L. Same source as
+  // TopTradersScreen — subscribed for real-time updates as traders trade.
+  useEffect(() => {
+    fetchTopTraders(50).then(setGlobalTraders);
+    let unsub: () => void = () => {};
+    subscribeToTopTraders(setGlobalTraders, 50).then(u => { unsub = u; });
+    return () => unsub();
+  }, []);
 
   const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
   const league = state.user.league;
@@ -105,7 +101,6 @@ export function LeagueScreen() {
 
   // "Your division" pulls live entries from the most recently joined
   // competition's leaderboard (subscribed real-time by AppContext).
-  // Falls back to the seeded mock list when there's no joined comp yet.
   const liveCompId = state.joinedTournamentIds[state.joinedTournamentIds.length - 1];
   const liveEntries = liveCompId ? state.leaderboard[liveCompId] ?? [] : [];
   const livePlayers = liveEntries.map(e => ({
@@ -118,19 +113,31 @@ export function LeagueScreen() {
     tag: e.handle === state.user.handle ? 'you' : null,
   }));
 
-  const players = tab === 'Friends' ? FRIENDS_PLAYERS
-    : tab === 'Global' ? GLOBAL_PLAYERS
+  // Global from real PublicProfile rows. Already sorted by pnlPct desc.
+  const globalPlayers = globalTraders.map((t, idx) => ({
+    rank: idx + 1,
+    handle: `@${t.handle}`,
+    name: t.handle,
+    pnl: `${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%`,
+    xpRaw: Math.round(t.bankroll),
+    trend: t.pnlPct >= 0 ? 'up' : 'down',
+    tag: t.handle === state.user.handle ? 'you' : null,
+  }));
+
+  const players = tab === 'Friends' ? []
+    : tab === 'Global' ? globalPlayers
     : (livePlayers.length > 0 ? livePlayers : DIVISION_PLAYERS);
 
   const liveYouEntry = liveEntries.find(e => e.handle === state.user.handle);
-  const userRank = tab === 'Global' ? 112
-    : tab === 'Friends' ? 2
+  const myGlobalIdx = globalTraders.findIndex(t => t.handle === state.user.handle);
+  const userRank = tab === 'Global' ? (myGlobalIdx >= 0 ? myGlobalIdx + 1 : 0)
+    : tab === 'Friends' ? 0
     : (liveYouEntry?.rank ?? 8);
-  const totalPlayers = tab === 'Global' ? 48200
-    : tab === 'Friends' ? 4
+  const totalPlayers = tab === 'Global' ? globalTraders.length
+    : tab === 'Friends' ? 0
     : (liveEntries.length > 0 ? liveEntries.length : 30);
-  const promoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 1 : 5;
-  const demoteCount = tab === 'Global' ? 0 : 5;
+  const promoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 0 : 5;
+  const demoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 0 : 5;
 
   return (
     <ScreenShell
@@ -197,20 +204,34 @@ export function LeagueScreen() {
       />
 
       {/* Rankings */}
-      <Card variant="noPad">
-        {players.map((p, i) => (
-          <PlayerRow
-            key={`${tab}-${p.rank}`}
-            {...p}
-            last={i === players.length - 1}
-            userHandle={state.user.handle}
-            userXp={state.user.xp}
-            userPnlPct={pnlPct}
-            userAvatarUri={state.user.avatarUri}
-            userAvatarColor={state.user.avatarColor}
-          />
-        ))}
-      </Card>
+      {tab === 'Friends' && players.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+          <Text style={{ fontSize: 16, color: colors.ink3 }}>No friends yet</Text>
+          <Text style={{ fontSize: 13, color: colors.ink4, textAlign: 'center', paddingHorizontal: 40 }}>
+            Friends-only rankings will appear once you connect with other traders.
+          </Text>
+        </View>
+      ) : tab === 'Global' && players.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+          <Text style={{ fontSize: 16, color: colors.ink3 }}>No traders yet</Text>
+          <Text style={{ fontSize: 13, color: colors.ink4 }}>Make a trade to appear on the global ranking</Text>
+        </View>
+      ) : (
+        <Card variant="noPad">
+          {players.map((p, i) => (
+            <PlayerRow
+              key={`${tab}-${p.rank}`}
+              {...p}
+              last={i === players.length - 1}
+              userHandle={state.user.handle}
+              userXp={state.user.xp}
+              userPnlPct={pnlPct}
+              userAvatarUri={state.user.avatarUri}
+              userAvatarColor={state.user.avatarColor}
+            />
+          ))}
+        </Card>
+      )}
     </ScreenShell>
   );
 }

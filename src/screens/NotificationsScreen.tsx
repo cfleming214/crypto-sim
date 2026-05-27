@@ -7,7 +7,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Button } from '../components/ui/Button';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { Trophy, Shield, User, Flame, Star, ArrowUp, ArrowDown, Bell } from 'lucide-react-native';
+import { Trophy, Shield, Flame, Star, ArrowUp, ArrowDown, Bell } from 'lucide-react-native';
 
 type NotifType = 'compete' | 'trade' | 'social';
 
@@ -29,30 +29,6 @@ function relTime(ts: number): string {
   if (mins < 1440) return `${Math.floor(mins / 60)}h`;
   return `${Math.floor(mins / 1440)}d`;
 }
-
-const STATIC_NOTIFS: Omit<Notif, 'onPress'>[] = [
-  {
-    key: 'rank-up',
-    Icon: Trophy, color: 'up',
-    title: 'You moved up to #43',
-    sub: 'Weekend Warriors · 4 spots gained',
-    time: '2m', unread: true, type: 'compete',
-  },
-  {
-    key: 'tournament',
-    Icon: Trophy, color: null,
-    title: 'Memecoin Madness starts in 5h',
-    sub: '412 players already joined',
-    time: '5h', unread: false, type: 'compete',
-  },
-  {
-    key: 'follower',
-    Icon: User, color: null,
-    title: '@chartist started following you',
-    sub: 'Tap to view profile',
-    time: '2d', unread: false, type: 'social',
-  },
-];
 
 function NotifRow({ Icon, color, title, sub, time, unread, last, onPress }: {
   Icon: any; color: string | null; title: string; sub: string;
@@ -156,14 +132,52 @@ export function NotificationsScreen() {
     };
   });
 
+  // Derive contest-status notifications from real Competition data.
+  // - Joined contests that just finished (last 24h)
+  // - Joined contests starting within the next hour
+  const contestNotifs: Notif[] = [];
+  for (const cid of state.joinedTournamentIds) {
+    const comp = state.competitions.find(c => c.id === cid);
+    if (!comp) continue;
+    const now = Date.now();
+    if (comp.status === 'finished' && now - comp.endAt < 24 * 60 * 60 * 1000) {
+      const entries = state.leaderboard[cid] ?? [];
+      const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
+      const myIdx = sorted.findIndex(e => e.handle === state.user.handle);
+      const myRank = myIdx >= 0 ? myIdx + 1 : null;
+      contestNotifs.push({
+        key: `comp-finished-${cid}`,
+        Icon: Trophy,
+        color: myRank && myRank <= comp.prizes.length ? 'up' : null,
+        title: `${comp.name} finished${myRank ? ` · #${myRank}` : ''}`,
+        sub: myRank && myRank <= comp.prizes.length
+          ? `You won $${comp.prizes[myRank - 1]}`
+          : 'Out of the prize positions',
+        time: relTime(comp.endAt),
+        unread: true,
+        type: 'compete' as NotifType,
+        onPress: () => nav.navigate('TournamentDetail', { id: cid }),
+      });
+    } else if (comp.status !== 'finished' && comp.startAt > now && comp.startAt - now < 60 * 60 * 1000) {
+      const minsLeft = Math.max(1, Math.floor((comp.startAt - now) / 60000));
+      contestNotifs.push({
+        key: `comp-starting-${cid}`,
+        Icon: Trophy,
+        color: null,
+        title: `${comp.name} starts in ${minsLeft}m`,
+        sub: `${comp.entryCount} ${comp.entryCount === 1 ? 'player' : 'players'} joined`,
+        time: relTime(now),
+        unread: false,
+        type: 'compete' as NotifType,
+        onPress: () => nav.navigate('TournamentDetail', { id: cid }),
+      });
+    }
+  }
+
   const allNotifs: Notif[] = [
     ...alertNotifs,
+    ...contestNotifs,
     ...tradeNotifs,
-    ...STATIC_NOTIFS.map(n => ({
-      ...n,
-      onPress: n.type === 'compete' ? () => nav.navigate('TournamentDetail', { id: 'ww-1' }) :
-               n.type === 'trade'   ? () => nav.navigate('MainTabs', { screen: 'Trade' }) : undefined,
-    })),
     ...achievementNotifs,
   ];
 

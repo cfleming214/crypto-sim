@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice } from './types';
-import { fetchPrices, formatLargeNumber, type PriceData } from '../services/priceService';
+import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
-import { fetchCompetitions } from '../services/competitionService';
+import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { useAuth } from './AuthContext';
 
 const INITIAL_COINS: Coin[] = [
@@ -123,7 +123,9 @@ type Action =
   | { type: 'SET_CLOUD_NUDGES'; nudges: CoachNudge[] }
   | { type: 'SWITCH_PORTFOLIO'; portfolioId: string }
   | { type: 'INIT_CONTEST_PORTFOLIO'; competitionId: string; slice?: PortfolioSlice }
-  | { type: 'CLEAR_USER_DATA' };
+  | { type: 'CLEAR_USER_DATA' }
+  | { type: 'SET_GLOBAL_STATS'; stats: { totalMarketCap: number; change24h: number } }
+  | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -239,6 +241,8 @@ function reducer(state: AppState, action: Action): AppState {
           marketCap: pd.marketCapRaw > 0 ? formatLargeNumber(pd.marketCapRaw) : coin.marketCap,
           volume:    pd.volumeRaw    > 0 ? formatLargeNumber(pd.volumeRaw)    : coin.volume,
           history:   realHistory,
+          high24h:   pd.high24h > 0 ? pd.high24h : coin.high24h,
+          low24h:    pd.low24h  > 0 ? pd.low24h  : coin.low24h,
         };
       });
       const holdingsValue = state.holdings.reduce((sum, h) => {
@@ -509,6 +513,10 @@ function reducer(state: AppState, action: Action): AppState {
           : [...state.watchlist, action.symbol],
       };
     }
+    case 'SET_GLOBAL_STATS':
+      return { ...state, globalStats: action.stats };
+    case 'SET_FEAR_GREED':
+      return { ...state, fearGreed: action.reading };
     case 'SET_COMPETITIONS':
       return { ...state, competitions: action.competitions };
     case 'JOIN_TOURNAMENT': {
@@ -710,12 +718,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     tickRef.current = setInterval(() => dispatch({ type: 'TICK_PRICES' }), 2000);
 
     const doFetch = async () => {
-      try {
-        const prices = await fetchPrices();
-        dispatch({ type: 'UPDATE_PRICES', prices });
-      } catch {
-        // Silent — simulated tick keeps UI alive
-      }
+      // Fan out all external market fetches in parallel so a slow one doesn't
+      // block the others. Each call has its own cache + 429 backoff internally.
+      const [prices, globalStats, fearGreed] = await Promise.all([
+        fetchPrices().catch(() => null),
+        fetchGlobalMarketStats().catch(() => null),
+        fetchFearGreedIndex().catch(() => null),
+      ]);
+      if (prices) dispatch({ type: 'UPDATE_PRICES', prices });
+      if (globalStats) dispatch({ type: 'SET_GLOBAL_STATS', stats: globalStats });
+      if (fearGreed) dispatch({ type: 'SET_FEAR_GREED', reading: fearGreed });
     };
     doFetch();
     priceRef.current = setInterval(doFetch, 30000);
@@ -779,9 +791,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     subscribeToCoachNudges(nudges => dispatch({ type: 'SET_CLOUD_NUDGES', nudges }))
       .then(unsub => { unsubNudges = unsub; });
 
+    // Live Competition list: new contests, status flips, entry-count rolls.
+    let unsubComps: () => void = () => {};
+    subscribeToCompetitions(comps => dispatch({ type: 'SET_COMPETITIONS', competitions: comps }))
+      .then(unsub => { unsubComps = unsub; });
+
     return () => {
       unsubProfile();
       unsubNudges();
+      unsubComps();
     };
   }, [authStatus]);
 

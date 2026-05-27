@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -12,7 +12,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadAvatarPhoto } from '../services/portfolioService';
+import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
 
 const AVATAR_COLORS = [
@@ -158,16 +158,45 @@ export function ProfileScreen() {
   const { colors, isDark, toggle } = useTheme();
   const { state, dispatch } = useApp();
   const [editVisible, setEditVisible] = useState(false);
+  const [activeMirrorCount, setActiveMirrorCount] = useState(0);
+
+  // Refresh active mirror count on mount + whenever the user adds/removes one.
+  // Mirror is owner-scoped so list() already returns only this user's rows.
+  useEffect(() => {
+    fetchActiveMirrorCount().then(setActiveMirrorCount);
+  }, [state.joinedTournamentIds.length]); // re-fetch on join/leave as a cheap heuristic
+
+  // "Win bracket" — any finished joined competition where the user ranked #1
+  // on the live leaderboard.
+  const hasWonBracket = state.joinedTournamentIds.some(cid => {
+    const comp = state.competitions.find(c => c.id === cid);
+    if (!comp || comp.status !== 'finished') return false;
+    const entries = state.leaderboard[cid] ?? [];
+    const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
+    return sorted[0]?.handle === state.user.handle;
+  });
+
+  // "Top 50" — best rank across joined competitions, computed live (no longer
+  // depends on the removed activeTournament summary).
+  const topRanks = state.joinedTournamentIds
+    .map(cid => {
+      const entries = state.leaderboard[cid] ?? [];
+      const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
+      const idx = sorted.findIndex(e => e.handle === state.user.handle);
+      return idx >= 0 ? idx + 1 : null;
+    })
+    .filter((r): r is number => r !== null);
+  const bestLiveRank = topRanks.length > 0 ? Math.min(...topRanks) : Infinity;
 
   const achievements = [
     { Icon: Star,           name: 'First $',       earned: state.trades.length > 0 },
     { Icon: Flame,          name: '7-day streak',  earned: state.user.streak >= 7 },
-    { Icon: Trophy,         name: 'Top 50',        earned: !!(state.activeTournament && state.activeTournament.userRank <= 50) },
+    { Icon: Trophy,         name: 'Top 50',        earned: bestLiveRank <= 50 },
     { Icon: Shield,         name: 'Safe trader',   earned: Object.keys(state.stopLosses).length > 0 },
-    { Icon: User,           name: 'Copycat',       earned: false },
+    { Icon: User,           name: 'Copycat',       earned: activeMirrorCount > 0 },
     { Icon: ArrowLeftRight, name: '100 trades',    earned: state.trades.length >= 100 },
     { Icon: BarChart2,      name: 'Diamond hands', earned: state.holdings.length >= 4 },
-    { Icon: Trophy,         name: 'Win bracket',   earned: false },
+    { Icon: Trophy,         name: 'Win bracket',   earned: hasWonBracket },
   ];
   const earnedCount = achievements.filter(a => a.earned).length;
   const { signOut, status } = useAuth();
@@ -274,7 +303,11 @@ export function ProfileScreen() {
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
             <Chip variant="brand">{state.user.league} {state.user.division > 0 ? `${['', 'I', 'II', 'III', 'IV'][state.user.division]}` : ''}</Chip>
-            <Text style={{ fontSize: 12, color: colors.ink3 }}>Joined Mar '26</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3 }}>
+              {state.user.createdAt
+                ? `Joined ${new Date(state.user.createdAt).toLocaleDateString([], { month: 'short', year: '2-digit' })}`
+                : 'New trader'}
+            </Text>
           </View>
         </View>
         <Button variant="ghost" size="sm" onPress={() => setEditVisible(true)}>Edit</Button>

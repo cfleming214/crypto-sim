@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { View, ViewStyle, PanResponder, Text } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
+import { computeMA, computeRSI } from '../../lib/indicators';
 
 interface Candle {
   open: number;
@@ -62,25 +63,6 @@ function generateCandles(timeframe: string, endPrice: number): Candle[] {
   });
 }
 
-function computeMA(values: number[], period: number): (number | null)[] {
-  return values.map((_, i) => {
-    if (i < period - 1) return null;
-    return values.slice(i - period + 1, i + 1).reduce((s, v) => s + v, 0) / period;
-  });
-}
-
-function computeRSI(values: number[], period = 14): (number | null)[] {
-  return values.map((_, i) => {
-    if (i < period) return null;
-    let gains = 0, losses = 0;
-    for (let j = i - period + 1; j <= i; j++) {
-      const d = values[j] - values[j - 1];
-      if (d > 0) gains += d; else losses -= d;
-    }
-    const rs = losses === 0 ? Infinity : gains / losses;
-    return 100 - 100 / (1 + rs);
-  });
-}
 
 function seriesPath(values: (number | null)[], W: number, H: number, min: number, max: number): string {
   const range = max - min || 1;

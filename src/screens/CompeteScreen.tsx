@@ -118,10 +118,6 @@ export function CompeteScreen() {
         <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 999, overflow: 'hidden' }}>
           <View style={{ height: '100%', width: `${xpPct}%`, backgroundColor: colors.brandOn, borderRadius: 999 }} />
         </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 11, color: `${colors.brandOn}99` }}>Promote to Master in 2 wins</Text>
-          <Text style={{ fontSize: 11, color: `${colors.brandOn}99` }}>Top 8%</Text>
-        </View>
       </View>
 
       {/* Live tournament */}

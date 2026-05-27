@@ -57,8 +57,6 @@ function EditMirrorModal({ visible, allocation, onSave, onClose }: {
 
           {[
             { label: 'Max single position', value: '20%', note: 'of your allocation per trade' },
-            { label: 'Stop copying at', value: '−10%', note: 'auto-pause when drawdown hits 10%' },
-            { label: 'Copy fee', value: '5% of profit', note: 'only paid on profitable trades' },
           ].map(row => (
             <View key={row.label} style={{ gap: 4 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -108,9 +106,13 @@ export function CopyTradeScreen() {
   const traderHandle = trader ? `@${trader.handle}` : '@trader';
   const traderName   = trader?.handle ?? '—';
 
-  // Derive "mirrored positions" from state.holdings — any coin the trader also holds
-  const traderSymbols = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'PEPE']);
-  const mirroredHoldings = state.holdings.filter(h => traderSymbols.has(h.symbol));
+  // Derive "mirrored positions" from the user's holdings intersected with the
+  // symbols the trader has actually traded recently. Falls back to all your
+  // holdings until the trader's recentTrades feed has at least one entry.
+  const traderSymbols = new Set((trader?.recentTrades ?? []).map(t => t.symbol));
+  const mirroredHoldings = traderSymbols.size > 0
+    ? state.holdings.filter(h => traderSymbols.has(h.symbol))
+    : [];
 
   const handleTogglePause = async () => {
     const next = !paused;
@@ -260,13 +262,11 @@ export function CopyTradeScreen() {
           {[
             ['Allocation', `$${allocation.toLocaleString()} / $${state.bankroll.toFixed(0)}`],
             ['Max single position', '20%'],
-            ['Stop copying at', '−10%'],
-            ['Copy fee', '5% of profit'],
           ].map(([label, value], i, arr) => (
             <View key={label}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: 13, color: colors.ink3 }}>{label}</Text>
-                <Text style={{ fontWeight: '600', fontSize: 13, color: label === 'Stop copying at' ? colors.down : colors.ink, fontVariant: ['tabular-nums'] }}>
+                <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>
                   {value}
                 </Text>
               </View>

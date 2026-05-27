@@ -16,7 +16,7 @@ import { useAuth } from '../store/AuthContext';
 export type RootStackParamList = {
   Auth: undefined;
   MainTabs: { screen?: string; params?: any } | undefined;
-  TradeDetail: { symbol: string };
+  TradeDetail: { tradeId?: string; symbol?: string };
   TournamentDetail: { id: string };
   League: undefined;
   Brackets: undefined;

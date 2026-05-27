@@ -53,31 +53,58 @@ function mapEntry(d: any): CompetitionEntry {
   };
 }
 
+// Layers real entry counts (from CompetitionEntry rows) over a raw list of
+// Competition rows. Used by both fetchCompetitions and subscribeToCompetitions
+// so the resulting Competition[] shape is identical.
+async function layerEntryCounts(client: any, comps: Competition[]): Promise<Competition[]> {
+  try {
+    const { data: entries } = await client.models.CompetitionEntry.list();
+    const counts: Record<string, number> = {};
+    for (const e of entries as any[]) {
+      if (e.isActive !== false) counts[e.competitionId] = (counts[e.competitionId] ?? 0) + 1;
+    }
+    return comps.map(c => ({ ...c, entryCount: counts[c.id] ?? 0 }));
+  } catch {
+    return comps;
+  }
+}
+
 export async function fetchCompetitions(): Promise<Competition[]> {
   const client = await getClient();
   if (!client) return [];
   try {
     const { data } = await client.models.Competition.list();
-    let remote = (data as any[]).map(mapCompetition);
-
-    // Layer in real entry counts from CompetitionEntry — the cloud row's
-    // entryCount field is just a starting hint; actual joins are reflected
-    // here so the UI shows truthful numbers.
-    try {
-      const { data: entries } = await client.models.CompetitionEntry.list();
-      const counts: Record<string, number> = {};
-      for (const e of entries as any[]) {
-        if (e.isActive !== false) counts[e.competitionId] = (counts[e.competitionId] ?? 0) + 1;
-      }
-      remote = remote.map(c => ({ ...c, entryCount: counts[c.id] ?? 0 }));
-    } catch {
-      // CompetitionEntry list can fail under owner-scoped read for some
-      // setups; fall back to stored entryCount silently.
-    }
-
-    return remote;
+    const remote = (data as any[]).map(mapCompetition);
+    return await layerEntryCounts(client, remote);
   } catch {
     return [];
+  }
+}
+
+/**
+ * Subscribe to every Competition row change. Fires when a new contest is
+ * created, status flips (open → live → finished), or any field is updated by
+ * the closeCompetition / createCompetition Lambdas. Layers in live entry
+ * counts on every event so the UI's "N players" stays current.
+ */
+export async function subscribeToCompetitions(
+  onUpdate: (comps: Competition[]) => void,
+): Promise<() => void> {
+  const client = await getClient();
+  if (!client) return () => {};
+  try {
+    const sub = client.models.Competition.observeQuery().subscribe({
+      next: async ({ items }: { items: any[] }) => {
+        const comps = (items ?? []).map(mapCompetition);
+        const layered = await layerEntryCounts(client, comps);
+        onUpdate(layered);
+      },
+      error: (err: unknown) => console.warn('Competition subscription error:', err),
+    });
+    return () => sub.unsubscribe();
+  } catch (e) {
+    console.warn('subscribeToCompetitions failed:', e);
+    return () => {};
   }
 }
 

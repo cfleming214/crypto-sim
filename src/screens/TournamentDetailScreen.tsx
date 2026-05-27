@@ -10,12 +10,6 @@ import { useApp } from '../store/AppContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { Bell, MoreHorizontal } from 'lucide-react-native';
 
-const rules = [
-  ['Starting bankroll', '$10,000'],
-  ['Leverage', 'Off'],
-  ['Eligible markets', 'BTC, ETH, SOL +18'],
-  ['Final standing', 'Highest equity wins'],
-];
 
 export function TournamentDetailScreen() {
   const { colors } = useTheme();
@@ -221,7 +215,10 @@ export function TournamentDetailScreen() {
       <Card style={{ gap: 8 }}>
         <Text style={{ fontWeight: '700', color: colors.ink }}>Rules</Text>
         {[
-          ...rules,
+          ['Starting bankroll', '$10,000'],
+          ['Leverage', 'Off'],
+          ['Eligible markets', state.coins.filter(c => c.symbol !== 'USDC').map(c => c.symbol).join(', ')],
+          ['Final standing', 'Highest equity wins'],
           ['Entry fee', competition.stake],
         ].map(([k, v], i, arr) => (
           <View key={k}>

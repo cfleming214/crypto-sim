@@ -9,6 +9,7 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { formatLargeNumber } from '../services/priceService';
 import { useNavigation } from '@react-navigation/native';
 import { Search, Star, SlidersHorizontal, X } from 'lucide-react-native';
 
@@ -200,20 +201,40 @@ export function MarketsScreen() {
         </TouchableOpacity>
       }
     >
-      {/* Stats strip */}
+      {/* Stats strip — real CoinGecko /global + alternative.me Fear & Greed */}
       <Card variant="noPad" style={{ flexDirection: 'row' }}>
         <View style={{ flex: 1, padding: 12, borderRightWidth: 1, borderRightColor: colors.hairline }}>
           <Text style={{ fontSize: 11, color: colors.ink3 }}>Total mkt cap</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>$2.41T</Text>
-            <Text style={{ fontSize: 11, color: colors.up, fontVariant: ['tabular-nums'] }}>+1.8%</Text>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+              {state.globalStats ? formatLargeNumber(state.globalStats.totalMarketCap) : '—'}
+            </Text>
+            {state.globalStats && (
+              <Text style={{
+                fontSize: 11,
+                color: state.globalStats.change24h >= 0 ? colors.up : colors.down,
+                fontVariant: ['tabular-nums'],
+              }}>
+                {state.globalStats.change24h >= 0 ? '+' : ''}{state.globalStats.change24h.toFixed(1)}%
+              </Text>
+            )}
           </View>
         </View>
         <View style={{ flex: 1, padding: 12 }}>
           <Text style={{ fontSize: 11, color: colors.ink3 }}>Fear & Greed</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>72</Text>
-            <Chip variant="warn" style={{ paddingVertical: 1, paddingHorizontal: 6 }}>Greed</Chip>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+              {state.fearGreed ? String(state.fearGreed.value) : '—'}
+            </Text>
+            {state.fearGreed && (() => {
+              const v = state.fearGreed.value;
+              const variant = v >= 70 ? 'down' : v >= 55 ? 'warn' : v >= 45 ? 'outline' : v >= 25 ? 'warn' : 'up';
+              return (
+                <Chip variant={variant as any} style={{ paddingVertical: 1, paddingHorizontal: 6 }}>
+                  {state.fearGreed.label}
+                </Chip>
+              );
+            })()}
           </View>
         </View>
       </Card>

@@ -67,6 +67,7 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
       avatarColor: p.avatarColor ?? '#6366F1',
       avatarKey:   p.avatarKey ?? undefined,
       avatarUri,
+      createdAt:   p.createdAt ? new Date(p.createdAt).getTime() : undefined,
     },
     cash:      p.cash ?? 10000,
     bankroll:  p.bankroll ?? 10000,
@@ -446,6 +447,22 @@ export async function subscribeToTrader(
   } catch (e) {
     console.warn('subscribeToTrader failed:', e);
     return () => {};
+  }
+}
+
+/**
+ * Count active Mirror rows owned by the current user — used by the Profile
+ * "Copycat" achievement to detect whether the user is currently copy-trading
+ * anyone.
+ */
+export async function fetchActiveMirrorCount(): Promise<number> {
+  const client = await getClient();
+  if (!client) return 0;
+  try {
+    const { data } = await client.models.Mirror.list();
+    return (data as any[]).filter(m => m.active !== false).length;
+  } catch {
+    return 0;
   }
 }
 
