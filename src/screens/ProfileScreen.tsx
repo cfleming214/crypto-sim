@@ -177,8 +177,17 @@ export function ProfileScreen() {
   const sellTrades = state.trades.filter(t => t.side === 'sell');
   const winRate = sellTrades.length > 0
     ? Math.round(sellTrades.filter(t => t.price > (state.holdings.find(h => h.symbol === t.symbol)?.avgCost ?? t.price)).length / sellTrades.length * 100)
-    : 64;
-  const bestRank = state.activeTournament ? `#${state.activeTournament.userRank}` : '—';
+    : 0;
+  // Best rank across all joined contests: find this user's rank in each
+  // live leaderboard, take the lowest (best) number.
+  const myRanks: number[] = [];
+  for (const cid of state.joinedTournamentIds) {
+    const entries = state.leaderboard[cid] ?? [];
+    const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
+    const idx = sorted.findIndex(e => e.handle === state.user.handle);
+    if (idx >= 0) myRanks.push(idx + 1);
+  }
+  const bestRank = myRanks.length > 0 ? `#${Math.min(...myRanks)}` : '—';
 
   // Contest history: every contest the user has joined, with current bankroll,
   // P&L, live rank, and the prize they'd win if it ended right now.
@@ -220,11 +229,11 @@ export function ProfileScreen() {
 
   const stats = [
     ['All-time P&L', `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`, pnl >= 0 ? 'up' : 'down'],
-    ['Tournaments', String(Math.max(1, state.joinedTournamentIds.length)), null],
-    ['Win rate', `${winRate}%`, winRate >= 50 ? 'up' : 'down'],
-    ['Followers', '128', null],
-    ['Copying', '3',     null],
-    ['Best rank', bestRank, null],
+    ['Tournaments', String(state.joinedTournamentIds.length), null],
+    ['Win rate',    sellTrades.length > 0 ? `${winRate}%` : '—', sellTrades.length > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
+    ['Trades',      String(state.trades.length), null],
+    ['XP',          state.user.xp.toLocaleString(), null],
+    ['Best rank',   bestRank, null],
   ];
 
   return (
