@@ -72,12 +72,15 @@ export function TournamentDetailScreen() {
   // Derive a real equity-since-start chart from this contest's trade
   // history. Walks trades chronologically, using each trade's price as the
   // last-known price for that symbol; snapshots bankroll at each trade.
-  const chartData = React.useMemo(() => {
+  const { chartData, chartTimestamps } = React.useMemo(() => {
     const sorted = [...contestPortfolio.trades].sort((a, b) => a.timestamp - b.timestamp);
     let cash = 10000;
     const holdings = new Map<string, { units: number; avgCost: number }>();
     const lastPrice = new Map<string, number>();
-    const snaps: number[] = [10000];
+    // Anchor the series at the contest start (or first trade) and walk forward.
+    const startTs = sorted[0]?.timestamp ?? competition.startAt;
+    const snaps: number[]  = [10000];
+    const stamps: number[] = [startTs];
     for (const tr of sorted) {
       lastPrice.set(tr.symbol, tr.price);
       if (tr.side === 'buy') {
@@ -104,10 +107,18 @@ export function TournamentDetailScreen() {
         bankroll += h.units * price;
       }
       snaps.push(bankroll);
+      stamps.push(tr.timestamp);
     }
     snaps.push(contestBankroll);
-    return snaps.length >= 2 ? snaps : [10000, contestBankroll];
-  }, [contestPortfolio.trades, contestBankroll, state.coins]);
+    stamps.push(Date.now());
+    if (snaps.length < 2) {
+      return {
+        chartData:       [10000, contestBankroll],
+        chartTimestamps: [competition.startAt, Date.now()],
+      };
+    }
+    return { chartData: snaps, chartTimestamps: stamps };
+  }, [contestPortfolio.trades, contestBankroll, state.coins, competition.startAt]);
 
   useEffect(() => {
     refreshLeaderboard(competitionId);
@@ -201,7 +212,7 @@ export function TournamentDetailScreen() {
             <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>${contestBankroll.toFixed(0)}</Text>
           </View>
           <View style={{ marginTop: 10 }}>
-            <AreaChart height={110} data={chartData} down={pnlPct < 0} />
+            <AreaChart height={110} data={chartData} timestamps={chartTimestamps} down={pnlPct < 0} />
           </View>
         </CardSection>
       </Card>
