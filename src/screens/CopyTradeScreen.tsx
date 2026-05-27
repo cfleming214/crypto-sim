@@ -11,7 +11,7 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { fetchTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
+import { fetchTrader, subscribeToTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
 import { MoreHorizontal, Pause, X } from 'lucide-react-native';
 
 function relTime(ts: number): string {
@@ -98,6 +98,10 @@ export function CopyTradeScreen() {
       setTrader(t);
       setLoading(false);
     });
+    // Live update this trader's row as they trade.
+    let unsub: () => void = () => {};
+    subscribeToTrader(traderId, t => setTrader(t)).then(u => { unsub = u; });
+    return () => unsub();
   }, [traderId]);
 
   const pnlPct = ((state.bankroll - 10000) / 10000) * 100;

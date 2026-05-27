@@ -316,59 +316,96 @@ export interface PublicTrader {
   recentTrades: { symbol: string; side: 'buy' | 'sell'; amount: number; units: number; price: number; t: number }[];
 }
 
+// Cache resolved avatar URLs so subscription events don't re-fetch them on
+// every push. Keyed by `${owner}:${avatarKey}`.
+const avatarUrlCache = new Map<string, string>();
+
+async function resolveTraderAvatarUrl(owner?: string, avatarKey?: string): Promise<string | undefined> {
+  if (!owner || !avatarKey) return undefined;
+  const key = `${owner}:${avatarKey}`;
+  const cached = avatarUrlCache.get(key);
+  if (cached) return cached;
+  try {
+    const { getUrl } = await import('aws-amplify/storage');
+    const { url } = await getUrl({
+      path: `avatars/${owner}/${avatarKey}`,
+      options: { validateObjectExistence: false },
+    });
+    const str = url.toString();
+    avatarUrlCache.set(key, str);
+    return str;
+  } catch {
+    return undefined;
+  }
+}
+
+async function publicTraderFromRecord(d: any): Promise<PublicTrader> {
+  const avatarUrl = await resolveTraderAvatarUrl(d.owner, d.avatarKey);
+  let history: number[] = [];
+  if (d.equityHistoryJson) {
+    try {
+      const parsed = JSON.parse(d.equityHistoryJson);
+      history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
+    } catch { history = []; }
+  }
+  let recentTrades: PublicTrader['recentTrades'] = [];
+  if (d.recentTradesJson) {
+    try { recentTrades = JSON.parse(d.recentTradesJson); }
+    catch { recentTrades = []; }
+  }
+  return {
+    id:          d.id,
+    owner:       d.owner,
+    handle:      d.handle ?? 'trader',
+    league:      d.league ?? 'Bronze',
+    bankroll:    d.bankroll ?? 10000,
+    pnlPct:      d.pnlPct ?? 0,
+    winRate:     d.winRate ?? 0,
+    tradeCount:  d.tradeCount ?? 0,
+    avatarKey:   d.avatarKey ?? undefined,
+    avatarColor: d.avatarColor ?? undefined,
+    avatarUrl,
+    equityHistory: history,
+    recentTrades,
+  };
+}
+
 export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[]> {
   const client = await getClient();
   if (!client) return [];
   try {
     const { data } = await client.models.PublicProfile.list();
-    const traders = await Promise.all((data as any[]).map(async (d) => {
-      let avatarUrl: string | undefined;
-      if (d.avatarKey && d.owner) {
-        try {
-          const { getUrl } = await import('aws-amplify/storage');
-          // PublicProfile owner field is the Cognito userId/sub; identityId
-          // for storage paths typically matches when using userPool auth.
-          const { url } = await getUrl({
-            path: `avatars/${d.owner}/${d.avatarKey}`,
-            options: { validateObjectExistence: false },
-          });
-          avatarUrl = url.toString();
-        } catch {
-          // Avatar resolution is best-effort.
-        }
-      }
-      let history: number[] = [];
-      if (d.equityHistoryJson) {
-        try {
-          const parsed = JSON.parse(d.equityHistoryJson);
-          history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
-        } catch { history = []; }
-      }
-      let recentTrades: PublicTrader['recentTrades'] = [];
-      if (d.recentTradesJson) {
-        try { recentTrades = JSON.parse(d.recentTradesJson); }
-        catch { recentTrades = []; }
-      }
-      return {
-        id:          d.id,
-        owner:       d.owner,
-        handle:      d.handle ?? 'trader',
-        league:      d.league ?? 'Bronze',
-        bankroll:    d.bankroll ?? 10000,
-        pnlPct:      d.pnlPct ?? 0,
-        winRate:     d.winRate ?? 0,
-        tradeCount:  d.tradeCount ?? 0,
-        avatarKey:   d.avatarKey ?? undefined,
-        avatarColor: d.avatarColor ?? undefined,
-        avatarUrl,
-        equityHistory: history,
-        recentTrades,
-      };
-    }));
+    const traders = await Promise.all((data as any[]).map(publicTraderFromRecord));
     return traders.sort((a, b) => b.pnlPct - a.pnlPct).slice(0, limit);
   } catch (e) {
     console.warn('fetchTopTraders failed:', e);
     return [];
+  }
+}
+
+/**
+ * Subscribe to every PublicProfile change in real time. Fires whenever ANY
+ * trader's row updates (their saveProfile -> PublicProfile mirror). The
+ * Top Traders screen uses this to re-rank live as traders make trades.
+ */
+export async function subscribeToTopTraders(
+  onUpdate: (traders: PublicTrader[]) => void,
+  limit: number = 20,
+): Promise<() => void> {
+  const client = await getClient();
+  if (!client) return () => {};
+  try {
+    const sub = client.models.PublicProfile.observeQuery().subscribe({
+      next: async ({ items }: { items: any[] }) => {
+        const traders = await Promise.all((items ?? []).map(publicTraderFromRecord));
+        onUpdate(traders.sort((a, b) => b.pnlPct - a.pnlPct).slice(0, limit));
+      },
+      error: (err: unknown) => console.warn('PublicProfile subscription error:', err),
+    });
+    return () => sub.unsubscribe();
+  } catch (e) {
+    console.warn('subscribeToTopTraders failed:', e);
+    return () => {};
   }
 }
 
@@ -378,50 +415,37 @@ export async function fetchTrader(traderId: string): Promise<PublicTrader | null
   try {
     const { data } = await client.models.PublicProfile.get({ id: traderId });
     if (!data) return null;
-    const d = data as any;
-    let avatarUrl: string | undefined;
-    if (d.avatarKey && d.owner) {
-      try {
-        const { getUrl } = await import('aws-amplify/storage');
-        const { url } = await getUrl({
-          path: `avatars/${d.owner}/${d.avatarKey}`,
-          options: { validateObjectExistence: false },
-        });
-        avatarUrl = url.toString();
-      } catch {
-        // best-effort
-      }
-    }
-    let history: number[] = [];
-    if (d.equityHistoryJson) {
-      try {
-        const parsed = JSON.parse(d.equityHistoryJson);
-        history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
-      } catch { history = []; }
-    }
-    let recentTrades: PublicTrader['recentTrades'] = [];
-    if (d.recentTradesJson) {
-      try { recentTrades = JSON.parse(d.recentTradesJson); }
-      catch { recentTrades = []; }
-    }
-    return {
-      id:          d.id,
-      owner:       d.owner,
-      handle:      d.handle ?? 'trader',
-      league:      d.league ?? 'Bronze',
-      bankroll:    d.bankroll ?? 10000,
-      pnlPct:      d.pnlPct ?? 0,
-      winRate:     d.winRate ?? 0,
-      tradeCount:  d.tradeCount ?? 0,
-      avatarKey:   d.avatarKey ?? undefined,
-      avatarColor: d.avatarColor ?? undefined,
-      avatarUrl,
-      equityHistory: history,
-      recentTrades,
-    };
+    return await publicTraderFromRecord(data);
   } catch (e) {
     console.warn('fetchTrader failed:', e);
     return null;
+  }
+}
+
+// Subscribe to a single trader's PublicProfile row so the CopyTrade screen
+// updates live as that trader trades.
+export async function subscribeToTrader(
+  traderId: string,
+  onUpdate: (trader: PublicTrader) => void,
+): Promise<() => void> {
+  const client = await getClient();
+  if (!client) return () => {};
+  try {
+    const sub = client.models.PublicProfile.observeQuery({
+      filter: { id: { eq: traderId } },
+    }).subscribe({
+      next: async ({ items }: { items: any[] }) => {
+        const row = (items ?? [])[0];
+        if (!row) return;
+        const trader = await publicTraderFromRecord(row);
+        onUpdate(trader);
+      },
+      error: (err: unknown) => console.warn('Trader subscription error:', err),
+    });
+    return () => sub.unsubscribe();
+  } catch (e) {
+    console.warn('subscribeToTrader failed:', e);
+    return () => {};
   }
 }
 

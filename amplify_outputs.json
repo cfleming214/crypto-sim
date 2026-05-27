@@ -930,6 +930,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "recentTradesJson": {
+              "name": "recentTradesJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,

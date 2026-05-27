@@ -6,7 +6,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
-import { fetchTopTraders, type PublicTrader } from '../services/portfolioService';
+import { fetchTopTraders, subscribeToTopTraders, type PublicTrader } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
 
 export function TopTradersScreen() {
@@ -24,6 +24,13 @@ export function TopTradersScreen() {
 
   useEffect(() => {
     refresh();
+    // Live updates: re-rank whenever any trader's PublicProfile row changes.
+    let unsub: () => void = () => {};
+    subscribeToTopTraders(list => {
+      setTraders(list);
+      setLoading(false);
+    }, 50).then(u => { unsub = u; });
+    return () => unsub();
   }, [refresh]);
 
   return (
