@@ -268,6 +268,16 @@ export async function saveProfile(state: AppState): Promise<void> {
     }
     history = history.slice(-168);
 
+    // Snapshot of last 10 trades for the public profile feed.
+    const recentTrades = state.trades.slice(0, 10).map(t => ({
+      symbol: t.symbol,
+      side:   t.side,
+      amount: t.amount,
+      units:  t.units,
+      price:  t.price,
+      t:      t.timestamp,
+    }));
+
     const publicPayload = {
       handle:      state.user.handle,
       league:      state.user.league,
@@ -278,6 +288,7 @@ export async function saveProfile(state: AppState): Promise<void> {
       avatarKey:   state.user.avatarKey,
       avatarColor: state.user.avatarColor,
       equityHistoryJson: JSON.stringify(history),
+      recentTradesJson:  JSON.stringify(recentTrades),
     };
     if (existingPublic.length) {
       await client.models.PublicProfile.update({ id: existingPublic[0].id, ...publicPayload });
@@ -302,6 +313,7 @@ export interface PublicTrader {
   avatarColor?: string;
   avatarUrl?:  string;       // signed S3 URL resolved at fetch time
   equityHistory: number[];   // bankroll values over time (most recent last)
+  recentTrades: { symbol: string; side: 'buy' | 'sell'; amount: number; units: number; price: number; t: number }[];
 }
 
 export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[]> {
@@ -332,6 +344,11 @@ export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[
           history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
         } catch { history = []; }
       }
+      let recentTrades: PublicTrader['recentTrades'] = [];
+      if (d.recentTradesJson) {
+        try { recentTrades = JSON.parse(d.recentTradesJson); }
+        catch { recentTrades = []; }
+      }
       return {
         id:          d.id,
         owner:       d.owner,
@@ -345,6 +362,7 @@ export async function fetchTopTraders(limit: number = 20): Promise<PublicTrader[
         avatarColor: d.avatarColor ?? undefined,
         avatarUrl,
         equityHistory: history,
+        recentTrades,
       };
     }));
     return traders.sort((a, b) => b.pnlPct - a.pnlPct).slice(0, limit);
@@ -381,6 +399,11 @@ export async function fetchTrader(traderId: string): Promise<PublicTrader | null
         history = (parsed as Array<{ t: number; v: number }>).map(p => p.v);
       } catch { history = []; }
     }
+    let recentTrades: PublicTrader['recentTrades'] = [];
+    if (d.recentTradesJson) {
+      try { recentTrades = JSON.parse(d.recentTradesJson); }
+      catch { recentTrades = []; }
+    }
     return {
       id:          d.id,
       owner:       d.owner,
@@ -394,6 +417,7 @@ export async function fetchTrader(traderId: string): Promise<PublicTrader | null
       avatarColor: d.avatarColor ?? undefined,
       avatarUrl,
       equityHistory: history,
+      recentTrades,
     };
   } catch (e) {
     console.warn('fetchTrader failed:', e);

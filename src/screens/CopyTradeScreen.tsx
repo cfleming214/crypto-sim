@@ -14,17 +14,6 @@ import { useApp } from '../store/AppContext';
 import { fetchTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
 import { MoreHorizontal, Pause, X } from 'lucide-react-native';
 
-const TRADER_TAGS = ['Day trader', 'High risk', 'Memecoins'];
-
-// Simulated recent trades from the trader — shown as "mirrored" activity
-const TRADER_RECENT_TRADES = [
-  { id: 't1', symbol: 'DOGE', side: 'buy',  amount: 420,  price: 0.1590, ts: Date.now() - 18 * 60000 },
-  { id: 't2', symbol: 'PEPE', side: 'buy',  amount: 150,  price: 0.0000116, ts: Date.now() - 2.3 * 3600000 },
-  { id: 't3', symbol: 'BTC',  side: 'sell', amount: 1200, price: 63800, ts: Date.now() - 5 * 3600000 },
-  { id: 't4', symbol: 'SOL',  side: 'buy',  amount: 340,  price: 181.0, ts: Date.now() - 1 * 86400000 },
-  { id: 't5', symbol: 'ETH',  side: 'sell', amount: 800,  price: 3155,  ts: Date.now() - 2 * 86400000 },
-];
-
 function relTime(ts: number): string {
   const diff = Date.now() - ts;
   const m = Math.floor(diff / 60000);
@@ -89,12 +78,6 @@ function EditMirrorModal({ visible, allocation, onSave, onClose }: {
     </Modal>
   );
 }
-
-const perf = [
-  ['30D return', '+52.1%', 'up'],
-  ['Win rate', '68%', null],
-  ['Max DD', '−18%', 'down'],
-];
 
 export function CopyTradeScreen() {
   const { colors } = useTheme();
@@ -214,23 +197,22 @@ export function CopyTradeScreen() {
           </Card>
         )}
 
-        {/* Tags */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {TRADER_TAGS.map(t => <Chip key={t} variant="outline">{t}</Chip>)}
-        </View>
-
-        {/* Performance */}
+        {/* Performance — derived from PublicProfile data */}
         <Card variant="noPad" style={{ flexDirection: 'row' }}>
-          {perf.map(([k, v, type], i) => (
+          {[
+            { k: 'All-time P&L', v: `${trader.pnlPct >= 0 ? '+' : ''}${trader.pnlPct.toFixed(1)}%`, type: trader.pnlPct >= 0 ? 'up' : 'down' },
+            { k: 'Win rate',     v: trader.tradeCount > 0 ? `${trader.winRate.toFixed(0)}%` : '—', type: trader.winRate >= 50 ? 'up' : null },
+            { k: 'Trades',       v: trader.tradeCount.toLocaleString(), type: null },
+          ].map((row, i, arr) => (
             <View
-              key={k}
-              style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}
+              key={row.k}
+              style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < arr.length - 1 ? 1 : 0, borderRightColor: colors.hairline }}
             >
-              <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>
+              <Text style={{ fontSize: 11, color: colors.ink3 }}>{row.k}</Text>
               <Text style={{
                 fontWeight: '700', fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'],
-                color: type === 'up' ? colors.up : type === 'down' ? colors.down : colors.ink,
-              }}>{v}</Text>
+                color: row.type === 'up' ? colors.up : row.type === 'down' ? colors.down : colors.ink,
+              }}>{row.v}</Text>
             </View>
           ))}
         </Card>
@@ -291,27 +273,37 @@ export function CopyTradeScreen() {
 
         {/* Recent activity */}
         <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>{traderHandle}'s recent trades</Text>
-        <Card variant="noPad">
-          {TRADER_RECENT_TRADES.map((t, i) => (
-            <CardSection key={t.id} last={i === TRADER_RECENT_TRADES.length - 1}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <CoinGlyph symbol={t.symbol} size={32} />
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontWeight: '600', color: colors.ink }}>{t.symbol}</Text>
-                    <Text style={{ fontWeight: '600', fontVariant: ['tabular-nums'], color: t.side === 'buy' ? colors.up : colors.down }}>
-                      {t.side === 'buy' ? '+' : '−'}${t.amount.toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 12, color: colors.ink3, textTransform: 'capitalize' }}>{t.side} · ${t.price.toLocaleString('en-US', { maximumFractionDigits: t.price < 0.01 ? 8 : 2 })}</Text>
-                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{relTime(t.ts)}</Text>
+        {trader.recentTrades.length === 0 ? (
+          <Card variant="tinted">
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              No trades yet. Once {traderHandle} places a trade, it'll show up here.
+            </Text>
+          </Card>
+        ) : (
+          <Card variant="noPad">
+            {trader.recentTrades.map((t, i, arr) => (
+              <CardSection key={`${t.t}-${i}`} last={i === arr.length - 1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <CoinGlyph symbol={t.symbol} size={32} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontWeight: '600', color: colors.ink }}>{t.symbol}</Text>
+                      <Text style={{ fontWeight: '600', fontVariant: ['tabular-nums'], color: t.side === 'buy' ? colors.up : colors.down }}>
+                        {t.side === 'buy' ? '+' : '−'}${t.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                      <Text style={{ fontSize: 12, color: colors.ink3, textTransform: 'capitalize' }}>
+                        {t.side} · ${t.price.toLocaleString('en-US', { maximumFractionDigits: t.price < 0.01 ? 8 : 2 })}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: colors.ink3 }}>{relTime(t.t)}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </CardSection>
-          ))}
-        </Card>
+              </CardSection>
+            ))}
+          </Card>
+        )}
 
         {/* Mirrored positions */}
         {mirroredHoldings.length > 0 && (

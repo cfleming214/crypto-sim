@@ -107,6 +107,9 @@ const schema = a.schema({
     // where t is ms epoch and v is bankroll at that moment. Capped to last
     // 168 points (~1 week of hourly snapshots) to keep the doc bounded.
     equityHistoryJson: a.string(),
+    // Last ~10 trades the user made, for the "recent trades" feed on their
+    // public profile. JSON array of { symbol, side, amount, units, price, t }.
+    recentTradesJson: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
