@@ -1,0 +1,33 @@
+appId: com.cfleming.cryptosim
+tags:
+  - smoke
+---
+# Smoke: market-buy $100 of BTC and verify the holding shows up.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Open BTC via the Markets tab
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+- assertVisible: { id: "trade-buy-btn" }
+
+# Open the buy order modal
+- tapOn: { id: "trade-buy-btn" }
+- assertVisible: { id: "trade-place-order-btn" }
+
+# Enter $100 via numpad keys: 1, 0, 0
+- tapOn: { id: "numpad-key-1" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+
+# Order success
+- assertVisible:
+    text: "Order filled"
+
+# Back to portfolio — BTC should be in holdings
+- tapOn: { text: "Home" }
+- assertVisible: { id: "portfolio-holding-row-BTC" }

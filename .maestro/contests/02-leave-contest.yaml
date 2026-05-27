@@ -1,0 +1,16 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+- runFlow:
+    file: ../helpers/join-first-contest.yaml
+
+- tapOn: { id: "tournament-leave-btn" }
+- tapOn:
+    text: "Leave"
+- assertVisible: { id: "tournament-join-btn" }

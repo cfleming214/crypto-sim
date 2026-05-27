@@ -1,0 +1,40 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: place a limit sell on an existing position.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Seed a position to sell against, if none exists.
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-SOL" }
+- tapOn: { id: "trade-sell-btn" }
+- assertVisible:
+    id: "trade-place-order-btn"
+    optional: true
+# If no SOL position, do a buy first
+- runFlow:
+    when:
+      notVisible: { id: "trade-place-order-btn" }
+    file: ../helpers/seed-trade.yaml
+    env:
+      SYMBOL: SOL
+      AMOUNT: "100"
+      SIDE: buy
+
+# Now do the limit sell
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-SOL" }
+- tapOn: { id: "trade-sell-btn" }
+- tapOn: { id: "trade-limit-toggle" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible:
+    text: "Limit order placed"
+- tapOn:
+    text: "OK"

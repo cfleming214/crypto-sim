@@ -1,0 +1,26 @@
+appId: com.cfleming.cryptosim
+---
+# Signs in with an existing account and lands on PortfolioScreen.
+# Caller passes EMAIL and PASSWORD as env:
+#   - runFlow:
+#       file: ../helpers/sign-in.yaml
+#       env:
+#         EMAIL: returning@example.com
+#         PASSWORD: Test1234!
+- launchApp
+- assertVisible: { id: "auth-email-input" }
+
+# Ensure we're in signin mode (toggle is only present in signin/signup)
+- assertVisible:
+    text: "Welcome back"
+    optional: true
+
+- tapOn: { id: "auth-email-input" }
+- inputText: ${EMAIL}
+- tapOn: { id: "auth-password-input" }
+- inputText: ${PASSWORD}
+- tapOn: { id: "auth-submit-btn" }
+
+# Successful sign-in lands on the Home tab — assert on a stable Portfolio element.
+- assertVisible:
+    id: "portfolio-rebalance-btn"

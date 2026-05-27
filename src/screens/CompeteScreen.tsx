@@ -179,6 +179,7 @@ export function CompeteScreen() {
         {openComps.map(comp => (
           <TouchableOpacity
             key={comp.id}
+            testID={`compete-card-${comp.id}`}
             style={{ width: '47.5%' }}
             onPress={() => handleJoin(comp)}
             activeOpacity={0.85}
@@ -207,7 +208,7 @@ export function CompeteScreen() {
       </View>
 
       {/* Top traders entry point */}
-      <TouchableOpacity onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
+      <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
         <Card variant="tinted">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>

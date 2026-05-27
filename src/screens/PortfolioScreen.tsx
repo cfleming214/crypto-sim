@@ -113,7 +113,7 @@ function RebalanceSheet({ visible, onClose, lines, targetPerCoin, onConfirm }: {
             <Text style={{ fontSize: 11, color: colors.ink3, textAlign: 'center' }}>
               {lines.length} trade{lines.length > 1 ? 's' : ''} will execute at current market price
             </Text>
-            <Button variant="brand" onPress={handleConfirm}>Rebalance now</Button>
+            <Button testID="rebalance-confirm-btn" variant="brand" onPress={handleConfirm}>Rebalance now</Button>
           </View>
         )}
         {lines.length === 0 && (
@@ -474,6 +474,7 @@ export function PortfolioScreen() {
             return (
               <TouchableOpacity
                 key={opt.id}
+                testID={`portfolio-selector-${opt.id}`}
                 onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
                 activeOpacity={0.75}
                 style={{
@@ -529,8 +530,8 @@ export function PortfolioScreen() {
           {riskWarnings.length > 0 ? riskWarnings.join(' · ') : 'Portfolio risk looks good'}
         </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button variant="ghost" size="sm" style={{ flex: 1 }} onPress={handleRebalance}>Rebalance</Button>
-          <Button variant="brand" size="sm" style={{ flex: 1 }} onPress={() => setStopSheetVisible(true)}>Set stops</Button>
+          <Button testID="portfolio-rebalance-btn" variant="ghost" size="sm" style={{ flex: 1 }} onPress={handleRebalance}>Rebalance</Button>
+          <Button testID="portfolio-stop-loss-btn" variant="brand" size="sm" style={{ flex: 1 }} onPress={() => setStopSheetVisible(true)}>Set stops</Button>
         </View>
       </Card>
 
@@ -542,7 +543,7 @@ export function PortfolioScreen() {
           <View key={nudge.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: nudgeBg, borderRadius: 14, padding: 14 }}>
             <Lightbulb color={nudgeColor} size={16} strokeWidth={1.75} style={{ marginTop: 1 }} />
             <Text style={{ flex: 1, fontSize: 12, color: colors.ink, lineHeight: 18 }}>{nudge.message}</Text>
-            <TouchableOpacity onPress={() => dispatch({ type: 'DISMISS_NUDGE', nudgeId: nudge.id })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity testID={`nudge-dismiss-${nudge.id}`} onPress={() => dispatch({ type: 'DISMISS_NUDGE', nudgeId: nudge.id })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <X color={colors.ink3} size={14} strokeWidth={2} />
             </TouchableOpacity>
           </View>
@@ -574,6 +575,7 @@ export function PortfolioScreen() {
         {holdingRows.map((h, i) => (
           <TouchableOpacity
             key={h.symbol}
+            testID={`portfolio-holding-row-${h.symbol}`}
             onPress={() => handleHoldingTap(h.symbol)}
             activeOpacity={h.symbol === 'USDC' ? 1 : 0.75}
           >

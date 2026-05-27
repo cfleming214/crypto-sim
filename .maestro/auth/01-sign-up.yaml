@@ -1,0 +1,15 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: brand-new user signs up and reaches the confirmation-code step.
+# Doesn't complete confirmation (that needs a live email pickup — see
+# 04-confirm-code-flow.yaml for the in-CI workaround).
+- runFlow:
+    file: ../helpers/sign-up-fresh.yaml
+
+# After hitting Create account we should land on the confirm screen.
+- assertVisible: { id: "auth-code-input" }
+- assertVisible: { id: "auth-resend-code-btn" }
+- assertVisible:
+    text: "Check your email"

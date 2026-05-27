@@ -1,0 +1,11 @@
+appId: com.cfleming.cryptosim
+---
+# Navigates to Profile and signs out, lands on AuthScreen.
+- tapOn:
+    text: "Profile"      # tab bar label
+- assertVisible: { id: "profile-signout-btn" }
+- tapOn: { id: "profile-signout-btn" }
+# Confirmation alert appears
+- tapOn:
+    text: "Sign out"
+- assertVisible: { id: "auth-email-input" }

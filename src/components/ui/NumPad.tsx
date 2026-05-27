@@ -42,6 +42,7 @@ export function NumPad({ value, onChange, maxValue, style }: NumPadProps) {
           {row.map(key => (
             <TouchableOpacity
               key={key}
+              testID={`numpad-key-${key === '.' ? 'dot' : key === 'DEL' ? 'del' : key}`}
               style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 }}
               onPress={() => handleKey(key)}
               activeOpacity={0.7}

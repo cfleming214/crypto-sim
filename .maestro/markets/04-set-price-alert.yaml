@@ -1,0 +1,19 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+# Open the MoreHorizontal sheet
+- tapOn: { id: "trade-more-btn" }
+- tapOn:
+    text: "Set price alert"
+# The price alert sheet should open
+- assertVisible:
+    text: "Notify me"

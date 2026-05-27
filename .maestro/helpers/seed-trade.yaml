@@ -1,0 +1,28 @@
+appId: com.cfleming.cryptosim
+---
+# Performs one quick market trade on the given symbol. Useful for flows that
+# need an existing trade to test against (view holding, activity history,
+# trade detail screen).
+#
+# Caller passes:
+#   SYMBOL   e.g. BTC
+#   AMOUNT   dollar amount as a string e.g. "100"
+#   SIDE     "buy" or "sell" (default: buy)
+- tapOn: { text: "Trade" }          # switch to Trade tab
+# Symbol switching is handled by the Markets tab tap-to-trade in real flows;
+# for the seed helper we trust the current symbol matches what the test wants.
+- tapOn:
+    id: ${'trade-' + (SIDE == 'sell' ? 'sell' : 'buy') + '-btn'}
+- assertVisible: { id: "trade-place-order-btn" }
+# Enter the dollar amount key-by-key via the NumPad.
+- evalScript: ${output.digits = AMOUNT.split('')}
+- repeat:
+    times: ${output.digits.length}
+    commands:
+      - tapOn:
+          id: ${'numpad-key-' + output.digits[output.index]}
+      - evalScript: ${output.index = (output.index || 0) + 1}
+- tapOn: { id: "trade-place-order-btn" }
+# Order success screen
+- assertVisible:
+    text: "Order filled"

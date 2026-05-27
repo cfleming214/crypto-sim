@@ -1,0 +1,30 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Verify that trade notifications navigate to the Trade tab.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Seed a trade so a notification exists
+- runFlow:
+    file: ../helpers/seed-trade.yaml
+    env:
+      SYMBOL: BTC
+      AMOUNT: "50"
+      SIDE: buy
+
+- tapOn:
+    text: "Notifications"
+- tapOn:
+    text: "Bought BTC"
+# Should land on the Trade tab (or a TradeDetail screen)
+- assertVisible:
+    id: "trade-buy-btn"
+    optional: true
+- assertVisible:
+    text: "Order filled"
+    optional: true

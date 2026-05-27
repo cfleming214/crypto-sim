@@ -44,6 +44,7 @@ function EditMirrorModal({ visible, allocation, onSave, onClose }: {
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 }}>
               <Text style={{ fontSize: 16, color: colors.ink3 }}>$</Text>
               <TextInput
+                testID="mirror-allocation-input"
                 value={alloc}
                 onChangeText={setAlloc}
                 keyboardType="number-pad"
@@ -68,7 +69,7 @@ function EditMirrorModal({ visible, allocation, onSave, onClose }: {
           ))}
         </ScrollView>
         <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
-          <Button variant="brand" onPress={() => { onSave(parseFloat(alloc) || allocation); onClose(); }}>
+          <Button testID="mirror-save-btn" variant="brand" onPress={() => { onSave(parseFloat(alloc) || allocation); onClose(); }}>
             Save changes
           </Button>
         </View>
@@ -257,7 +258,7 @@ export function CopyTradeScreen() {
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontWeight: '700', color: colors.ink }}>Mirror settings</Text>
-            <Button variant="ghost" size="sm" onPress={() => setEditOpen(true)}>Edit</Button>
+            <Button testID="copytrade-edit-mirror-btn" variant="ghost" size="sm" onPress={() => setEditOpen(true)}>Edit</Button>
           </View>
           {[
             ['Allocation', `$${allocation.toLocaleString()} / $${state.bankroll.toFixed(0)}`],
@@ -345,10 +346,11 @@ export function CopyTradeScreen() {
 
         {/* Footer */}
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button variant="ghost" style={{ flex: 1 }} onPress={handleTogglePause}>
+          <Button testID={paused ? 'copytrade-resume-btn' : 'copytrade-pause-btn'} variant="ghost" style={{ flex: 1 }} onPress={handleTogglePause}>
             {paused ? 'Resume' : 'Pause'}
           </Button>
           <Button
+            testID="copytrade-mirror-btn"
             variant={paused ? 'surface' : 'brand'}
             style={{ flex: 1 }}
             onPress={() => {

@@ -1,0 +1,22 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Profile" }
+- tapOn: { id: "profile-edit-btn" }
+
+- assertVisible: { id: "profile-handle-input" }
+- tapOn: { id: "profile-handle-input" }
+- eraseText: 30
+- inputText: "tester_${Math.random().toString(36).slice(2, 6)}"
+- tapOn: { id: "profile-save-btn" }
+
+# Modal closes; back on Profile, the new handle appears in the header.
+- assertVisible:
+    text: "@tester_"

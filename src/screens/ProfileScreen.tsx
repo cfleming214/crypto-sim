@@ -84,7 +84,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 20 }}>
           {/* Avatar preview */}
           <View style={{ alignItems: 'center', gap: 16 }}>
-            <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.8} style={{ position: 'relative' }}>
+            <TouchableOpacity testID="profile-photo-picker" onPress={handlePickPhoto} activeOpacity={0.8} style={{ position: 'relative' }}>
               {photoUri ? (
                 <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden' }}>
                   <Image source={{ uri: photoUri }} style={{ width: 80, height: 80 }} />
@@ -111,7 +111,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
               {AVATAR_COLORS.map(c => (
-                <TouchableOpacity key={c} onPress={() => setAvatarColor(c)}>
+                <TouchableOpacity key={c} testID={`profile-color-${c.replace('#', '')}`} onPress={() => setAvatarColor(c)}>
                   <View style={{
                     width: 36, height: 36, borderRadius: 18,
                     backgroundColor: c,
@@ -132,6 +132,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             }}>
               <Text style={{ fontSize: 15, color: colors.ink3 }}>@</Text>
               <TextInput
+                testID="profile-handle-input"
                 value={handle}
                 onChangeText={t => setHandle(t.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20))}
                 placeholder="yourhandle"
@@ -144,7 +145,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             <Text style={{ fontSize: 11, color: colors.ink3 }}>Letters, numbers, underscores only · max 20 chars</Text>
           </View>
 
-          <Button variant="brand" onPress={handleSave} disabled={saving} loading={saving}>
+          <Button testID="profile-save-btn" variant="brand" onPress={handleSave} disabled={saving} loading={saving}>
             Save changes
           </Button>
         </ScrollView>
@@ -310,7 +311,7 @@ export function ProfileScreen() {
             </Text>
           </View>
         </View>
-        <Button variant="ghost" size="sm" onPress={() => setEditVisible(true)}>Edit</Button>
+        <Button testID="profile-edit-btn" variant="ghost" size="sm" onPress={() => setEditVisible(true)}>Edit</Button>
       </View>
 
       {/* Stat grid */}
@@ -486,6 +487,7 @@ export function ProfileScreen() {
       {/* Sign out */}
       {status !== 'unauthenticated' && (
         <TouchableOpacity
+          testID="profile-signout-btn"
           onPress={() => Alert.alert(
             'Sign out?',
             `You'll be signed out of @${state.user.handle}. Your portfolio is saved in the cloud.`,

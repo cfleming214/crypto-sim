@@ -1,0 +1,23 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: tap a holding to land on its TradeScreen with the right symbol.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Seed a position if needed
+- runFlow:
+    when:
+      notVisible: { id: "portfolio-holding-row-BTC" }
+    commands:
+      - tapOn: { id: "portfolio-rebalance-btn" }
+      - tapOn: { id: "rebalance-confirm-btn" }
+
+- tapOn: { id: "portfolio-holding-row-BTC" }
+- assertVisible: { id: "trade-buy-btn" }
+- assertVisible: { id: "trade-sell-btn" }
+- assertVisible: { id: "trade-watchlist-star" }

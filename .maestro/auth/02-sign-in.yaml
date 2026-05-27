@@ -1,0 +1,18 @@
+appId: com.cfleming.cryptosim
+tags:
+  - smoke
+---
+# Smoke: sign in to an existing account, land on Portfolio.
+# Expects MAESTRO_TEST_EMAIL + MAESTRO_TEST_PASSWORD env vars set in CI,
+# defaults provided for local runs.
+- evalScript: ${output.email = MAESTRO_TEST_EMAIL || 'returning@example.com'}
+- evalScript: ${output.password = MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${output.email}
+      PASSWORD: ${output.password}
+
+- assertVisible: { id: "portfolio-rebalance-btn" }
+- assertVisible: { id: "portfolio-selector-main" }

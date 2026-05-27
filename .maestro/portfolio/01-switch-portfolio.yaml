@@ -1,0 +1,30 @@
+appId: com.cfleming.cryptosim
+tags:
+  - smoke
+---
+# Smoke: switch between Main portfolio and a joined contest portfolio.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Ensure the user has at least one joined contest. If not, the helper joins one.
+- runFlow:
+    file: ../helpers/join-first-contest.yaml
+
+# Back to Home and verify the selector pills are present
+- tapOn: { text: "Home" }
+- assertVisible: { id: "portfolio-selector-main" }
+
+# Tap the non-main selector (first contest) — its testID matches portfolio-selector-{competitionId}
+- tapOn:
+    id: "portfolio-selector-(?!main).*"
+    index: 0
+
+# The contest portfolio's bankroll display should still render the rebalance button
+- assertVisible: { id: "portfolio-rebalance-btn" }
+
+# Switch back to main and confirm
+- tapOn: { id: "portfolio-selector-main" }
+- assertVisible: { id: "portfolio-rebalance-btn" }

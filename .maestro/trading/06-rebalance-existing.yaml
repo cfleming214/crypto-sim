@@ -1,0 +1,40 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: rebalance a portfolio that already has holdings (skewed weights).
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Ensure there are some holdings; if not, cold-rebalance first.
+- assertVisible:
+    id: "portfolio-holding-row-BTC"
+    optional: true
+
+- runFlow:
+    when:
+      notVisible: { id: "portfolio-holding-row-BTC" }
+    commands:
+      - tapOn: { id: "portfolio-rebalance-btn" }
+      - tapOn: { id: "rebalance-confirm-btn" }
+
+# Add an extra BTC chunk to skew weights
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+- tapOn: { id: "trade-buy-btn" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- tapOn:
+    text: "View portfolio"
+    optional: true
+
+# Now rebalance to flatten back out
+- tapOn: { text: "Home" }
+- tapOn: { id: "portfolio-rebalance-btn" }
+- assertVisible: { id: "rebalance-confirm-btn" }
+- tapOn: { id: "rebalance-confirm-btn" }
+- assertVisible: { id: "portfolio-holding-row-BTC" }

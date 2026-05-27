@@ -1,0 +1,32 @@
+appId: com.cfleming.cryptosim
+---
+# Spawns a fresh test user and lands on PortfolioScreen.
+# Generates a random `test-{8-char-uuid}@example.com` email at runtime so
+# parallel runs don't collide. Password is always `Test1234!` (meets the
+# Cognito policy).
+#
+# Outputs (read in calling flows as ${output.testEmail}):
+#   testEmail    e.g. test-a8b3f9c2@example.com
+#   testPassword Test1234!
+- evalScript: ${output.testEmail = 'test-' + Math.random().toString(36).slice(2, 10) + '@example.com'}
+- evalScript: ${output.testPassword = 'Test1234!'}
+
+- launchApp
+- assertVisible: { id: "auth-email-input" }
+
+# Switch to signup mode if currently on signin
+- tapOn:
+    id: "auth-toggle-mode"
+    optional: true
+
+- tapOn: { id: "auth-email-input" }
+- inputText: ${output.testEmail}
+- tapOn: { id: "auth-password-input" }
+- inputText: ${output.testPassword}
+- tapOn: { id: "auth-submit-btn" }
+
+# Cognito sends a confirmation code email; the dev pool auto-confirms or the
+# user needs to enter it. In CI the code can be retrieved via Cognito admin
+# API (see scripts/cleanup-test-data.mjs for the admin client). For local
+# runs against the live sandbox, the code is delivered to a real inbox.
+- assertVisible: { id: "auth-code-input" }

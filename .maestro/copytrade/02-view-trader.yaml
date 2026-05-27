@@ -1,0 +1,21 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Compete" }
+- tapOn: { id: "compete-top-traders-link" }
+
+# Tap the first trader row
+- tapOn:
+    id: "top-traders-row-.*"
+    index: 0
+
+# On CopyTradeScreen
+- assertVisible: { id: "copytrade-mirror-btn" }
+- assertVisible: { id: "copytrade-edit-mirror-btn" }

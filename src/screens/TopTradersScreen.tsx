@@ -63,6 +63,7 @@ export function TopTradersScreen() {
           {traders.map((t, i) => (
             <TouchableOpacity
               key={t.id}
+              testID={`top-traders-row-${t.id}`}
               onPress={() => nav.navigate('CopyTrade', { traderId: t.id })}
               activeOpacity={0.7}
             >

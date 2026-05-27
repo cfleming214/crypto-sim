@@ -1,0 +1,20 @@
+# Maestro global config for the crypto-sim E2E suite.
+#
+# appId is the platform bundle identifier — Maestro uses this to launch the
+# right app on iOS / Android / web. It must match app.json:
+#   android.package         = com.cfleming.cryptosim
+#   ios.bundleIdentifier    = com.cfleming.cryptosim
+#
+# Individual flow files can override this in their own front-matter when
+# testing a different bundle (e.g. an EAS preview build).
+
+appId: com.cfleming.cryptosim
+
+# Default execution settings. Override per-flow when needed.
+executionOrder:
+  continueOnFailure: false   # stop a flow at the first failed step
+
+# Maestro tags drive `--include-tags` filtering on CLI:
+#   smoke  → 5 critical flows that gate every PR
+#   full   → everything (smoke + all the rest)
+# Every flow must declare at least one of these in its `tags:` array.

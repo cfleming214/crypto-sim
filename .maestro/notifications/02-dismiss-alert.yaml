@@ -1,0 +1,20 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Verify that opening notifications and tapping "Mark all read" doesn't crash.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn:
+    text: "Notifications"
+- tapOn:
+    text: "Mark all read"
+    optional: true
+
+# Still on Notifications screen
+- assertVisible:
+    text: "Notifications"

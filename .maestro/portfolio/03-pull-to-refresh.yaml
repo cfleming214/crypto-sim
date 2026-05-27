@@ -1,0 +1,16 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: pull-to-refresh the home screen and confirm the page redraws.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- assertVisible: { id: "portfolio-rebalance-btn" }
+- swipe:
+    direction: DOWN
+    duration: 800
+- assertVisible: { id: "portfolio-rebalance-btn" }

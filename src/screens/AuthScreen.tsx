@@ -95,6 +95,7 @@ export function AuthScreen() {
               <>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Email</Text>
                 <TextInput
+                  testID="auth-email-input"
                   style={inputStyle}
                   value={email}
                   onChangeText={setEmail}
@@ -106,6 +107,7 @@ export function AuthScreen() {
                 />
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Password</Text>
                 <TextInput
+                  testID="auth-password-input"
                   style={inputStyle}
                   value={password}
                   onChangeText={setPassword}
@@ -119,6 +121,7 @@ export function AuthScreen() {
               <>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Verification code</Text>
                 <TextInput
+                  testID="auth-code-input"
                   style={inputStyle}
                   value={code}
                   onChangeText={setCode}
@@ -126,13 +129,13 @@ export function AuthScreen() {
                   placeholder="123456"
                   placeholderTextColor={colors.ink4}
                 />
-                <TouchableOpacity onPress={() => resendCode(email.trim())}>
+                <TouchableOpacity testID="auth-resend-code-btn" onPress={() => resendCode(email.trim())}>
                   <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600' }}>Resend code</Text>
                 </TouchableOpacity>
               </>
             )}
 
-            <Button variant="brand" onPress={handleSubmit} disabled={loading} style={{ marginTop: 4 }}>
+            <Button testID="auth-submit-btn" variant="brand" onPress={handleSubmit} disabled={loading} style={{ marginTop: 4 }}>
               {loading
                 ? 'Please wait…'
                 : mode === 'signin'  ? 'Sign in'
@@ -142,7 +145,7 @@ export function AuthScreen() {
           </Card>
 
           {mode !== 'confirm' && (
-            <TouchableOpacity onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
+            <TouchableOpacity testID="auth-toggle-mode" onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
               <Text style={{ textAlign: 'center', fontSize: 14, color: `${colors.brandOn}CC` }}>
                 {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
                 <Text style={{ fontWeight: '700', color: colors.brandOn }}>

@@ -16,6 +16,7 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
+  testID?: string;
 }
 
 export function Button({
@@ -28,6 +29,7 @@ export function Button({
   disabled,
   loading,
   fullWidth,
+  testID,
 }: ButtonProps) {
   const { colors } = useTheme();
 
@@ -60,6 +62,7 @@ export function Button({
 
   return (
     <TouchableOpacity
+      testID={testID}
       onPress={onPress}
       disabled={disabled || loading}
       style={[

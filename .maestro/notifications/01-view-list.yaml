@@ -1,0 +1,15 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# The bell icon is in the TabNavigator header on Home tab.
+- tapOn:
+    text: "Notifications"
+- assertVisible:
+    text: "Notifications"

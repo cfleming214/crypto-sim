@@ -1,0 +1,16 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Make sure there's at least one joined contest to populate history
+- runFlow:
+    file: ../helpers/join-first-contest.yaml
+- tapOn: { text: "Profile" }
+- assertVisible:
+    text: "Contest history"

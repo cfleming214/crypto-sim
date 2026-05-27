@@ -322,6 +322,7 @@ export function TournamentDetailScreen() {
       {/* Footer */}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button
+          testID={joined ? 'tournament-leave-btn' : 'tournament-join-btn'}
           variant="ghost"
           style={{ flex: 1 }}
           onPress={handleJoinLeave}

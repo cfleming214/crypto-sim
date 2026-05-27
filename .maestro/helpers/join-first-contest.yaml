@@ -1,0 +1,17 @@
+appId: com.cfleming.cryptosim
+---
+# Taps the Compete tab → first competition card → Join.
+# Used by flows that need a joined contest as a precondition (contest history,
+# leaderboard view, contest portfolio switch).
+- tapOn: { text: "Compete" }
+# Tap the first compete-card-* element regardless of competition id
+- tapOn:
+    id: "compete-card-.*"
+    index: 0
+- assertVisible: { id: "tournament-join-btn" }
+- tapOn: { id: "tournament-join-btn" }
+# Confirmation alert
+- tapOn:
+    text: "Join"
+# After join, the Join button flips to Leave
+- assertVisible: { id: "tournament-leave-btn" }

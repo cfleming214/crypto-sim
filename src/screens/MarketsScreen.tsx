@@ -186,7 +186,7 @@ export function MarketsScreen() {
       eyebrow="Markets"
       title="Crypto"
       rightActions={
-        <TouchableOpacity style={{ padding: 8, position: 'relative' }} onPress={() => setFilterOpen(true)}>
+        <TouchableOpacity testID="markets-filter-btn" style={{ padding: 8, position: 'relative' }} onPress={() => setFilterOpen(true)}>
           <SlidersHorizontal color={activeFilterCount > 0 ? colors.brand : colors.ink} size={20} strokeWidth={1.75} />
           {activeFilterCount > 0 && (
             <View style={{
@@ -246,6 +246,7 @@ export function MarketsScreen() {
       }}>
         <Search color={colors.ink3} size={16} strokeWidth={1.75} />
         <TextInput
+          testID="markets-search-input"
           value={query}
           onChangeText={setQuery}
           placeholder="Search coins…"
@@ -317,7 +318,7 @@ export function MarketsScreen() {
             </Text>
           </View>
         ) : sorted.map((a, i) => (
-          <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
+          <TouchableOpacity key={a.symbol} testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
             <CardSection last={i === sorted.length - 1}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <CoinGlyph symbol={a.symbol} />
@@ -338,6 +339,7 @@ export function MarketsScreen() {
                 <View style={{ gap: 4, alignItems: 'flex-end' }}>
                   <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
                   <TouchableOpacity
+                    testID={`markets-watchlist-star-${a.symbol}`}
                     onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol: a.symbol })}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >

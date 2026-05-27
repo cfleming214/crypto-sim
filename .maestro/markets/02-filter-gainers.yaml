@@ -1,0 +1,23 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-filter-btn" }
+# Filter sheet should open
+- assertVisible:
+    text: "Filters"
+- tapOn:
+    text: "Gainers"
+- tapOn:
+    text: "Apply"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true

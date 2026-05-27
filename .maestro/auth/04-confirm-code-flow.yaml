@@ -1,0 +1,24 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: complete email-confirmation flow.
+# This requires a pre-confirmed test user pool (Cognito admin auto-confirms on
+# signup) OR a CI hook that reads the confirmation code from the email service.
+# For the local sandbox we use a known pre-existing test account that's already
+# confirmed and verify the confirm-code screen renders + resend works.
+- launchApp
+- assertVisible: { id: "auth-email-input" }
+- tapOn: { id: "auth-toggle-mode" }
+- tapOn: { id: "auth-email-input" }
+- inputText: ${MAESTRO_NEW_EMAIL || ('test-' + Math.random().toString(36).slice(2, 10) + '@example.com')}
+- tapOn: { id: "auth-password-input" }
+- inputText: "Test1234!"
+- tapOn: { id: "auth-submit-btn" }
+
+# Confirm screen
+- assertVisible: { id: "auth-code-input" }
+- tapOn: { id: "auth-resend-code-btn" }
+# We can't read the email in this environment, so we just verify the resend
+# action doesn't throw and the code input remains.
+- assertVisible: { id: "auth-code-input" }

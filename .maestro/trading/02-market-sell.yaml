@@ -1,0 +1,36 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: market-sell an existing holding.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Tap the BTC holding row (requires the user to already own BTC — seed if not)
+- tapOn:
+    id: "portfolio-holding-row-BTC"
+    optional: true
+
+# If no BTC holding, seed one first
+- runFlow:
+    when:
+      notVisible: { id: "trade-sell-btn" }
+    file: ../helpers/seed-trade.yaml
+    env:
+      SYMBOL: BTC
+      AMOUNT: "100"
+      SIDE: buy
+
+# Now perform the sell
+- tapOn: { text: "Home" }
+- tapOn: { id: "portfolio-holding-row-BTC" }
+- tapOn: { id: "trade-sell-btn" }
+- assertVisible: { id: "trade-place-order-btn" }
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+- assertVisible:
+    text: "Order filled"

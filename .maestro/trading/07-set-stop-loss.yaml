@@ -1,0 +1,24 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: open the Set stops sheet (relies on at least one holding).
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Ensure at least one holding via cold-start rebalance if empty
+- runFlow:
+    when:
+      notVisible: { id: "portfolio-holding-row-BTC" }
+    commands:
+      - tapOn: { id: "portfolio-rebalance-btn" }
+      - tapOn: { id: "rebalance-confirm-btn" }
+
+- tapOn: { id: "portfolio-stop-loss-btn" }
+# StopSheet modal — its exact selectors depend on the screen, but the sheet
+# itself should be visible. Assert on the sheet title text.
+- assertVisible:
+    text: "Stop losses"

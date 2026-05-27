@@ -1,0 +1,25 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: from an empty portfolio ($10K cash, no holdings) tap Rebalance —
+# expect a 5-coin balanced basket to be built.
+- runFlow:
+    file: ../helpers/sign-up-fresh.yaml
+
+# Fresh users start at $10K cash, 0 holdings. After confirming auth (manual
+# step skipped in CI without email pickup), the user lands on Portfolio.
+# For this flow we assume the test pool auto-confirms.
+- tapOn: { text: "Home" }
+- assertVisible: { id: "portfolio-rebalance-btn" }
+
+- tapOn: { id: "portfolio-rebalance-btn" }
+- assertVisible: { id: "rebalance-confirm-btn" }
+- tapOn: { id: "rebalance-confirm-btn" }
+
+# After cold-start rebalance, all 5 non-USDC coins should appear as holdings
+- assertVisible: { id: "portfolio-holding-row-BTC" }
+- assertVisible: { id: "portfolio-holding-row-ETH" }
+- assertVisible: { id: "portfolio-holding-row-SOL" }
+- assertVisible: { id: "portfolio-holding-row-DOGE" }
+- assertVisible: { id: "portfolio-holding-row-PEPE" }

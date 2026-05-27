@@ -1,0 +1,18 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Profile" }
+- tapOn: { id: "profile-edit-btn" }
+# Pick a specific color swatch — emerald (#10B981)
+- tapOn: { id: "profile-color-10B981" }
+- tapOn: { id: "profile-save-btn" }
+
+# Save succeeds (modal closes) and the Profile header still renders.
+- assertVisible: { id: "profile-edit-btn" }

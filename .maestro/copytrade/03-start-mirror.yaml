@@ -1,0 +1,26 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Compete" }
+- tapOn: { id: "compete-top-traders-link" }
+- tapOn:
+    id: "top-traders-row-.*"
+    index: 0
+- tapOn: { id: "copytrade-edit-mirror-btn" }
+
+- assertVisible: { id: "mirror-allocation-input" }
+- tapOn: { id: "mirror-allocation-input" }
+- eraseText: 10
+- inputText: "500"
+- tapOn: { id: "mirror-save-btn" }
+
+# Back on the trader screen, the Mirroring CTA should reflect the new allocation
+- assertVisible:
+    text: "Mirroring"

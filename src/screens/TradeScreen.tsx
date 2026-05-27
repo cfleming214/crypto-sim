@@ -54,6 +54,7 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
             {(['market', 'limit'] as const).map(t => (
               <TouchableOpacity
                 key={t}
+                testID={`trade-${t}-toggle`}
                 style={{ flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 8, backgroundColor: orderType === t ? colors.surface : 'transparent' }}
                 onPress={() => setOrderType(t)}
               >
@@ -149,6 +150,7 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
           )}
 
           <Button
+            testID="trade-place-order-btn"
             variant={side === 'buy' ? 'up' : 'down'}
             onPress={() => onConfirm(parsedAmount, orderType === 'limit' && limitPrice > 0 ? limitPrice : undefined)}
             style={{ width: '100%' }}
@@ -451,7 +453,7 @@ export function TradeScreen() {
         style={{ flex: 1 }}
         rightActions={
           <>
-            <TouchableOpacity style={{ padding: 8 }} onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol })}>
+            <TouchableOpacity testID="trade-watchlist-star" style={{ padding: 8 }} onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol })}>
               <Star
                 color={watchlisted ? colors.warn : colors.ink}
                 size={20}
@@ -459,7 +461,7 @@ export function TradeScreen() {
                 fill={watchlisted ? colors.warn : 'none'}
               />
             </TouchableOpacity>
-            <TouchableOpacity style={{ padding: 8 }} onPress={() => setMoreOpen(true)}>
+            <TouchableOpacity testID="trade-more-btn" style={{ padding: 8 }} onPress={() => setMoreOpen(true)}>
               <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
             </TouchableOpacity>
           </>
@@ -598,8 +600,8 @@ export function TradeScreen() {
           })()}
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
-            <Button variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
-            <Button variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
+            <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
+            <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
           </View>
         </View>
       </ScreenShell>

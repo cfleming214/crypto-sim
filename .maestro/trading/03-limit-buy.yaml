@@ -1,0 +1,31 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: place a limit buy order that doesn't trigger immediately.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-ETH" }
+- tapOn: { id: "trade-buy-btn" }
+- assertVisible: { id: "trade-place-order-btn" }
+
+# Switch to limit
+- tapOn: { id: "trade-limit-toggle" }
+
+# Enter $50
+- tapOn: { id: "numpad-key-5" }
+- tapOn: { id: "numpad-key-0" }
+
+# Place the limit order
+- tapOn: { id: "trade-place-order-btn" }
+
+# Should see a confirmation alert
+- assertVisible:
+    text: "Limit order placed"
+- tapOn:
+    text: "OK"

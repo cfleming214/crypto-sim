@@ -1,0 +1,27 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'returning@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+- tapOn: { text: "Compete" }
+- tapOn: { id: "compete-top-traders-link" }
+- tapOn:
+    id: "top-traders-row-.*"
+    index: 0
+
+# Pause; the button flips to Resume.
+- tapOn: { id: "copytrade-pause-btn" }
+- tapOn:
+    text: "OK"
+- assertVisible: { id: "copytrade-resume-btn" }
+
+# Resume so we end in a clean state.
+- tapOn: { id: "copytrade-resume-btn" }
+- tapOn:
+    text: "OK"
+- assertVisible: { id: "copytrade-pause-btn" }

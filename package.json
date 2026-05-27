@@ -36,7 +36,9 @@
   "devDependencies": {
     "@aws-amplify/backend": "^1.22.0",
     "@aws-amplify/backend-cli": "^1.8.2",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1054.0",
     "@aws-sdk/client-dynamodb": "^3.1054.0",
+    "@aws-sdk/client-s3": "^3.1054.0",
     "@aws-sdk/util-dynamodb": "^3.996.2",
     "@types/node": "^25.9.1",
     "@types/react": "~19.2.2",
@@ -46,7 +48,10 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test:e2e": "maestro test .maestro --include-tags=smoke,full",
+    "test:e2e:smoke": "maestro test .maestro --include-tags=smoke",
+    "test:e2e:cleanup": "node scripts/cleanup-test-data.mjs"
   },
   "private": true
 }
