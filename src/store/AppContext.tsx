@@ -122,7 +122,8 @@ type Action =
   | { type: 'SET_AVATAR'; uri: string; key: string }
   | { type: 'SET_CLOUD_NUDGES'; nudges: CoachNudge[] }
   | { type: 'SWITCH_PORTFOLIO'; portfolioId: string }
-  | { type: 'INIT_CONTEST_PORTFOLIO'; competitionId: string; slice?: PortfolioSlice };
+  | { type: 'INIT_CONTEST_PORTFOLIO'; competitionId: string; slice?: PortfolioSlice }
+  | { type: 'CLEAR_USER_DATA' };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -552,6 +553,17 @@ function reducer(state: AppState, action: Action): AppState {
         portfolios: { ...state.portfolios, [action.competitionId]: slice },
       };
     }
+    case 'CLEAR_USER_DATA': {
+      // Reset every per-user field back to INITIAL_STATE so a new user
+      // signing in doesn't inherit the previous user's portfolios,
+      // watchlist, alerts, etc. Coins (live prices) and competitions
+      // (shared global list) are preserved.
+      return {
+        ...INITIAL_STATE,
+        coins:        state.coins,
+        competitions: state.competitions,
+      };
+    }
     case 'SWITCH_PORTFOLIO': {
       if (action.portfolioId === state.activePortfolioId) return state;
       // Stash current portfolio's live cash/holdings/trades back into the map,
@@ -713,6 +725,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearInterval(priceRef.current);
     };
   }, []);
+
+  // Wipe all per-user state when auth flips to unauthenticated. Otherwise a
+  // sign-out followed by a different user's sign-in (no app reload) would
+  // leave the previous user's portfolios / watchlist / alerts in state for
+  // the new user to inherit.
+  useEffect(() => {
+    if (authStatus === 'unauthenticated') {
+      dispatch({ type: 'CLEAR_USER_DATA' });
+    }
+  }, [authStatus]);
 
   // Auth-gated: profile load + real-time subscriptions. AppSync rejects
   // observeQuery and any owner-scoped query without a Cognito JWT, so we
