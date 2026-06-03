@@ -10,6 +10,11 @@ jobs:
     name: Smoke (PR gate)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Map secret presence to env flags so the cloud steps can be gated on them.
+    # `secrets.*` cannot be referenced directly in a step `if:`, but `env.*` can.
+    env:
+      HAS_MAESTRO_SECRETS: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' }}
+      HAS_AWS_SECRETS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,19 +33,25 @@ jobs:
         run: npm run test:e2e:lint
 
       - name: Install Maestro CLI
+        if: env.HAS_MAESTRO_SECRETS == 'true'
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
 
       - name: Run smoke E2E (Maestro Cloud)
+        if: env.HAS_MAESTRO_SECRETS == 'true'
         env:
           MAESTRO_CLOUD_API_KEY: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
           MAESTRO_TEST_EMAIL:    ${{ secrets.MAESTRO_TEST_EMAIL }}
           MAESTRO_TEST_PASSWORD: ${{ secrets.MAESTRO_TEST_PASSWORD }}
         run: maestro cloud --include-tags=smoke .maestro
 
+      - name: Smoke E2E skipped (no Maestro secrets)
+        if: env.HAS_MAESTRO_SECRETS != 'true'
+        run: echo "::warning::Smoke E2E skipped — MAESTRO_CLOUD_API_KEY is not configured. Type-check and Maestro flow lint still ran. Add the secret to enable the cloud run."
+
       - name: Cleanup test data
-        if: always()
+        if: always() && env.HAS_AWS_SECRETS == 'true'
         env:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -53,6 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [smoke]
+    env:
+      HAS_MAESTRO_SECRETS: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' }}
+      HAS_AWS_SECRETS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,19 +78,25 @@ jobs:
       - run: npm ci
 
       - name: Install Maestro CLI
+        if: env.HAS_MAESTRO_SECRETS == 'true'
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
 
       - name: Run full E2E (Maestro Cloud)
+        if: env.HAS_MAESTRO_SECRETS == 'true'
         env:
           MAESTRO_CLOUD_API_KEY: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
           MAESTRO_TEST_EMAIL:    ${{ secrets.MAESTRO_TEST_EMAIL }}
           MAESTRO_TEST_PASSWORD: ${{ secrets.MAESTRO_TEST_PASSWORD }}
         run: maestro cloud --include-tags=full .maestro
 
+      - name: Full E2E skipped (no Maestro secrets)
+        if: env.HAS_MAESTRO_SECRETS != 'true'
+        run: echo "::warning::Full E2E skipped — MAESTRO_CLOUD_API_KEY is not configured."
+
       - name: Cleanup test data
-        if: always()
+        if: always() && env.HAS_AWS_SECRETS == 'true'
         env:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
