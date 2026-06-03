@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Trophy } from 'lucide-react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Trophy, X } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -16,7 +17,9 @@ type AuthMode = 'signin' | 'signup';
 export function AuthScreen() {
   const { colors } = useTheme();
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<AuthMode>('signin');
+  const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  const [mode, setMode] = useState<AuthMode>(route.params?.mode ?? 'signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,6 +44,10 @@ export function AuthScreen() {
       } else {
         await signUp(u, password);
       }
+      // Auth flipped to authenticated — dismiss the modal so the gated
+      // screen underneath re-renders with real content. goBack is a no-op
+      // if this screen was somehow the root.
+      if (nav.canGoBack()) nav.goBack();
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Something went wrong. Please try again.');
     } finally {
@@ -54,6 +61,15 @@ export function AuthScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
       <StatusBar style="light" />
+      {nav.canGoBack() && (
+        <TouchableOpacity
+          testID="auth-close-btn"
+          onPress={() => nav.goBack()}
+          style={{ position: 'absolute', top: 8, right: 12, zIndex: 10, padding: 12 }}
+        >
+          <X color={colors.brandOn} size={26} strokeWidth={2} />
+        </TouchableOpacity>
+      )}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={{ padding: 28, gap: 24 }} keyboardShouldPersistTaps="handled">
 

@@ -2,13 +2,13 @@
 #
 # appId is the platform bundle identifier — Maestro uses this to launch the
 # right app on iOS / Android / web. It must match app.json:
-#   android.package         = com.cfleming.cryptosim
-#   ios.bundleIdentifier    = com.cfleming.cryptosim
+#   android.package         = com.simpledesignllc.cryptocomp
+#   ios.bundleIdentifier    = com.simpledesignllc.cryptocomp
 #
 # Individual flow files can override this in their own front-matter when
 # testing a different bundle (e.g. an EAS preview build).
 
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 
 # Default execution settings. Override per-flow when needed.
 executionOrder:

@@ -46,6 +46,14 @@
     "typescript": "~6.0.3",
     "yaml": "^2.9.0"
   },
+  "overrides": {
+    "@aws-amplify/data-construct": {
+      "zod": "3.25.17"
+    },
+    "@aws-amplify/graphql-api-construct": {
+      "zod": "3.25.17"
+    }
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",

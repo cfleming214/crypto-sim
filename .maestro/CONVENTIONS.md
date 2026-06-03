@@ -12,7 +12,9 @@ Stable across copy edits, locale changes, and visual refactors — that's the wh
 
 | Surface | testIDs |
 | --- | --- |
-| Auth | `auth-email-input`, `auth-password-input`, `auth-code-input`, `auth-submit-btn`, `auth-toggle-mode`, `auth-resend-code-btn` |
+| Auth | `auth-username-input`, `auth-password-input`, `auth-submit-btn`, `auth-toggle-mode`, `auth-close-btn` |
+| AuthWall | `authwall-signin-btn`, `authwall-signup-btn` |
+| Email verify | `email-verify-email-input`, `email-verify-send-btn`, `email-verify-code-input`, `email-verify-confirm-btn`, `email-verify-resend`, `email-verify-change-email`, `email-verify-close` |
 | Trade | `trade-buy-btn`, `trade-sell-btn`, `trade-amount-input`, `trade-quick-amount-50`, `trade-limit-toggle`, `trade-place-order-btn`, `trade-more-btn`, `trade-watchlist-star`, `trade-indicators-toggle` |
 | Portfolio | `portfolio-rebalance-btn`, `portfolio-stop-loss-btn`, `portfolio-holding-row-BTC`, `portfolio-selector-main`, `portfolio-selector-{competitionId}`, `nudge-dismiss-{nudgeId}` |
 | NumPad | `numpad-key-1`, `numpad-key-2` … `numpad-key-0`, `numpad-key-dot`, `numpad-key-del` |
@@ -29,7 +31,7 @@ Stable across copy edits, locale changes, and visual refactors — that's the wh
 Every `.yaml` flow:
 
 ```yaml
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 tags:
   - smoke   # or - full
 ---

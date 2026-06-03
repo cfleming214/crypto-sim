@@ -1,26 +1,35 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 ---
-# Signs in with an existing account and lands on PortfolioScreen.
-# Caller passes EMAIL and PASSWORD as env:
+# Signs in with an existing account and lands on PortfolioScreen (Home).
+#
+# The app now boots as a guest straight to Home. Sign-in happens through the
+# auth wall on a gated tab (Profile), which opens the Auth modal. Caller passes
+# EMAIL and PASSWORD as env (EMAIL is typed into the Cognito username field):
 #   - runFlow:
 #       file: ../helpers/sign-in.yaml
 #       env:
 #         EMAIL: returning@example.com
 #         PASSWORD: Test1234!
 - launchApp
-- assertVisible: { id: "auth-email-input" }
 
-# Ensure we're in signin mode (toggle is only present in signin/signup)
-- assertVisible:
-    text: "Welcome back"
-    optional: true
+# Guest lands on Home. Open a gated tab to surface the sign-up wall, then
+# choose "I already have an account" to open the Auth modal in signin mode.
+- tapOn:
+    text: "Profile"      # tab bar label
+- assertVisible: { id: "authwall-signin-btn" }
+- tapOn: { id: "authwall-signin-btn" }
 
-- tapOn: { id: "auth-email-input" }
+- assertVisible: { id: "auth-username-input" }
+- tapOn: { id: "auth-username-input" }
 - inputText: ${EMAIL}
 - tapOn: { id: "auth-password-input" }
 - inputText: ${PASSWORD}
 - tapOn: { id: "auth-submit-btn" }
 
-# Successful sign-in lands on the Home tab — assert on a stable Portfolio element.
-- assertVisible:
-    id: "portfolio-rebalance-btn"
+# A successful sign-in dismisses the Auth modal and unlocks the gated screen.
+# Wait for the modal to disappear, then hop to Home so callers start on the
+# portfolio (most downstream flows act on Home).
+- assertNotVisible: { id: "auth-username-input" }
+- tapOn:
+    text: "Home"
+- assertVisible: { id: "portfolio-rebalance-btn" }

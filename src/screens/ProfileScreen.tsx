@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
+import { AuthWall } from '../components/AuthWall';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
@@ -266,6 +267,18 @@ export function ProfileScreen() {
     ['Best rank',   bestRank, null],
   ];
 
+  // Guests can use the demo portfolio, but the profile is account-bound —
+  // gate it behind a sign-up wall.
+  if (status === 'unauthenticated') {
+    return (
+      <AuthWall
+        icon={User}
+        title="Your profile, your record"
+        subtitle="Create a free account to save your portfolio, track your stats, and build a trading history that sticks."
+      />
+    );
+  }
+
   return (
     <ScreenShell
       title="Profile"
@@ -289,7 +302,7 @@ export function ProfileScreen() {
             {
               text: 'Sign out',
               style: 'destructive',
-              onPress: () => status !== 'unauthenticated' && signOut(),
+              onPress: () => signOut(),
             },
           ])}
         >
@@ -484,8 +497,9 @@ export function ProfileScreen() {
         </Card>
       )}
 
-      {/* Sign out */}
-      {status !== 'unauthenticated' && (
+      {/* Sign out — only authenticated users reach this screen (guests see
+          the AuthWall above), so the button always renders here. */}
+      {(
         <TouchableOpacity
           testID="profile-signout-btn"
           onPress={() => Alert.alert(

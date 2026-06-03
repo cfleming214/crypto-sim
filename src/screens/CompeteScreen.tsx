@@ -6,12 +6,13 @@ import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
+import { AuthWall } from '../components/AuthWall';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { useNavigation } from '@react-navigation/native';
-import { Clock, Flame, Bell } from 'lucide-react-native';
+import { Clock, Flame, Bell, Trophy } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
@@ -54,7 +55,7 @@ export function CompeteScreen() {
   const { state } = useApp();
   const nav = useNavigation<any>();
   const { getLive, getOpen, isJoined, join, timeRemaining } = useCompetitions();
-  const { emailVerified } = useAuth();
+  const { emailVerified, status } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
 
@@ -99,6 +100,18 @@ export function CompeteScreen() {
       ],
     );
   };
+
+  // Contests are account-bound (entries, leaderboards, prizes all key off a
+  // user). Guests get a sign-up wall instead of the live contest list.
+  if (status === 'unauthenticated') {
+    return (
+      <AuthWall
+        icon={Trophy}
+        title="Enter the arena"
+        subtitle="Create a free account to join daily contests, climb the leaderboard, and compete for prizes — all with simulated money."
+      />
+    );
+  }
 
   return (
     <ScreenShell

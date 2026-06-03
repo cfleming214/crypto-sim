@@ -1,4 +1,4 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 tags:
   - journey
   - full
@@ -18,10 +18,8 @@ tags:
 # ---------- 1. Sign-up ----------
 - runFlow: ../helpers/sign-up-fresh.yaml
 
-# At this point the user is on the confirm-code screen. In a test pool with
-# auto-confirm enabled the next signIn from autoSignIn lands on Portfolio.
-# Without auto-confirm, the rest of the journey is skipped (the code-input
-# screen has no Portfolio elements so subsequent steps fail-fast).
+# Signup auto-confirms (no code step) and the helper lands on Home — confirm
+# the portfolio is up before the journey continues.
 - assertVisible:
     id: "portfolio-rebalance-btn"
     timeout: 30000
@@ -230,5 +228,5 @@ tags:
 # ---------- 22. Sign-out ----------
 - runFlow: ../helpers/sign-out.yaml
 
-# Final assertion: back on AuthScreen
-- assertVisible: { id: "auth-email-input" }
+# Final assertion: back to the guest sign-up wall.
+- assertVisible: { id: "authwall-signup-btn" }

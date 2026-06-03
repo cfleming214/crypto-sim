@@ -1,4 +1,4 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 ---
 # Performs one quick market trade on the given symbol. Useful for flows that
 # need an existing trade to test against (view holding, activity history,

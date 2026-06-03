@@ -1,8 +1,8 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 tags:
   - smoke
 ---
-# Smoke: sign out, land on AuthScreen.
+# Smoke: sign out, land back on the guest sign-up wall.
 - runFlow:
     file: ../helpers/sign-in.yaml
     env:
@@ -12,4 +12,4 @@ tags:
 - runFlow:
     file: ../helpers/sign-out.yaml
 
-- assertVisible: { id: "auth-email-input" }
+- assertVisible: { id: "authwall-signup-btn" }

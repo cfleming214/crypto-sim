@@ -16,6 +16,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "simpledesignllcca@gmail.com",
+        "ascAppId": "1390288858",
+        "appleTeamId": "9P87TSR668"
+      }
+    }
   }
 }

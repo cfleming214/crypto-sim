@@ -1,4 +1,4 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 ---
 # Taps the Compete tab → first competition card → Join.
 # Used by flows that need a joined contest as a precondition (contest history,

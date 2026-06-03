@@ -1,20 +1,20 @@
 {
   "expo": {
     "name": "crypto-sim",
-    "slug": "crypto-sim",
-    "version": "1.0.0",
+    "slug": "cryptocomp",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.cfleming.cryptosim",
+      "bundleIdentifier": "com.simpledesignllc.cryptocomp",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.cfleming.cryptosim",
+      "package": "com.simpledesignllc.cryptocomp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -29,8 +29,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "20887c32-f0e3-4bca-a7b5-d86bac71352a"
+        "projectId": "e7abe187-7396-439e-96ec-aa7832f23d46"
       }
-    }
+    },
+    "owner": "simple-design"
   }
 }

@@ -1,6 +1,8 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 ---
-# Navigates to Profile and signs out, lands on AuthScreen.
+# Navigates to Profile and signs out. The app stays in the main tabs (it no
+# longer kicks back to a full-screen AuthScreen) — instead the Profile tab
+# re-renders the guest sign-up wall.
 - tapOn:
     text: "Profile"      # tab bar label
 - assertVisible: { id: "profile-signout-btn" }
@@ -8,4 +10,5 @@ appId: com.cfleming.cryptosim
 # Confirmation alert appears
 - tapOn:
     text: "Sign out"
-- assertVisible: { id: "auth-email-input" }
+# Back to guest: the Profile tab now shows the auth wall.
+- assertVisible: { id: "authwall-signup-btn" }

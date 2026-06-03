@@ -1,24 +1,35 @@
-appId: com.cfleming.cryptosim
+appId: com.simpledesignllc.cryptocomp
 tags:
   - full
 ---
-# Full: complete email-confirmation flow.
-# This requires a pre-confirmed test user pool (Cognito admin auto-confirms on
-# signup) OR a CI hook that reads the confirmation code from the email service.
-# For the local sandbox we use a known pre-existing test account that's already
-# confirmed and verify the confirm-code screen renders + resend works.
-- launchApp
-- assertVisible: { id: "auth-email-input" }
-- tapOn: { id: "auth-toggle-mode" }
-- tapOn: { id: "auth-email-input" }
-- inputText: ${MAESTRO_NEW_EMAIL || ('test-' + Math.random().toString(36).slice(2, 10) + '@example.com')}
-- tapOn: { id: "auth-password-input" }
-- inputText: "Test1234!"
-- tapOn: { id: "auth-submit-btn" }
+# Full: a freshly signed-up user is NOT email-verified, so attempting to join a
+# contest prompts them to verify their email via the EmailVerificationModal.
+#
+# This replaces the old "confirm code on signup" flow — signup auto-confirms
+# with no code step, and email verification now happens on demand at contest
+# join (the email is used for prize notifications + account recovery).
+#
+# Requires at least one open contest to be seeded (same assumption as the other
+# contests/* flows). We stop at the "enter email" step: actually sending a code
+# hits live Cognito email delivery, which can't be read back in this
+# environment.
+- runFlow:
+    file: ../helpers/sign-up-fresh.yaml
 
-# Confirm screen
-- assertVisible: { id: "auth-code-input" }
-- tapOn: { id: "auth-resend-code-btn" }
-# We can't read the email in this environment, so we just verify the resend
-# action doesn't throw and the code input remains.
-- assertVisible: { id: "auth-code-input" }
+# Open contests live on the Compete tab. Tap the first card → confirm join.
+- tapOn:
+    text: "Compete"      # tab bar label
+- tapOn:
+    id: "compete-card-.*"
+    index: 0
+- tapOn:
+    text: "Join"
+
+# Because the fresh account has no verified email, the verification modal opens
+# on its "enter email" step instead of completing the join.
+- assertVisible: { id: "email-verify-email-input" }
+- assertVisible: { id: "email-verify-send-btn" }
+
+# Dismissing the modal leaves the contest un-joined; we're back on Compete.
+- tapOn: { id: "email-verify-close" }
+- assertNotVisible: { id: "email-verify-email-input" }

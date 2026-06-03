@@ -14,7 +14,7 @@ import { AuthScreen } from '../screens/AuthScreen';
 import { useAuth } from '../store/AuthContext';
 
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: { mode?: 'signin' | 'signup' } | undefined;
   MainTabs: { screen?: string; params?: any } | undefined;
   TradeDetail: { tradeId?: string; symbol?: string };
   TournamentDetail: { id: string };
@@ -32,15 +32,11 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { status } = useAuth();
 
+  // Hold on the splash until the session check resolves. After that the app
+  // is always reachable as a guest — the $10k demo portfolio lives in
+  // AppContext and works without an account. Auth-gated areas (Profile,
+  // Compete) render their own sign-up wall and push the Auth modal below.
   if (status === 'loading') return null;
-
-  if (status === 'unauthenticated') {
-    return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Auth" component={AuthScreen} />
-      </Stack.Navigator>
-    );
-  }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -54,6 +50,11 @@ export function RootNavigator() {
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
+      <Stack.Screen
+        name="Auth"
+        component={AuthScreen}
+        options={{ presentation: 'modal' }}
+      />
     </Stack.Navigator>
   );
 }
