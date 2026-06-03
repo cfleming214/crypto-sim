@@ -70,6 +70,23 @@ function computeRiskScore(
   return Math.max(20, Math.min(100, score));
 }
 
+// USDC is the cash anchor, not a tradeable position. If a loaded profile ever
+// ends up with USDC sitting in `holdings` (an older build let it be bought),
+// the balance gets stranded: it isn't counted as buying power, can't be tapped
+// to trade, and blocks rebalancing. Fold any USDC holding back into spendable
+// cash at its $1 peg so the money is usable again. A no-op when there's no USDC
+// holding, so it's safe to run on every load.
+function foldUsdcIntoCash<H extends { symbol: string; units: number }>(
+  holdings: H[],
+  cash: number,
+): { holdings: H[]; cash: number } {
+  if (!holdings.some(h => h.symbol === 'USDC')) return { holdings, cash };
+  const recovered = holdings
+    .filter(h => h.symbol === 'USDC')
+    .reduce((sum, h) => sum + h.units, 0); // USDC pegged at $1
+  return { holdings: holdings.filter(h => h.symbol !== 'USDC'), cash: cash + recovered };
+}
+
 const INITIAL_STATE: AppState = {
   user: { handle: 'you', xp: 0, league: 'Bronze', division: 1, streak: 0, avatarColor: '#6366F1' },
   bankroll: 10000,
@@ -154,6 +171,13 @@ function reducer(state: AppState, action: Action): AppState {
           ? coin.price <= order.limitPrice
           : coin.price >= order.limitPrice;
         if (!triggered) continue;
+
+        // USDC is the cash anchor — never fill a buy into it (would strand cash
+        // in an un-spendable holding). Drop the order without executing.
+        if (order.side === 'buy' && order.symbol === 'USDC') {
+          newState = { ...newState, pendingOrders: newState.pendingOrders.filter(o => o.id !== order.id) };
+          continue;
+        }
 
         // Execute the order
         if (order.side === 'buy' && newState.cash >= order.amount) {
@@ -277,17 +301,21 @@ function reducer(state: AppState, action: Action): AppState {
       // loaded holdings. activeTournament is a UI-only summary; we clear it
       // because there's no cloud source of truth for it yet.
       const merged = { ...state, ...action.profile };
+      // Heal any stranded USDC position by folding it back into cash before we
+      // derive anything from holdings/cash (bankroll, nudges, risk all depend
+      // on these). The corrected values persist on the next saveProfile.
+      const { holdings: loadedHoldings, cash: loadedCash } = foldUsdcIntoCash(merged.holdings, merged.cash);
       // Bankroll is a derived value — recompute it against live coin prices.
       // The stored bankroll in DynamoDB is a stale snapshot from the moment
       // saveProfile last ran, so loading it directly would cause a flash
       // every time the subscription fires after a save.
-      const recomputedBankroll = merged.cash + merged.holdings.reduce((s, h) => {
+      const recomputedBankroll = loadedCash + loadedHoldings.reduce((s, h) => {
         const c = merged.coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
       const recomputedNudges = computeCoachNudges(
-        merged.holdings,
-        merged.cash,
+        loadedHoldings,
+        loadedCash,
         recomputedBankroll,
         merged.coins,
         merged.stopLosses,
@@ -295,6 +323,8 @@ function reducer(state: AppState, action: Action): AppState {
       );
       return {
         ...merged,
+        cash: loadedCash,
+        holdings: loadedHoldings,
         bankroll: recomputedBankroll,
         activeTournament: null,
         coachNudges: recomputedNudges,
@@ -304,6 +334,9 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'BUY': {
+      // USDC is the cash anchor — "buying" it would just move spendable cash
+      // into a holding that can't be spent or tapped. Reject it outright.
+      if (action.symbol === 'USDC') return state;
       const coin = state.coins.find(c => c.symbol === action.symbol);
       if (!coin || state.cash < action.amount) return state;
       const units = action.amount / coin.price;
@@ -606,8 +639,12 @@ function reducer(state: AppState, action: Action): AppState {
           trades: state.trades,
         },
       };
-      const target = stashed[action.portfolioId]
+      const rawTarget = stashed[action.portfolioId]
         ?? { cash: 10000, holdings: [], trades: [] };
+      // Fold any stranded USDC holding back into cash on the portfolio we're
+      // switching to (same heal as LOAD_PROFILE).
+      const { holdings: targetHoldings, cash: targetCash } = foldUsdcIntoCash(rawTarget.holdings, rawTarget.cash);
+      const target = { ...rawTarget, holdings: targetHoldings, cash: targetCash };
       const holdingsValue = target.holdings.reduce((s, h) => {
         const c = state.coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);

@@ -156,6 +156,9 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
             style={{ width: '100%' }}
             disabled={
               parsedAmount <= 0 ||
+              // USDC is cash, not a buyable asset — buying it would strand the
+              // balance in an un-spendable holding.
+              (side === 'buy' && symbol === 'USDC') ||
               (side === 'buy' && parsedAmount > state.cash) ||
               (side === 'sell' && parsedAmount > maxSell) ||
               (orderType === 'limit' && limitPrice <= 0)
