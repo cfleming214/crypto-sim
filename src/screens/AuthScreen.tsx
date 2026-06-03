@@ -11,15 +11,14 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../store/AuthContext';
 
-type AuthMode = 'signin' | 'signup' | 'confirm';
+type AuthMode = 'signin' | 'signup';
 
 export function AuthScreen() {
   const { colors } = useTheme();
-  const { signIn, signUp, confirmSignUp, resendCode } = useAuth();
+  const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<AuthMode>('signin');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
 
   const inputStyle = {
@@ -36,20 +35,11 @@ export function AuthScreen() {
     if (loading) return;
     setLoading(true);
     try {
+      const u = username.trim();
       if (mode === 'signin') {
-        await signIn(email.trim(), password);
-      } else if (mode === 'signup') {
-        const { nextStep } = await signUp(email.trim(), password);
-        if (nextStep === 'CONFIRM_SIGN_UP') setMode('confirm');
+        await signIn(u, password);
       } else {
-        const { autoSignedIn } = await confirmSignUp(email.trim(), code.trim());
-        if (!autoSignedIn) {
-          // Email confirmed but Cognito didn't auto-sign-in (e.g. account was
-          // created before autoSignIn was enabled). Send the user to sign-in.
-          setMode('signin');
-          setCode('');
-          Alert.alert('Email confirmed', 'Sign in with your password to continue.');
-        }
+        await signUp(u, password);
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Something went wrong. Please try again.');
@@ -58,15 +48,8 @@ export function AuthScreen() {
     }
   };
 
-  const headline =
-    mode === 'confirm' ? 'Check your email' :
-    mode === 'signin'  ? 'Welcome back' :
-    'Create account';
-
-  const subtitle =
-    mode === 'confirm'
-      ? `We sent a 6-digit code to ${email}`
-      : 'Trade crypto. Win prizes. Risk nothing.';
+  const headline = mode === 'signin' ? 'Welcome back' : 'Create account';
+  const subtitle = 'Trade crypto. Win prizes. Risk nothing.';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
@@ -91,69 +74,43 @@ export function AuthScreen() {
           </View>
 
           <Card style={{ gap: 12 }}>
-            {mode !== 'confirm' ? (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Email</Text>
-                <TextInput
-                  testID="auth-email-input"
-                  style={inputStyle}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  placeholderTextColor={colors.ink4}
-                />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Password</Text>
-                <TextInput
-                  testID="auth-password-input"
-                  style={inputStyle}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.ink4}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Verification code</Text>
-                <TextInput
-                  testID="auth-code-input"
-                  style={inputStyle}
-                  value={code}
-                  onChangeText={setCode}
-                  keyboardType="number-pad"
-                  placeholder="123456"
-                  placeholderTextColor={colors.ink4}
-                />
-                <TouchableOpacity testID="auth-resend-code-btn" onPress={() => resendCode(email.trim())}>
-                  <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600' }}>Resend code</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Username</Text>
+            <TextInput
+              testID="auth-username-input"
+              style={inputStyle}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              placeholder="trader_42"
+              placeholderTextColor={colors.ink4}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Password</Text>
+            <TextInput
+              testID="auth-password-input"
+              style={inputStyle}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              placeholder="••••••••"
+              placeholderTextColor={colors.ink4}
+            />
 
             <Button testID="auth-submit-btn" variant="brand" onPress={handleSubmit} disabled={loading} style={{ marginTop: 4 }}>
-              {loading
-                ? 'Please wait…'
-                : mode === 'signin'  ? 'Sign in'
-                : mode === 'signup'  ? 'Create account'
-                : 'Verify email'}
+              {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
           </Card>
 
-          {mode !== 'confirm' && (
-            <TouchableOpacity testID="auth-toggle-mode" onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
-              <Text style={{ textAlign: 'center', fontSize: 14, color: `${colors.brandOn}CC` }}>
-                {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-                <Text style={{ fontWeight: '700', color: colors.brandOn }}>
-                  {mode === 'signin' ? 'Sign up' : 'Sign in'}
-                </Text>
+          <TouchableOpacity testID="auth-toggle-mode" onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
+            <Text style={{ textAlign: 'center', fontSize: 14, color: `${colors.brandOn}CC` }}>
+              {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+              <Text style={{ fontWeight: '700', color: colors.brandOn }}>
+                {mode === 'signin' ? 'Sign up' : 'Sign in'}
               </Text>
-            </TouchableOpacity>
-          )}
+            </Text>
+          </TouchableOpacity>
 
         </ScrollView>
       </KeyboardAvoidingView>

@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
+import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { useNavigation } from '@react-navigation/native';
 import { Clock, Flame, Bell } from 'lucide-react-native';
@@ -52,6 +54,9 @@ export function CompeteScreen() {
   const { state } = useApp();
   const nav = useNavigation<any>();
   const { getLive, getOpen, isJoined, join, timeRemaining } = useCompetitions();
+  const { emailVerified } = useAuth();
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const pendingJoin = useRef<Competition | null>(null);
 
   const xp = state.user.xp;
   const xpGoal = 6000;
@@ -62,6 +67,13 @@ export function CompeteScreen() {
   const liveComps = getLive();
   const openComps = getOpen();
   const activeLive = liveComps[0];
+
+  const finalizeJoin = async (comp: Competition) => {
+    await join(comp.id);
+    Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
+      { text: 'Let\'s go!', onPress: () => nav.navigate('TournamentDetail', { id: comp.id }) },
+    ]);
+  };
 
   const handleJoin = async (comp: Competition) => {
     if (isJoined(comp.id)) {
@@ -75,11 +87,13 @@ export function CompeteScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Join',
-          onPress: async () => {
-            await join(comp.id);
-            Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
-              { text: 'Let\'s go!', onPress: () => nav.navigate('TournamentDetail', { id: comp.id }) },
-            ]);
+          onPress: () => {
+            if (!emailVerified) {
+              pendingJoin.current = comp;
+              setVerifyOpen(true);
+              return;
+            }
+            finalizeJoin(comp);
           },
         },
       ],
@@ -226,6 +240,17 @@ export function CompeteScreen() {
           </View>
         </Card>
       </TouchableOpacity>
+      <EmailVerificationModal
+        visible={verifyOpen}
+        reason="Verify your email to join this contest. We use it for prize notifications and account recovery."
+        onClose={() => { setVerifyOpen(false); pendingJoin.current = null; }}
+        onVerified={() => {
+          setVerifyOpen(false);
+          const comp = pendingJoin.current;
+          pendingJoin.current = null;
+          if (comp) finalizeJoin(comp);
+        }}
+      />
     </ScreenShell>
   );
 }

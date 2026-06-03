@@ -27,13 +27,20 @@ export interface OhlcCandle {
   close: number;
 }
 
-const COINGECKO_IDS: Record<string, string> = {
-  BTC:  'bitcoin',
-  ETH:  'ethereum',
-  SOL:  'solana',
-  DOGE: 'dogecoin',
-  PEPE: 'pepe',
+// Symbol → CoinGecko id. Mutable so the live Token catalog (populated from
+// the crypto-dashboard admin) can rebuild it at runtime via setCoingeckoIds().
+// USDC is kept as a hardcoded baseline so a cold start with no network still
+// has at least the stablecoin available for the tick simulator's USDC
+// special-case.
+let COINGECKO_IDS: Record<string, string> = {
+  USDC: 'usd-coin',
 };
+
+export function setCoingeckoIds(map: Record<string, string>) {
+  // Always keep USDC present as a stability anchor — the price tick logic
+  // assumes USDC sits in state.coins at all times.
+  COINGECKO_IDS = { USDC: 'usd-coin', ...map };
+}
 
 // Map UI timeframe labels to CoinGecko's `days` parameter for the
 // market_chart endpoint. Granularity is auto-determined by days:

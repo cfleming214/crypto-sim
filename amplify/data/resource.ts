@@ -51,6 +51,9 @@ const schema = a.schema({
     createdBy: a.string(),
     numberOfPrizes: a.integer(),    // length of the prizes array
     prizesJson: a.string(),         // JSON array of dollar amounts, e.g. "[100,50,20,10,5]"
+    // Token symbols this contest restricts trading to. Empty / null = all
+    // practice-enabled tokens are allowed (default for legacy rows).
+    allowedTokenSymbols: a.string().array(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
@@ -113,6 +116,25 @@ const schema = a.schema({
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
+  ]),
+
+  // Catalog of tradeable tokens, populated by the crypto-dashboard admin from
+  // CoinGecko. Writes happen directly against DynamoDB from the dashboard
+  // server (bypassing AppSync), so no allow.owner() rule is needed — this row
+  // has no per-user owner. The app reads via Amplify Data client.
+  Token: a.model({
+    symbol:             a.string().required(),     // canonical uppercase, e.g. "BTC"
+    name:               a.string().required(),
+    coingeckoId:        a.string().required(),     // e.g. "bitcoin"
+    rank:               a.integer(),               // market-cap rank at last seed
+    imageUrl:           a.string(),
+    enabledForPractice: a.boolean(),               // true => tradeable in free-play mode
+    lastPrice:          a.float(),                 // USD snapshot at last seed (display only)
+    marketCapRaw:       a.float(),
+    volumeRaw:          a.float(),
+    lastSeededAt:       a.string(),                // ISO timestamp of the most recent seed
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
   ]),
 });
 

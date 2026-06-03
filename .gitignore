@@ -53,3 +53,7 @@ amplify/data/*.js
 amplify/storage/*.js
 amplify/functions/**/*.js
 amplify/backend.js
+
+# AWS CLI installer (accidental download)
+AWSCLIV2.pkg
+*.pkg

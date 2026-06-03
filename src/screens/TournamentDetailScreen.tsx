@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { AreaChart } from '../components/charts/AreaChart';
+import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { Bell, MoreHorizontal } from 'lucide-react-native';
 
@@ -17,6 +19,8 @@ export function TournamentDetailScreen() {
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const { getById, isJoined, join, leave, timeRemaining, refreshLeaderboard, leaderboard } = useCompetitions();
+  const { emailVerified } = useAuth();
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   const competitionId: string = route.params?.id ?? '';
   const competition = getById(competitionId);
@@ -134,7 +138,16 @@ export function TournamentDetailScreen() {
         `Stake: ${competition.stake}\nPrize: ${competition.prizePool}`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Join', onPress: () => join(competitionId) },
+          {
+            text: 'Join',
+            onPress: () => {
+              if (!emailVerified) {
+                setVerifyOpen(true);
+                return;
+              }
+              join(competitionId);
+            },
+          },
         ],
       );
     }
@@ -337,6 +350,15 @@ export function TournamentDetailScreen() {
           Trade now
         </Button>
       </View>
+      <EmailVerificationModal
+        visible={verifyOpen}
+        reason="Verify your email to join this contest. We use it for prize notifications and account recovery."
+        onClose={() => setVerifyOpen(false)}
+        onVerified={() => {
+          setVerifyOpen(false);
+          join(competitionId);
+        }}
+      />
     </ScreenShell>
   );
 }

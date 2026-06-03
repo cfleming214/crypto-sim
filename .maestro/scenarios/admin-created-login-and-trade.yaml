@@ -1,0 +1,37 @@
+appId: com.cfleming.cryptosim
+tags:
+  - full
+---
+# Full: sign in with an account that was pre-created via the crypto-dashboard
+# "New user" form (email-verified, permanent password — no confirmation code
+# needed) and immediately execute a market buy.
+#
+# Pre-condition (one-time): create the test account via the dashboard UI.
+# Defaults to test-admin-e2e@example.com / Test1234! so the existing
+# scripts/cleanup-test-data.mjs (which matches test-*@example.com) handles it.
+- runFlow:
+    file: ../helpers/sign-in.yaml
+    env:
+      EMAIL: ${MAESTRO_TEST_EMAIL || 'test-admin-e2e@example.com'}
+      PASSWORD: ${MAESTRO_TEST_PASSWORD || 'Test1234!'}
+
+# Market buy $100 of BTC. Mirrors trading/01-market-buy.yaml step-for-step so
+# future changes to the buy UI only require updates in that canonical file +
+# this one (or refactor both to a shared helper).
+- tapOn: { text: "Markets" }
+- tapOn: { id: "markets-coin-row-BTC" }
+- assertVisible: { id: "trade-buy-btn" }
+
+- tapOn: { id: "trade-buy-btn" }
+- assertVisible: { id: "trade-place-order-btn" }
+
+- tapOn: { id: "numpad-key-1" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "numpad-key-0" }
+- tapOn: { id: "trade-place-order-btn" }
+
+- assertVisible:
+    text: "Order filled"
+
+- tapOn: { text: "Home" }
+- assertVisible: { id: "portfolio-holding-row-BTC" }

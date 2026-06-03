@@ -3,15 +3,16 @@ import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingO
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
+import { fetchTokenCatalog } from '../services/tokenCatalog';
 import { useAuth } from './AuthContext';
 
+// Cold-start fallback only. The full tradeable list comes from the Token
+// catalog (DynamoDB, populated by the crypto-dashboard admin) via
+// fetchTokenCatalog() on auth and is merged into state.coins via SET_COINS.
+// USDC stays here as the stability anchor — the tick simulator and risk math
+// assume USDC is always present in state.coins.
 const INITIAL_COINS: Coin[] = [
-  { symbol: 'BTC',  name: 'Bitcoin',   price: 64210.48, change24h: 2.41,  marketCap: '$1.26T', volume: '$1.24B', history: [58000,60000,61500,63000,62000,64000,63500,64210] },
-  { symbol: 'ETH',  name: 'Ethereum',  price: 3180.12,  change24h: 1.10,  marketCap: '$381B',  volume: '$420M',  history: [2800,2950,3050,3100,3000,3150,3120,3180] },
-  { symbol: 'SOL',  name: 'Solana',    price: 182.40,   change24h: -0.80, marketCap: '$80B',   volume: '$180M',  history: [195,192,188,185,183,184,182,182] },
-  { symbol: 'DOGE', name: 'Dogecoin',  price: 0.1601,   change24h: 5.70,  marketCap: '$23B',   volume: '$850M',  history: [0.14,0.145,0.148,0.152,0.155,0.158,0.160,0.160] },
-  { symbol: 'USDC', name: 'USD Coin',  price: 1.0000,   change24h: 0.00,  marketCap: '$32B',   volume: '$5B',    history: [1,1,1,1,1,1,1,1] },
-  { symbol: 'PEPE', name: 'Pepe',      price: 0.0000118,change24h: 12.30, marketCap: '$4.2B',  volume: '$320M',  history: [0.0000095,0.0000100,0.0000105,0.0000108,0.0000111,0.0000114,0.0000116,0.0000118] },
+  { symbol: 'USDC', name: 'USD Coin', price: 1.0000, change24h: 0.00, marketCap: '$32B', volume: '$5B', history: [1,1,1,1,1,1,1,1] },
 ];
 
 const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [];
@@ -97,6 +98,7 @@ const INITIAL_STATE: AppState = {
 type Action =
   | { type: 'TICK_PRICES' }
   | { type: 'UPDATE_PRICES'; prices: PriceData[] }
+  | { type: 'SET_COINS'; coins: Coin[] }
   | { type: 'LOAD_PROFILE'; profile: Partial<AppState> }
   | { type: 'BUY'; symbol: string; amount: number }
   | { type: 'SELL'; symbol: string; amount: number }
@@ -250,6 +252,25 @@ function reducer(state: AppState, action: Action): AppState {
         return sum + (coin ? coin.price * h.units : 0);
       }, 0);
       return { ...state, coins, bankroll: state.cash + holdingsValue };
+    }
+    case 'SET_COINS': {
+      // Merge the catalog over what's in state.coins: keep any existing live
+      // prices for symbols that survived the catalog refresh, drop any coin
+      // that's no longer enabled, and always preserve USDC even if the catalog
+      // ever drops it (the tick simulator special-cases USDC by symbol).
+      const existingBySym = new Map(state.coins.map(c => [c.symbol, c]));
+      const usdc = existingBySym.get('USDC') ?? INITIAL_COINS[0];
+      const merged = action.coins.map(catalog => {
+        const prior = existingBySym.get(catalog.symbol);
+        return prior ? { ...catalog, price: prior.price, change24h: prior.change24h, history: prior.history } : catalog;
+      });
+      const hasUsdc = merged.some(c => c.symbol === 'USDC');
+      const nextCoins = hasUsdc ? merged : [...merged, usdc];
+      const holdingsValue = state.holdings.reduce((sum, h) => {
+        const coin = nextCoins.find(c => c.symbol === h.symbol);
+        return sum + (coin ? coin.price * h.units : 0);
+      }, 0);
+      return { ...state, coins: nextCoins, bankroll: state.cash + holdingsValue };
     }
     case 'LOAD_PROFILE': {
       // Merge cloud profile over current state and recompute nudges from the
@@ -729,7 +750,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (globalStats) dispatch({ type: 'SET_GLOBAL_STATS', stats: globalStats });
       if (fearGreed) dispatch({ type: 'SET_FEAR_GREED', reading: fearGreed });
     };
-    doFetch();
+    // Token catalog (which symbols are tradeable + their CoinGecko ids) is
+    // owned by the dashboard admin. Resolve it before the first price tick so
+    // fetchPrices() reads the live id map. Falls through silently if the
+    // catalog is empty — state.coins stays at the USDC-only fallback.
+    (async () => {
+      const catalog = await fetchTokenCatalog();
+      if (catalog.length > 0) dispatch({ type: 'SET_COINS', coins: catalog });
+      doFetch();
+    })();
     priceRef.current = setInterval(doFetch, 30000);
 
     return () => {

@@ -311,7 +311,11 @@ export function MarketsScreen() {
       </View>
 
       <Card variant="noPad">
-        {sorted.length === 0 ? (
+        {allCoins.length <= 1 ? (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: colors.ink3 }}>Loading markets…</Text>
+          </View>
+        ) : sorted.length === 0 ? (
           <View style={{ padding: 20, alignItems: 'center' }}>
             <Text style={{ color: colors.ink3 }}>
               {query ? `No results for "${query}"` : cat === 'Watchlist' ? 'Your watchlist is empty' : 'No coins in this category'}
