@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -375,7 +375,10 @@ export function TradeScreen() {
   // so flat OHLC synthesized from the price series renders the same line.
   const chartCandles = useMemo(() => {
     if (tf === '24H') {
-      const h = coin?.history ?? [];
+      // Real 24h series + the live price as the right-edge tip, so the chart
+      // moves with every price update (same data the Markets sparkline uses).
+      const base = coin?.history ?? [];
+      const h = base.length ? [...base, coin!.price] : [];
       if (h.length < 2) return undefined;
       return h.map((p, i) => {
         const o = i > 0 ? h[i - 1] : p;
@@ -385,7 +388,16 @@ export function TradeScreen() {
     return fetchedCandles.length > 0
       ? fetchedCandles.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close }))
       : undefined;
-  }, [tf, coin?.history, fetchedCandles]);
+  }, [tf, coin?.history, coin?.price, fetchedCandles]);
+
+  // The Trade screen stays mounted as a tab, so the post-trade confirmation
+  // (showSuccess) would otherwise still be up when you navigate away and return
+  // to the same coin. Clear it whenever the screen loses focus.
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => { setShowSuccess(false); setLastTrade(null); };
+    }, []),
+  );
 
   if (!coin) return null;
 

@@ -5,11 +5,10 @@ export interface Coin {
   change24h: number;
   marketCap: string;
   volume: string;
-  history: number[];    // rolling ~24h price series: seeded from the real 24h
-                        // sparkline, then the live price is appended each poll
+  history: number[];    // real 24h price series (hourly sparkline), refreshed each
+                        // poll; graphs append the live price as the right-edge tip
   high24h?: number;     // raw USD from CoinGecko, undefined until first UPDATE_PRICES
   low24h?: number;
-  seeded?: boolean;     // true once `history` has been seeded with the real 24h series
 }
 
 export interface Holding {

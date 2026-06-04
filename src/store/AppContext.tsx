@@ -37,11 +37,6 @@ const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [
 // signs in the cloud UserProfile is the source of truth.
 const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
 
-// Cap on the rolling per-coin price series (Coin.history). Seeded from the ~24h
-// sparkline (~24 pts) then the live price is appended every poll (10s); this
-// keeps ~24h of the seed plus the recent live tail before oldest points roll off.
-const MAX_PRICE_HISTORY = 300;
-
 function computeCoachNudges(
   holdings: { symbol: string; units: number }[],
   cash: number,
@@ -301,28 +296,21 @@ function reducer(state: AppState, action: Action): AppState {
         // Skip coins with no price update (or zero/negative — would zero out
         // any holdings in that coin and crash the bankroll value).
         if (!pd || coin.symbol === 'USDC' || !(pd.price > 0)) return coin;
-        // Maintain a rolling ~24h price series in `history`. Seed it ONCE from
-        // the real 24h sparkline (which rides along free in the /coins/markets
-        // response), then on every poll just APPEND the latest price — so the
-        // Markets sparklines and the Trade screen's 24H chart tick live every
-        // poll without ever re-fetching the historical endpoint. Capped so a
-        // long-running session can't grow it unbounded (oldest points roll off).
-        let history: number[];
-        if (!coin.seeded) {
-          const seed = pd.sparkline24h && pd.sparkline24h.length > 0 ? pd.sparkline24h : [pd.price];
-          history = [...seed, pd.price];
-        } else {
-          history = [...coin.history, pd.price];
-        }
-        if (history.length > MAX_PRICE_HISTORY) history = history.slice(history.length - MAX_PRICE_HISTORY);
+        // `history` is the real 24h series (hourly sparkline from /coins/markets),
+        // refreshed each poll. The graphs' live right-edge is the CURRENT price,
+        // appended at render time (Markets sparkline + Trade 24H chart) so they
+        // move with every price tick — the same pattern as the homepage equity
+        // graph's live endpoint. Fall back to the prior series if no sparkline.
+        const realHistory = pd.sparkline24h && pd.sparkline24h.length > 0
+          ? pd.sparkline24h
+          : coin.history;
         return {
           ...coin,
           price:     pd.price,
           change24h: pd.change24h,
           marketCap: pd.marketCapRaw > 0 ? formatLargeNumber(pd.marketCapRaw) : coin.marketCap,
           volume:    pd.volumeRaw    > 0 ? formatLargeNumber(pd.volumeRaw)    : coin.volume,
-          history,
-          seeded:    true,
+          history:   realHistory,
           high24h:   pd.high24h > 0 ? pd.high24h : coin.high24h,
           low24h:    pd.low24h  > 0 ? pd.low24h  : coin.low24h,
         };

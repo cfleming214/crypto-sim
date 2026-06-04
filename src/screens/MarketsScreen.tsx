@@ -289,7 +289,7 @@ export function MarketsScreen() {
                       <CoinGlyph symbol={a.symbol} size={24} />
                       <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
                     </View>
-                    <Sparkline data={a.history} down={a.change24h < 0} width={96} height={28} />
+                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} down={a.change24h < 0} width={96} height={28} />
                     <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
                       {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                     </Text>
@@ -343,7 +343,7 @@ export function MarketsScreen() {
                   </View>
                 </View>
                 <View style={{ gap: 4, alignItems: 'flex-end' }}>
-                  <Sparkline data={a.history} down={a.change24h < 0} width={56} height={22} />
+                  <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} down={a.change24h < 0} width={56} height={22} />
                   <TouchableOpacity
                     testID={`markets-watchlist-star-${a.symbol}`}
                     onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol: a.symbol })}
