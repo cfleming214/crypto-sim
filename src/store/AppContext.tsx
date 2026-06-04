@@ -37,6 +37,11 @@ const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [
 // signs in the cloud UserProfile is the source of truth.
 const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
 
+// Cap on the rolling per-coin price series (Coin.history). Seeded from the ~24h
+// sparkline (~24 pts) then the live price is appended every poll (10s); this
+// keeps ~24h of the seed plus the recent live tail before oldest points roll off.
+const MAX_PRICE_HISTORY = 300;
+
 function computeCoachNudges(
   holdings: { symbol: string; units: number }[],
   cash: number,
@@ -90,21 +95,40 @@ function computeRiskScore(
   return Math.max(20, Math.min(100, score));
 }
 
-// USDC is the cash anchor, not a tradeable position. If a loaded profile ever
-// ends up with USDC sitting in `holdings` (an older build let it be bought),
-// the balance gets stranded: it isn't counted as buying power, can't be tapped
-// to trade, and blocks rebalancing. Fold any USDC holding back into spendable
-// cash at its $1 peg so the money is usable again. A no-op when there's no USDC
-// holding, so it's safe to run on every load.
-function foldUsdcIntoCash<H extends { symbol: string; units: number }>(
+// Symbols pulled from the tradeable universe. PEPE is a sub-cent meme coin that
+// rendered as $0 in the holdings list and behaved as a dead/un-priced position;
+// it's filtered out of state.coins (see SET_COINS) and folded out of holdings by
+// healHoldings, so it can't be traded, held, or pulled into a rebalance.
+const BLOCKED_SYMBOLS = ['PEPE'];
+
+// Heal a loaded/restored holdings list before anything is derived from it
+// (bankroll, nudges, risk all depend on holdings + cash).
+//   • USDC is the cash anchor, not a position. If it ends up in `holdings` (an
+//     older build let it be bought) the balance gets stranded — not counted as
+//     buying power, un-tappable, blocks rebalancing. Fold it back at its $1 peg.
+//   • BLOCKED_SYMBOLS (e.g. PEPE) are coins we've removed from the app. Fold any
+//     held units back into cash at the last-known price (0 if we have none) so
+//     the position disappears instead of lingering as a stuck $0 row.
+// A no-op (returns the same refs) when there's nothing to heal, so it's safe to
+// run on every load. The corrected values persist on the next save.
+function healHoldings<H extends { symbol: string; units: number }>(
   holdings: H[],
   cash: number,
+  coins: { symbol: string; price: number }[] = [],
 ): { holdings: H[]; cash: number } {
-  if (!holdings.some(h => h.symbol === 'USDC')) return { holdings, cash };
-  const recovered = holdings
-    .filter(h => h.symbol === 'USDC')
-    .reduce((sum, h) => sum + h.units, 0); // USDC pegged at $1
-  return { holdings: holdings.filter(h => h.symbol !== 'USDC'), cash: cash + recovered };
+  const needsHeal = holdings.some(h => h.symbol === 'USDC' || BLOCKED_SYMBOLS.includes(h.symbol));
+  if (!needsHeal) return { holdings, cash };
+  let recovered = 0;
+  const kept: H[] = [];
+  for (const h of holdings) {
+    if (h.symbol === 'USDC') { recovered += h.units; continue; } // $1 peg
+    if (BLOCKED_SYMBOLS.includes(h.symbol)) {
+      recovered += h.units * (coins.find(c => c.symbol === h.symbol)?.price ?? 0);
+      continue;
+    }
+    kept.push(h);
+  }
+  return { holdings: kept, cash: cash + recovered };
 }
 
 const INITIAL_STATE: AppState = {
@@ -277,18 +301,28 @@ function reducer(state: AppState, action: Action): AppState {
         // Skip coins with no price update (or zero/negative — would zero out
         // any holdings in that coin and crash the bankroll value).
         if (!pd || coin.symbol === 'USDC' || !(pd.price > 0)) return coin;
-        // Replace history with the real 24h hourly sparkline from CoinGecko
-        // when available, falling back to the prior history if not.
-        const realHistory = pd.sparkline24h && pd.sparkline24h.length > 0
-          ? pd.sparkline24h
-          : coin.history;
+        // Maintain a rolling ~24h price series in `history`. Seed it ONCE from
+        // the real 24h sparkline (which rides along free in the /coins/markets
+        // response), then on every poll just APPEND the latest price — so the
+        // Markets sparklines and the Trade screen's 24H chart tick live every
+        // poll without ever re-fetching the historical endpoint. Capped so a
+        // long-running session can't grow it unbounded (oldest points roll off).
+        let history: number[];
+        if (!coin.seeded) {
+          const seed = pd.sparkline24h && pd.sparkline24h.length > 0 ? pd.sparkline24h : [pd.price];
+          history = [...seed, pd.price];
+        } else {
+          history = [...coin.history, pd.price];
+        }
+        if (history.length > MAX_PRICE_HISTORY) history = history.slice(history.length - MAX_PRICE_HISTORY);
         return {
           ...coin,
           price:     pd.price,
           change24h: pd.change24h,
           marketCap: pd.marketCapRaw > 0 ? formatLargeNumber(pd.marketCapRaw) : coin.marketCap,
           volume:    pd.volumeRaw    > 0 ? formatLargeNumber(pd.volumeRaw)    : coin.volume,
-          history:   realHistory,
+          history,
+          seeded:    true,
           high24h:   pd.high24h > 0 ? pd.high24h : coin.high24h,
           low24h:    pd.low24h  > 0 ? pd.low24h  : coin.low24h,
         };
@@ -324,7 +358,11 @@ function reducer(state: AppState, action: Action): AppState {
         .filter(h => !present.has(h.symbol))
         .map(h => existingBySym.get(h.symbol) ?? INITIAL_COINS.find(c => c.symbol === h.symbol))
         .filter((c): c is Coin => !!c);
-      const finalCoins = orphans.length > 0 ? [...nextCoins, ...orphans] : nextCoins;
+      const assembled = orphans.length > 0 ? [...nextCoins, ...orphans] : nextCoins;
+      // Drop blocked symbols (e.g. PEPE) so they never enter the tradeable
+      // universe, even if the dashboard catalog still lists them. Any held
+      // position in a blocked coin is folded back into cash by healHoldings.
+      const finalCoins = assembled.filter(c => !BLOCKED_SYMBOLS.includes(c.symbol));
       const holdingsValue = state.holdings.reduce((sum, h) => {
         const coin = finalCoins.find(c => c.symbol === h.symbol);
         return sum + (coin ? coin.price * h.units : 0);
@@ -339,7 +377,7 @@ function reducer(state: AppState, action: Action): AppState {
       // Heal any stranded USDC position by folding it back into cash before we
       // derive anything from holdings/cash (bankroll, nudges, risk all depend
       // on these). The corrected values persist on the next saveProfile.
-      const { holdings: loadedHoldings, cash: loadedCash } = foldUsdcIntoCash(merged.holdings, merged.cash);
+      const { holdings: loadedHoldings, cash: loadedCash } = healHoldings(merged.holdings, merged.cash, merged.coins);
       // Bankroll is a derived value — recompute it against live coin prices.
       // The stored bankroll in DynamoDB is a stale snapshot from the moment
       // saveProfile last ran, so loading it directly would cause a flash
@@ -372,8 +410,10 @@ function reducer(state: AppState, action: Action): AppState {
       // Restore a previously-saved guest/offline portfolio from local storage.
       // Bankroll is derived against current prices, not the saved snapshot.
       const p = action.portfolio;
-      const cash = typeof p.cash === 'number' ? p.cash : state.cash;
-      const holdings = Array.isArray(p.holdings) ? p.holdings : state.holdings;
+      const rawCash = typeof p.cash === 'number' ? p.cash : state.cash;
+      const rawHoldings = Array.isArray(p.holdings) ? p.holdings : state.holdings;
+      // Fold stranded USDC + blocked coins (PEPE) out before deriving bankroll.
+      const { holdings, cash } = healHoldings(rawHoldings, rawCash, state.coins);
       const holdingsValue = holdings.reduce((s, h) => {
         const c = state.coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
@@ -391,14 +431,22 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SEED_STARTER': {
       // Brand-new portfolio → drop a small starter position (0.01 BTC) in so the
       // Holdings list opens with a real, tappable holding instead of being empty.
-      // No-op once there's any holding or trade history, so it never overwrites
-      // real activity or re-seeds after the user has sold out. Cash is left
-      // intact; avgCost = the live price so the position opens at ~0% P&L.
+      // We ALSO record a $0 "seed" trade so the trade ledger is self-describing:
+      // the portfolio-value history (src/services/portfolioHistory.ts) replays
+      // trades, and a holding with no trade behind it would otherwise be opaque
+      // to it. amount:0 keeps cash intact on replay — the starter is a free
+      // grant, not a purchase — so bankroll stays cash + the BTC value.
+      // No-op once there's any holding or trade history, so it never re-seeds.
       if (state.holdings.length > 0 || state.trades.length > 0) return state;
       const btc = state.coins.find(c => c.symbol === 'BTC');
       if (!btc || !(btc.price > 0)) return state;
       const holdings = [{ symbol: 'BTC', units: 0.01, avgCost: btc.price }];
-      return { ...state, holdings, bankroll: state.cash + 0.01 * btc.price };
+      const seedTrade: Trade = {
+        id: `SEED-${Date.now()}`,
+        symbol: 'BTC', side: 'buy', amount: 0, units: 0.01,
+        price: btc.price, timestamp: Date.now(), xpEarned: 0, slippage: 0,
+      };
+      return { ...state, holdings, trades: [seedTrade], bankroll: state.cash + 0.01 * btc.price };
     }
     case 'BUY': {
       // USDC is the cash anchor — "buying" it would just move spendable cash
@@ -710,9 +758,9 @@ function reducer(state: AppState, action: Action): AppState {
       };
       const rawTarget = stashed[action.portfolioId]
         ?? { cash: 10000, holdings: [], trades: [] };
-      // Fold any stranded USDC holding back into cash on the portfolio we're
-      // switching to (same heal as LOAD_PROFILE).
-      const { holdings: targetHoldings, cash: targetCash } = foldUsdcIntoCash(rawTarget.holdings, rawTarget.cash);
+      // Heal the portfolio we're switching to (fold stranded USDC + blocked
+      // coins back into cash, same as LOAD_PROFILE).
+      const { holdings: targetHoldings, cash: targetCash } = healHoldings(rawTarget.holdings, rawTarget.cash, state.coins);
       const target = { ...rawTarget, holdings: targetHoldings, cash: targetCash };
       const holdingsValue = target.holdings.reduce((s, h) => {
         const c = state.coins.find(x => x.symbol === h.symbol);
@@ -867,7 +915,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (catalog.length > 0) dispatch({ type: 'SET_COINS', coins: catalog });
       doFetch();
     })();
-    priceRef.current = setInterval(doFetch, 30000);
+    priceRef.current = setInterval(doFetch, 10000);
 
     return () => {
       clearInterval(tickRef.current);

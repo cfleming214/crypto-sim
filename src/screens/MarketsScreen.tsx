@@ -114,7 +114,7 @@ const BASE_CATEGORIES = ['All', 'Top 10', 'DeFi', 'Layer 1', 'Meme', 'Stables'];
 
 const categorySymbols: Record<string, string[]> = {
   'Top 10':  ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'DOT'],
-  'Meme':    ['DOGE', 'PEPE'],
+  'Meme':    ['DOGE'],
   'Layer 1': ['BTC', 'ETH', 'SOL', 'ADA', 'AVAX', 'DOT'],
   'DeFi':    ['LINK'],
   'Stables': ['USDC'],

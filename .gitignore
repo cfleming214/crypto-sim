@@ -60,3 +60,6 @@ AWSCLIV2.pkg
 
 # iOS build artifacts
 *.ipa
+
+# Local (personal) Claude Code settings
+.claude/settings.local.json

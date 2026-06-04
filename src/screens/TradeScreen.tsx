@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -343,7 +343,7 @@ export function TradeScreen() {
   const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
-  const [candleData, setCandleData] = useState<OhlcCandle[]>([]);
+  const [fetchedCandles, setFetchedCandles] = useState<OhlcCandle[]>([]);
 
   const toggleIndicator = (ind: Indicator) => {
     setActiveIndicators(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
@@ -353,21 +353,39 @@ export function TradeScreen() {
   const watchlisted = state.watchlist.includes(symbol);
   const coin = getCoin(symbol);
 
-  // Drop the previous coin's bars the instant we switch coins so the chart
-  // never renders one coin's history under another's price axis while the new
-  // data loads. (Timeframe-only changes keep the current bars until the refetch
-  // lands, which reads smoother for the same coin.)
-  useEffect(() => { setCandleData([]); }, [symbol]);
+  // Drop the previous coin's fetched bars the instant we switch coins so the
+  // chart never renders one coin's history under another's price axis.
+  useEffect(() => { setFetchedCandles([]); }, [symbol]);
 
-  // Fetch real OHLC from CoinGecko whenever the symbol or timeframe changes.
-  // Cached for 60s in the service to respect free-tier rate limits.
+  // The 24H chart reuses the live in-state 24h series (state.coins[].history),
+  // which the price poll keeps fresh every 10s — so opening a coin needs NO
+  // network call and the chart ticks live. Only the other timeframes fetch
+  // real OHLC from CoinGecko (cached 60s, rate-limited internally).
   useEffect(() => {
+    if (tf === '24H') return;
     let cancelled = false;
     fetchOhlc(symbol, tf).then(candles => {
-      if (!cancelled) setCandleData(candles);
+      if (!cancelled) setFetchedCandles(candles);
     });
     return () => { cancelled = true; };
   }, [symbol, tf]);
+
+  // Chart data: 24H from the in-state rolling series (live, no fetch), other
+  // timeframes from the fetched OHLC. CandleChart draws a line through closes,
+  // so flat OHLC synthesized from the price series renders the same line.
+  const chartCandles = useMemo(() => {
+    if (tf === '24H') {
+      const h = coin?.history ?? [];
+      if (h.length < 2) return undefined;
+      return h.map((p, i) => {
+        const o = i > 0 ? h[i - 1] : p;
+        return { open: o, high: Math.max(o, p), low: Math.min(o, p), close: p };
+      });
+    }
+    return fetchedCandles.length > 0
+      ? fetchedCandles.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close }))
+      : undefined;
+  }, [tf, coin?.history, fetchedCandles]);
 
   if (!coin) return null;
 
@@ -512,7 +530,7 @@ export function TradeScreen() {
           <View style={{ marginHorizontal: -20 }}>
             <CandleChart
               height={220}
-              data={candleData.length > 0 ? candleData.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close })) : undefined}
+              data={chartCandles}
               timeframe={tf}
               basePrice={price}
               indicators={activeIndicators}

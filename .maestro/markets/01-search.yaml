@@ -10,6 +10,6 @@ tags:
 
 - tapOn: { text: "Markets" }
 - tapOn: { id: "markets-search-input" }
-- inputText: "PEPE"
-- assertVisible: { id: "markets-coin-row-PEPE" }
+- inputText: "SOL"
+- assertVisible: { id: "markets-coin-row-SOL" }
 - assertNotVisible: { id: "markets-coin-row-BTC" }

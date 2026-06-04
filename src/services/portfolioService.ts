@@ -78,7 +78,17 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
 
 async function loadUserTrades(client: any): Promise<import('../store/types').Trade[]> {
   try {
-    const { data } = await client.models.Trade.list();
+    // Page through ALL trades. Without this, Amplify's default page (~100 rows)
+    // silently truncates long histories — which would corrupt the reconstructed
+    // portfolio-value curve (missing buys → wrong holdings for the whole period
+    // before the cutoff). See src/services/portfolioHistory.ts.
+    const data: any[] = [];
+    let nextToken: string | null | undefined = undefined;
+    do {
+      const page: any = await client.models.Trade.list({ limit: 1000, nextToken });
+      if (page?.data?.length) data.push(...page.data);
+      nextToken = page?.nextToken;
+    } while (nextToken);
     return (data as any[]).map(t => ({
       id:        t.tradeId ?? t.id,
       symbol:    t.symbol,

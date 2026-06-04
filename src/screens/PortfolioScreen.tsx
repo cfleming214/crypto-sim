@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -14,7 +14,13 @@ import { DonutChart } from '../components/charts/DonutChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
+import { computePortfolioHistory, type EquityPoint, type PortfolioHistoryResult } from '../services/portfolioHistory';
 import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb } from 'lucide-react-native';
+
+// Cache of reconstructed value series, keyed `${portfolioId}:${tf}:${tradesSig}`.
+// Module-level so flipping timeframes (or returning to the tab) is instant; a
+// new trade changes tradesSig and naturally invalidates the relevant entries.
+const HISTORY_CACHE = new Map<string, PortfolioHistoryResult>();
 
 const STOP_OPTIONS = [5, 10, 15];
 
@@ -240,51 +246,11 @@ export function PortfolioScreen() {
   const pnlPct = (pnl / startEquity) * 100;
   const pnlPositive = pnl >= 0;
 
-  // Derive real portfolio history by walking trades chronologically. At each
-  // trade we know cash, holdings, and the trade's own price for that symbol.
-  // For other coins, use the last seen trade price for that symbol (or fall
-  // back to the current state.coins price). Produces one snapshot per trade
-  // plus a final current-state snapshot.
-  const historySnapshots = React.useMemo(() => {
-    const sorted = [...state.trades].sort((a, b) => a.timestamp - b.timestamp);
-    let cash = startEquity;
-    const holdings = new Map<string, { units: number; avgCost: number }>();
-    const lastPrice = new Map<string, number>();
-    const snaps: { t: number; v: number }[] = [{ t: sorted[0]?.timestamp ?? Date.now() - 1, v: startEquity }];
-
-    for (const tr of sorted) {
-      lastPrice.set(tr.symbol, tr.price);
-      if (tr.side === 'buy') {
-        cash -= tr.amount;
-        const ex = holdings.get(tr.symbol);
-        if (ex) {
-          const u = ex.units + tr.units;
-          holdings.set(tr.symbol, { units: u, avgCost: (ex.avgCost * ex.units + tr.amount) / u });
-        } else {
-          holdings.set(tr.symbol, { units: tr.units, avgCost: tr.price });
-        }
-      } else {
-        cash += tr.amount;
-        const ex = holdings.get(tr.symbol);
-        if (ex) {
-          const u = ex.units - tr.units;
-          if (u <= 1e-6) holdings.delete(tr.symbol);
-          else holdings.set(tr.symbol, { units: u, avgCost: ex.avgCost });
-        }
-      }
-      let bankroll = cash;
-      for (const [sym, h] of holdings) {
-        const price = lastPrice.get(sym) ?? getCoin(sym)?.price ?? 0;
-        bankroll += h.units * price;
-      }
-      snaps.push({ t: tr.timestamp, v: bankroll });
-    }
-    snaps.push({ t: Date.now(), v: totalEquity });
-    return snaps;
-  }, [state.trades, totalEquity, getCoin]);
-
-  // Filter snapshots to the selected timeframe window. AreaChart wants a flat
-  // number[]; we resample if too few/too many points.
+  // Real historical portfolio value, reconstructed from the trade ledger × real
+  // historical coin prices (src/services/portfolioHistory.ts) — NOT by valuing
+  // past holdings at today's price. This keeps past points fixed when you trade
+  // now and fills in periods the app was closed. Fetching per-coin history is
+  // async, so it lives in state behind an effect rather than a useMemo.
   const TF_WINDOW_MS: Record<string, number> = {
     'Live': 15 * 60 * 1000,
     '1H':   60 * 60 * 1000,
@@ -293,24 +259,61 @@ export function PortfolioScreen() {
     '30D':  30 * 24 * 60 * 60 * 1000,
     'MAX':  Number.MAX_SAFE_INTEGER,
   };
-  const { chartData, chartTimestamps } = React.useMemo(() => {
-    const cutoff = Date.now() - (TF_WINDOW_MS[tf] ?? TF_WINDOW_MS['7D']);
-    const windowed = historySnapshots.filter(s => s.t >= cutoff);
-    // Guarantee a starting anchor: if the first snapshot is after cutoff,
-    // prepend the latest pre-cutoff value so the line starts inside the window.
-    if (windowed.length > 0 && historySnapshots[0].t < cutoff) {
-      const pre = historySnapshots.filter(s => s.t < cutoff).slice(-1)[0];
-      if (pre) windowed.unshift({ t: cutoff, v: pre.v });
+
+  const [history, setHistory] = useState<EquityPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPartial, setHistoryPartial] = useState(false);
+
+  // Recompute only when the portfolio, timeframe, or trade ledger changes — NOT
+  // on the 2s price tick (state.coins/bankroll churn constantly). The live right
+  // edge is patched into chartData below without refetching. `state.cash`/
+  // `holdings` only change via trades (ticks move prices, not units), so reading
+  // them at fire time yields the correct reverse-replay baseline.
+  const tradesSig = `${state.trades.length}:${state.trades[0]?.id ?? ''}`;
+  React.useEffect(() => {
+    const token = { cancelled: false };
+    const key = `${state.activePortfolioId}:${tf}:${tradesSig}`;
+    const cached = HISTORY_CACHE.get(key);
+    if (cached) {
+      setHistory(cached.points);
+      setHistoryPartial(cached.partial);
+      setHistoryLoading(false);
+      return;
     }
-    const series = windowed.length >= 2 ? windowed : historySnapshots;
-    if (series.length >= 2) {
-      return { chartData: series.map(s => s.v), chartTimestamps: series.map(s => s.t) };
+    setHistoryLoading(true);
+    computePortfolioHistory(
+      state.trades,
+      { cash: state.cash, holdings: state.holdings },
+      tf,
+      {
+        nowValue: state.bankroll,
+        currentPrices: new Map(state.coins.map(c => [c.symbol, c.price])),
+        createdAt: isContest ? undefined : state.user.createdAt,
+        signal: token,
+      },
+    )
+      .then(res => {
+        if (token.cancelled) return;
+        HISTORY_CACHE.set(key, res);
+        setHistory(res.points);
+        setHistoryPartial(res.partial);
+        setHistoryLoading(false);
+      })
+      .catch(() => { if (!token.cancelled) setHistoryLoading(false); });
+    return () => { token.cancelled = true; };
+  }, [tf, state.activePortfolioId, tradesSig]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { chartData, chartTimestamps } = React.useMemo(() => {
+    if (history.length >= 2) {
+      const vals = history.map(p => p.v);
+      vals[vals.length - 1] = totalEquity; // live right edge — matches the header $
+      return { chartData: vals, chartTimestamps: history.map(p => p.t) };
     }
     return {
       chartData:       [startEquity, totalEquity],
       chartTimestamps: [Date.now() - (TF_WINDOW_MS[tf] ?? 0), Date.now()],
     };
-  }, [historySnapshots, tf]);
+  }, [history, totalEquity, tf]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const holdingRows = state.holdings.map(h => {
     const coin = getCoin(h.symbol);
@@ -514,7 +517,17 @@ export function PortfolioScreen() {
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
         <AreaChart height={170} data={chartData} timestamps={chartTimestamps} down={!pnlPositive} />
+        {historyLoading && history.length === 0 && (
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator color={colors.ink3} />
+          </View>
+        )}
       </View>
+      {historyPartial && (
+        <Text style={{ fontSize: 10, color: colors.ink3, textAlign: 'center', marginTop: -6 }}>
+          Some history estimated
+        </Text>
+      )}
 
       <Segmented
         options={tfOptions}

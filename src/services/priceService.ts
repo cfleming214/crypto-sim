@@ -48,10 +48,25 @@ const DEFAULT_COINGECKO_IDS: Record<string, string> = {
   AVAX: 'avalanche-2',
   LINK: 'chainlink',
   DOT:  'polkadot',
-  PEPE: 'pepe',
 };
 
 let COINGECKO_IDS: Record<string, string> = { ...DEFAULT_COINGECKO_IDS };
+
+// CoinGecko Demo (free) API key, read from EXPO_PUBLIC_COINGECKO_API_KEY (kept
+// in gitignored .env.local for local builds; set it as an EAS env var for cloud
+// builds — never committed to source). It is attached to EVERY CoinGecko request
+// via cgHeaders() (fetchOhlc / fetchPrices / fetchGlobalMarketStats) as the
+// `x-cg-demo-api-key` header against api.coingecko.com. The keyless tier 429s
+// after ~5 burst requests, which starves the charts and the 10s price poll, so
+// the key matters; absent key → no header → keyless fallback (rate-limited).
+// (A Pro key would use pro-api.coingecko.com + x-cg-pro-api-key.)
+const COINGECKO_API_KEY = process.env.EXPO_PUBLIC_COINGECKO_API_KEY;
+
+function cgHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = COINGECKO_API_KEY;
+  return headers;
+}
 
 export function setCoingeckoIds(map: Record<string, string>) {
   // Merge the catalog over the built-in defaults: catalog coins are added and
@@ -102,7 +117,7 @@ export async function fetchOhlc(symbol: string, timeframe: string): Promise<Ohlc
     // forgiving rate-limit-wise than the /ohlc endpoint.
     const res = await fetch(
       `https://api.coingecko.com/api/v3/coins/${geckoId}/market_chart?vs_currency=usd&days=${days}`,
-      { headers: { Accept: 'application/json' } },
+      { headers: cgHeaders() },
     );
     if (res.status === 429) {
       rateLimitedUntil = Date.now() + 60 * 1000;
@@ -151,7 +166,7 @@ export async function fetchPrices(): Promise<PriceData[]> {
   // /simple/price but with the sparkline series included for free.
   const res = await fetch(
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h&sparkline=true`,
-    { headers: { Accept: 'application/json' } },
+    { headers: cgHeaders() },
   );
   if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
   const json = await res.json() as any[];
@@ -195,7 +210,7 @@ export async function fetchGlobalMarketStats(): Promise<GlobalMarketStats | null
   if (Date.now() < rateLimitedUntil) return globalCache?.data ?? null;
   try {
     const res = await fetch('https://api.coingecko.com/api/v3/global', {
-      headers: { Accept: 'application/json' },
+      headers: cgHeaders(),
     });
     if (res.status === 429) {
       rateLimitedUntil = Date.now() + 60 * 1000;
