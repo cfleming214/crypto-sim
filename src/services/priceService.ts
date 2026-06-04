@@ -29,17 +29,36 @@ export interface OhlcCandle {
 
 // Symbol → CoinGecko id. Mutable so the live Token catalog (populated from
 // the crypto-dashboard admin) can rebuild it at runtime via setCoingeckoIds().
-// USDC is kept as a hardcoded baseline so a cold start with no network still
-// has at least the stablecoin available for the tick simulator's USDC
-// special-case.
-let COINGECKO_IDS: Record<string, string> = {
+//
+// These defaults cover USDC (the tick simulator's stability anchor) plus the
+// built-in seed coins (see INITIAL_COINS) using their canonical CoinGecko ids.
+// Without an id a coin gets no live price and no real chart history — fetchOhlc
+// bails and the chart silently shows fabricated candles. Seeding the well-known
+// ids here means every default coin has real prices + history out of the box,
+// before (or entirely without) the dashboard catalog; the catalog merges on top.
+const DEFAULT_COINGECKO_IDS: Record<string, string> = {
   USDC: 'usd-coin',
+  BTC:  'bitcoin',
+  ETH:  'ethereum',
+  SOL:  'solana',
+  BNB:  'binancecoin',
+  XRP:  'ripple',
+  DOGE: 'dogecoin',
+  ADA:  'cardano',
+  AVAX: 'avalanche-2',
+  LINK: 'chainlink',
+  DOT:  'polkadot',
+  PEPE: 'pepe',
 };
 
+let COINGECKO_IDS: Record<string, string> = { ...DEFAULT_COINGECKO_IDS };
+
 export function setCoingeckoIds(map: Record<string, string>) {
-  // Always keep USDC present as a stability anchor — the price tick logic
-  // assumes USDC sits in state.coins at all times.
-  COINGECKO_IDS = { USDC: 'usd-coin', ...map };
+  // Merge the catalog over the built-in defaults: catalog coins are added and
+  // may override an id, but the seed coins keep real price/history support even
+  // when the catalog omits them. USDC stays present as the stability anchor —
+  // the price tick logic assumes USDC sits in state.coins at all times.
+  COINGECKO_IDS = { ...DEFAULT_COINGECKO_IDS, ...map };
 }
 
 // Map UI timeframe labels to CoinGecko's `days` parameter for the

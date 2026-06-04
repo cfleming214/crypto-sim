@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, ViewStyle, PanResponder, Text } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
@@ -29,6 +29,13 @@ const TF_CONFIG: Record<string, { count: number; volatility: number }> = {
   '1H': { count: 24, volatility: 0.012  },
   '1D': { count: 30, volatility: 0.030  },
   '1W': { count: 20, volatility: 0.075  },
+  // Timeframes used on the Trade screen — without these every range fell
+  // through to the '5M' preset and looked identical.
+  '24H': { count: 48, volatility: 0.012 },
+  '7D':  { count: 56, volatility: 0.030 },
+  '30D': { count: 60, volatility: 0.050 },
+  '90D': { count: 90, volatility: 0.075 },
+  '1Y':  { count: 73, volatility: 0.120 },
 };
 
 function generateCandles(timeframe: string, endPrice: number): Candle[] {
@@ -82,15 +89,14 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
   const [crosshairIdx, setCrosshairIdx] = useState<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(300);
 
-  const basePriceRef = useRef(basePrice ?? 64210);
-  useEffect(() => {
-    if (basePrice !== undefined) basePriceRef.current = basePrice;
-  }, [timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const candles = useMemo(() => {
-    if (data) return data;
-    return generateCandles(timeframe ?? '5M', basePriceRef.current);
-  }, [timeframe, data]);
+    if (data && data.length > 0) return data;
+    // Fallback only — real CoinGecko candles come in via `data`. Seed the
+    // synthetic series from the current coin's price so the placeholder is
+    // scaled correctly per coin (the old code froze this to the first coin's
+    // price until the timeframe changed, drawing the wrong axis on switch).
+    return generateCandles(timeframe ?? '24H', basePrice ?? 64210);
+  }, [timeframe, data, basePrice]);
 
   const closes = useMemo(() => candles.map(c => c.close), [candles]);
 

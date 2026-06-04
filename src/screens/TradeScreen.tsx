@@ -353,6 +353,12 @@ export function TradeScreen() {
   const watchlisted = state.watchlist.includes(symbol);
   const coin = getCoin(symbol);
 
+  // Drop the previous coin's bars the instant we switch coins so the chart
+  // never renders one coin's history under another's price axis while the new
+  // data loads. (Timeframe-only changes keep the current bars until the refetch
+  // lands, which reads smoother for the same coin.)
+  useEffect(() => { setCandleData([]); }, [symbol]);
+
   // Fetch real OHLC from CoinGecko whenever the symbol or timeframe changes.
   // Cached for 60s in the service to respect free-tier rate limits.
   useEffect(() => {
