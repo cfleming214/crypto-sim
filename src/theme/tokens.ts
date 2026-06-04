@@ -109,6 +109,12 @@ export const coinColors: Record<string, { bg: string; color: string }> = {
   DOGE: { bg: '#C2A63322', color: '#8A6B1F' },
   USDC: { bg: '#2775CA22', color: '#2775CA' },
   PEPE: { bg: '#3A964322', color: '#15803D' },
+  BNB:  { bg: '#F3BA2F22', color: '#A77F0E' },
+  XRP:  { bg: '#23292F22', color: '#23292F' },
+  ADA:  { bg: '#0033AD22', color: '#0033AD' },
+  AVAX: { bg: '#E8414222', color: '#E84142' },
+  LINK: { bg: '#2A5ADA22', color: '#2A5ADA' },
+  DOT:  { bg: '#E6007A22', color: '#E6007A' },
 };
 
 export const coinColorsDark: Record<string, { bg: string; color: string }> = {
@@ -118,4 +124,10 @@ export const coinColorsDark: Record<string, { bg: string; color: string }> = {
   DOGE: { bg: 'rgba(224,184,94,0.18)', color: '#E6C988' },
   USDC: { bg: 'rgba(80,140,220,0.18)', color: '#8FB3F5' },
   PEPE: { bg: 'rgba(61,214,140,0.18)', color: '#5BE9A8' },
+  BNB:  { bg: 'rgba(243,186,47,0.18)', color: '#F3CA5E' },
+  XRP:  { bg: 'rgba(154,164,174,0.18)', color: '#C2CBD4' },
+  ADA:  { bg: 'rgba(0,51,173,0.22)', color: '#6F8FE0' },
+  AVAX: { bg: 'rgba(232,65,66,0.18)', color: '#F08A8B' },
+  LINK: { bg: 'rgba(42,90,218,0.20)', color: '#7C9BF0' },
+  DOT:  { bg: 'rgba(230,0,122,0.18)', color: '#F06FB0' },
 };

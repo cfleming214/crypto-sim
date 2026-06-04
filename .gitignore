@@ -57,3 +57,6 @@ amplify/backend.js
 # AWS CLI installer (accidental download)
 AWSCLIV2.pkg
 *.pkg
+
+# iOS build artifacts
+*.ipa

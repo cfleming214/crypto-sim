@@ -312,33 +312,25 @@ export function PortfolioScreen() {
     };
   }, [historySnapshots, tf]);
 
-  const holdingRows = [
-    ...state.holdings.map(h => {
-      const coin = getCoin(h.symbol);
-      const data = getHolding(h.symbol);
-      const pct = data ? (data.value / totalEquity) * 100 : 0;
-      return {
-        symbol: h.symbol,
-        name: coin?.name ?? h.symbol,
-        value: data?.value.toFixed(2) ?? '0.00',
-        change: data ? `${data.pnlPct >= 0 ? '+' : ''}${data.pnlPct.toFixed(1)}%` : '—',
-        down: (data?.pnlPct ?? 0) < 0,
-        pct: Math.round(pct),
-        units: h.units < 1 ? h.units.toFixed(4) : h.units.toFixed(2),
-        stopPct: state.stopLosses[h.symbol] ?? 0,
-      };
-    }),
-    {
-      symbol: 'USDC',
-      name: 'Cash',
-      value: state.cash.toFixed(2),
-      change: '—',
-      down: false,
-      pct: Math.round((state.cash / totalEquity) * 100),
-      units: state.cash.toFixed(2),
-      stopPct: 0,
-    },
-  ];
+  const holdingRows = state.holdings.map(h => {
+    const coin = getCoin(h.symbol);
+    const data = getHolding(h.symbol);
+    const pct = data ? (data.value / totalEquity) * 100 : 0;
+    return {
+      symbol: h.symbol,
+      name: coin?.name ?? h.symbol,
+      value: data?.value.toFixed(2) ?? '0.00',
+      change: data ? `${data.pnlPct >= 0 ? '+' : ''}${data.pnlPct.toFixed(1)}%` : '—',
+      down: (data?.pnlPct ?? 0) < 0,
+      pct: Math.round(pct),
+      units: h.units < 1 ? h.units.toFixed(4) : h.units.toFixed(2),
+      stopPct: state.stopLosses[h.symbol] ?? 0,
+    };
+  });
+  // Cash is shown as its own "Available cash" line above the holdings list
+  // (not a row in it), but still appears as a slice in the allocation donut.
+  const cashPct = Math.round((state.cash / totalEquity) * 100);
+  const cashDisplay = state.cash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const handleRefresh = async () => {
     // Only re-fetch coin prices. Profile (cash, holdings, trades, joined
@@ -354,9 +346,19 @@ export function PortfolioScreen() {
   };
 
   const handleHoldingTap = (symbol: string) => {
-    if (symbol === 'USDC') return;
     dispatch({ type: 'SET_TRADE_SYMBOL', symbol });
     nav.navigate('Trade');
+  };
+
+  const handleResetPortfolio = () => {
+    Alert.alert(
+      'Reset portfolio?',
+      'This clears your holdings and trade history and starts you over with $10,000 cash and 0.01 BTC.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: () => dispatch({ type: 'RESET_DEMO' }) },
+      ],
+    );
   };
 
   const handleRebalance = () => {
@@ -384,13 +386,18 @@ export function PortfolioScreen() {
       return;
     }
 
-    const holdingValues = top5.map(h => {
-      const coin = getCoin(h.symbol)!;
+    const holdingValues = top5.flatMap(h => {
+      const coin = getCoin(h.symbol);
+      if (!coin) return [];
       const currentValue = h.units * coin.price;
-      return { symbol: h.symbol, currentValue, price: coin.price };
+      return [{ symbol: h.symbol, currentValue, price: coin.price }];
     });
+    if (holdingValues.length === 0) {
+      Alert.alert('Cannot rebalance', 'Your holdings are not currently priced. Try again in a moment.');
+      return;
+    }
     const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
-    const targetPerCoin = totalInvested / top5.length;
+    const targetPerCoin = totalInvested / holdingValues.length;
 
     const lines: RebalanceLine[] = [];
     for (const h of holdingValues) {
@@ -550,6 +557,19 @@ export function PortfolioScreen() {
         );
       })}
 
+      {/* Available cash — shown above holdings, not as a row inside the list */}
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View>
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>Available cash</Text>
+            <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>{cashPct}% of portfolio</Text>
+          </View>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+            ${cashDisplay}
+          </Text>
+        </View>
+      </Card>
+
       {/* Holdings */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Holdings</Text>
@@ -562,22 +582,32 @@ export function PortfolioScreen() {
             size={180}
             centerLabel={`$${Math.round(totalEquity).toLocaleString()}`}
             centerSub="Total"
-            segments={holdingRows.map((h, i) => ({
-              label: h.symbol,
-              pct: h.pct,
-              color: DONUT_COLORS[i % DONUT_COLORS.length],
-            }))}
+            segments={[
+              ...holdingRows.map((h, i) => ({
+                label: h.symbol,
+                pct: h.pct,
+                color: DONUT_COLORS[i % DONUT_COLORS.length],
+              })),
+              { label: 'Cash', pct: cashPct, color: '#94A3B8' },
+            ]}
           />
         </Card>
       )}
 
       <Card variant="noPad">
+        {holdingRows.length === 0 && (
+          <CardSection last>
+            <Text style={{ fontSize: 13, color: colors.ink3, textAlign: 'center', paddingVertical: 8 }}>
+              No holdings yet — tap a coin in Markets to start trading.
+            </Text>
+          </CardSection>
+        )}
         {holdingRows.map((h, i) => (
           <TouchableOpacity
             key={h.symbol}
             testID={`portfolio-holding-row-${h.symbol}`}
             onPress={() => handleHoldingTap(h.symbol)}
-            activeOpacity={h.symbol === 'USDC' ? 1 : 0.75}
+            activeOpacity={0.75}
           >
             <CardSection last={i === holdingRows.length - 1}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -612,6 +642,18 @@ export function PortfolioScreen() {
           </TouchableOpacity>
         ))}
       </Card>
+
+      {!isContest && (
+        <Button
+          testID="portfolio-reset-btn"
+          variant="ghost"
+          size="sm"
+          onPress={handleResetPortfolio}
+          style={{ alignSelf: 'center' }}
+        >
+          Reset portfolio
+        </Button>
+      )}
 
       <StopSheet visible={stopSheetVisible} onClose={() => setStopSheetVisible(false)} />
       <RebalanceSheet

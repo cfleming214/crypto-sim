@@ -182,11 +182,24 @@ export async function loadProfile(): Promise<Partial<AppState> | null> {
     const { data: profiles } = await client.models.UserProfile.list();
     let profile: Partial<AppState>;
     if (!profiles.length) {
-      // First sign-in — create a clean starter profile in DynamoDB so the
-      // user lands on a fresh $10K / 0 holdings / Bronze I state instead of
-      // the demo's pre-loaded INITIAL_STATE.
+      // First sign-in (i.e. just signed up) — create the user's DynamoDB
+      // profile row so they land on a fresh $10K / Bronze I state instead of
+      // the demo's pre-loaded INITIAL_STATE. The starter holds only cash; the
+      // 0.01 BTC starter position is seeded client-side (SEED_STARTER) once
+      // live prices are available, then persisted on the next save.
+      let handle = 'newtrader';
+      try {
+        const { getCurrentUser } = await import('aws-amplify/auth');
+        const u = await getCurrentUser();
+        // Pool uses email as the username; prefer the email local-part as a
+        // friendly default handle, falling back to the raw username.
+        const loginId = u.signInDetails?.loginId ?? u.username ?? '';
+        handle = loginId.includes('@') ? loginId.split('@')[0] : (loginId || 'newtrader');
+      } catch {
+        // No session yet → keep the default handle.
+      }
       const starter = {
-        handle:       'newtrader',
+        handle,
         xp:           0,
         league:       'Bronze',
         division:     1,

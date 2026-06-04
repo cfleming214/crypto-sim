@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice } from './types';
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
@@ -11,11 +12,30 @@ import { useAuth } from './AuthContext';
 // fetchTokenCatalog() on auth and is merged into state.coins via SET_COINS.
 // USDC stays here as the stability anchor — the tick simulator and risk math
 // assume USDC is always present in state.coins.
+// USDC stays at index 0 (SET_COINS + the tick simulator reference it as the
+// cash anchor). The rest are the top-10 tradeable coins with seed prices so a
+// first-time / offline open already has a populated Markets tab; live prices
+// from the catalog merge over these via SET_COINS once online.
 const INITIAL_COINS: Coin[] = [
-  { symbol: 'USDC', name: 'USD Coin', price: 1.0000, change24h: 0.00, marketCap: '$32B', volume: '$5B', history: [1,1,1,1,1,1,1,1] },
+  { symbol: 'USDC', name: 'USD Coin',   price: 1.0000, change24h: 0.00,  marketCap: '$32B',  volume: '$5B',  history: [1,1,1,1,1,1,1,1] },
+  { symbol: 'BTC',  name: 'Bitcoin',    price: 65000,  change24h: 1.8,   marketCap: '$1.28T', volume: '$28B', history: [63800,64200,64000,64600,64300,64800,64700,65000] },
+  { symbol: 'ETH',  name: 'Ethereum',   price: 3500,   change24h: 2.1,   marketCap: '$420B', volume: '$15B', history: [3410,3440,3430,3470,3450,3490,3480,3500] },
+  { symbol: 'SOL',  name: 'Solana',     price: 150,    change24h: 3.4,   marketCap: '$70B',  volume: '$4B',  history: [144,146,145,148,147,149,149,150] },
+  { symbol: 'BNB',  name: 'BNB',        price: 600,    change24h: 0.9,   marketCap: '$88B',  volume: '$2B',  history: [594,596,595,598,597,599,599,600] },
+  { symbol: 'XRP',  name: 'XRP',        price: 0.60,   change24h: -1.2,  marketCap: '$33B',  volume: '$1.5B', history: [0.61,0.605,0.607,0.6,0.598,0.602,0.601,0.60] },
+  { symbol: 'DOGE', name: 'Dogecoin',   price: 0.15,   change24h: 4.2,   marketCap: '$21B',  volume: '$1.2B', history: [0.143,0.145,0.144,0.148,0.147,0.149,0.149,0.15] },
+  { symbol: 'ADA',  name: 'Cardano',    price: 0.45,   change24h: 1.1,   marketCap: '$16B',  volume: '$600M', history: [0.444,0.446,0.445,0.448,0.447,0.449,0.449,0.45] },
+  { symbol: 'AVAX', name: 'Avalanche',  price: 35,     change24h: 2.7,   marketCap: '$14B',  volume: '$500M', history: [34.0,34.3,34.2,34.6,34.4,34.8,34.7,35] },
+  { symbol: 'LINK', name: 'Chainlink',  price: 18,     change24h: 1.5,   marketCap: '$11B',  volume: '$450M', history: [17.6,17.7,17.65,17.8,17.75,17.9,17.85,18] },
+  { symbol: 'DOT',  name: 'Polkadot',   price: 7,      change24h: -0.6,  marketCap: '$10B',  volume: '$300M', history: [7.05,7.04,7.06,7.0,6.98,7.02,7.01,7] },
 ];
 
 const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [];
+
+// Local-storage key for the guest/offline portfolio (cash, holdings, trades,
+// watchlist, stop-losses). Persisted only while unauthenticated; once a user
+// signs in the cloud UserProfile is the source of truth.
+const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
 
 function computeCoachNudges(
   holdings: { symbol: string; units: number }[],
@@ -117,6 +137,8 @@ type Action =
   | { type: 'UPDATE_PRICES'; prices: PriceData[] }
   | { type: 'SET_COINS'; coins: Coin[] }
   | { type: 'LOAD_PROFILE'; profile: Partial<AppState> }
+  | { type: 'HYDRATE_OFFLINE'; portfolio: Partial<Pick<AppState, 'cash' | 'holdings' | 'trades' | 'watchlist' | 'stopLosses'>> }
+  | { type: 'SEED_STARTER' }
   | { type: 'BUY'; symbol: string; amount: number }
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
@@ -290,11 +312,24 @@ function reducer(state: AppState, action: Action): AppState {
       });
       const hasUsdc = merged.some(c => c.symbol === 'USDC');
       const nextCoins = hasUsdc ? merged : [...merged, usdc];
+      // Preserve any coin the user still holds even when the catalog drops it
+      // (e.g. a token the dashboard disabled for practice). Without this the
+      // position loses its price — it shows $0, can't be sold, and crashes
+      // flows that assume every holding has a matching coin (Rebalance). We
+      // re-add the last-known coin data (from state.coins, seeded by
+      // INITIAL_COINS) so the position stays valued and exitable; it just
+      // won't get fresh prices since its id is no longer in the catalog.
+      const present = new Set(nextCoins.map(c => c.symbol));
+      const orphans = state.holdings
+        .filter(h => !present.has(h.symbol))
+        .map(h => existingBySym.get(h.symbol) ?? INITIAL_COINS.find(c => c.symbol === h.symbol))
+        .filter((c): c is Coin => !!c);
+      const finalCoins = orphans.length > 0 ? [...nextCoins, ...orphans] : nextCoins;
       const holdingsValue = state.holdings.reduce((sum, h) => {
-        const coin = nextCoins.find(c => c.symbol === h.symbol);
+        const coin = finalCoins.find(c => c.symbol === h.symbol);
         return sum + (coin ? coin.price * h.units : 0);
       }, 0);
-      return { ...state, coins: nextCoins, bankroll: state.cash + holdingsValue };
+      return { ...state, coins: finalCoins, bankroll: state.cash + holdingsValue };
     }
     case 'LOAD_PROFILE': {
       // Merge cloud profile over current state and recompute nudges from the
@@ -332,6 +367,38 @@ function reducer(state: AppState, action: Action): AppState {
         // user already closed. The subscription fires after every saveProfile,
         // which would otherwise re-pop every dismissed nudge.
       };
+    }
+    case 'HYDRATE_OFFLINE': {
+      // Restore a previously-saved guest/offline portfolio from local storage.
+      // Bankroll is derived against current prices, not the saved snapshot.
+      const p = action.portfolio;
+      const cash = typeof p.cash === 'number' ? p.cash : state.cash;
+      const holdings = Array.isArray(p.holdings) ? p.holdings : state.holdings;
+      const holdingsValue = holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      return {
+        ...state,
+        cash,
+        holdings,
+        trades:     Array.isArray(p.trades) ? p.trades : state.trades,
+        watchlist:  Array.isArray(p.watchlist) ? p.watchlist : state.watchlist,
+        stopLosses: p.stopLosses ?? state.stopLosses,
+        bankroll:   cash + holdingsValue,
+      };
+    }
+    case 'SEED_STARTER': {
+      // Brand-new portfolio → drop a small starter position (0.01 BTC) in so the
+      // Holdings list opens with a real, tappable holding instead of being empty.
+      // No-op once there's any holding or trade history, so it never overwrites
+      // real activity or re-seeds after the user has sold out. Cash is left
+      // intact; avgCost = the live price so the position opens at ~0% P&L.
+      if (state.holdings.length > 0 || state.trades.length > 0) return state;
+      const btc = state.coins.find(c => c.symbol === 'BTC');
+      if (!btc || !(btc.price > 0)) return state;
+      const holdings = [{ symbol: 'BTC', units: 0.01, avgCost: btc.price }];
+      return { ...state, holdings, bankroll: state.cash + 0.01 * btc.price };
     }
     case 'BUY': {
       // USDC is the cash anchor — "buying" it would just move spendable cash
@@ -466,12 +533,14 @@ function reducer(state: AppState, action: Action): AppState {
         };
       }
 
-      const holdingValues = top5.map(h => {
-        const coin = state.coins.find(c => c.symbol === h.symbol)!;
-        return { ...h, coin, currentValue: h.units * coin.price };
+      const holdingValues = top5.flatMap(h => {
+        const coin = state.coins.find(c => c.symbol === h.symbol);
+        if (!coin) return [];
+        return [{ ...h, coin, currentValue: h.units * coin.price }];
       });
+      if (holdingValues.length === 0) return state;
       const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
-      const targetPerCoin = totalInvested / top5.length;
+      const targetPerCoin = totalInvested / holdingValues.length;
 
       let newHoldings = [...state.holdings];
       let newCash = state.cash;
@@ -733,6 +802,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const priceRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const lastActionRef = useRef<Action | null>(null);
   const [saveTick, setSaveTick] = useState(0);  // incremented by wrappedDispatch to trigger save effect
+  const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
   const { status: authStatus } = useAuth();
 
   // Wrap dispatch so any state-mutating action that should persist to the
@@ -740,6 +810,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // trades, rebalances, profile edits, watchlist changes, stop-losses, and
   // limit-order management.
   const SAVE_ACTIONS = [
+    'SEED_STARTER',
     'BUY', 'SELL', 'REBALANCE',
     'SET_HANDLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
@@ -868,6 +939,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       unsubComps();
     };
   }, [authStatus]);
+
+  // Offline portfolio persistence — hydrate. When unauthenticated, restore the
+  // saved guest portfolio once (after CLEAR_USER_DATA has reset to INITIAL_STATE
+  // for this auth flip). The ref gates the save effect below so it can't clobber
+  // storage before we've read it. Resets when a user signs in so a later
+  // sign-out re-hydrates.
+  useEffect(() => {
+    if (authStatus === 'authenticated') {
+      offlineHydratedRef.current = false;
+      return;
+    }
+    if (authStatus !== 'unauthenticated' || offlineHydratedRef.current) return;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(OFFLINE_PORTFOLIO_KEY);
+        if (raw) dispatch({ type: 'HYDRATE_OFFLINE', portfolio: JSON.parse(raw) });
+      } catch {
+        // Corrupt/absent storage → fall through to the seeded starter.
+      }
+      offlineHydratedRef.current = true;
+    })();
+  }, [authStatus]);
+
+  // Offline portfolio persistence — save. Only while unauthenticated and after
+  // hydration, so guest trades/resets survive app restarts. No-op when signed
+  // in (the cloud UserProfile owns persistence then).
+  useEffect(() => {
+    if (authStatus !== 'unauthenticated' || !offlineHydratedRef.current) return;
+    const payload = JSON.stringify({
+      cash:       state.cash,
+      holdings:   state.holdings,
+      trades:     state.trades,
+      watchlist:  state.watchlist,
+      stopLosses: state.stopLosses,
+    });
+    AsyncStorage.setItem(OFFLINE_PORTFOLIO_KEY, payload).catch(() => {});
+  }, [authStatus, state.cash, state.holdings, state.trades, state.watchlist, state.stopLosses]);
+
+  // Seed the starter position once a brand-new portfolio (no holdings, no
+  // trades) has live prices available. Runs for guests and new cloud accounts
+  // alike; the reducer no-ops once there's any activity, and wrappedDispatch
+  // persists it for signed-in users so it doesn't re-seed every load.
+  useEffect(() => {
+    const btc = state.coins.find(c => c.symbol === 'BTC');
+    if (btc && btc.price > 0 && state.holdings.length === 0 && state.trades.length === 0) {
+      wrappedDispatch({ type: 'SEED_STARTER' });
+    }
+  }, [state.coins, state.holdings.length, state.trades.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auth-gated leaderboard subscriptions, one per joined competition.
   // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.
