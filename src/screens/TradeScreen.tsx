@@ -546,8 +546,10 @@ export function TradeScreen() {
         }
       >
         <View style={{ flex: 1, gap: 14, paddingHorizontal: 20 }}>
-          {/* Coin selector */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
+          {/* Coin selector. flexGrow:0 stops the horizontal ScrollView from
+              stretching to fill the flex:1 column (which left a big gap between
+              the chips and the price); it now hugs the chips' height. */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, flexGrow: 0 }}>
             <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
               {state.coins.filter(c => c.symbol !== 'USDC').map(c => (
                 <TouchableOpacity
