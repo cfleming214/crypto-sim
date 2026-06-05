@@ -17,6 +17,7 @@ import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
 import { computePortfolioHistory, type EquityPoint, type PortfolioHistoryResult } from '../services/portfolioHistory';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
+import { scheduleAt } from '../lib/notifications';
 import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame } from 'lucide-react-native';
 
 // "2h 5m" / "45s" — compact countdown to the next daily claim (next UTC midnight).
@@ -461,6 +462,9 @@ export function PortfolioScreen() {
     if (!claimable) return;
     dispatch({ type: 'CLAIM_DAILY_REWARD' });
     setConfettiTrigger(t => t + 1);
+    // Pre-schedule a reminder for the next claim window (fires even if the app
+    // is closed). No-ops until the app is rebuilt with expo-notifications.
+    scheduleAt('daily-reward', nextClaimAt(Date.now()), 'Daily reward ready 🎁', 'Claim your reward and keep your streak alive.');
   };
 
   // Dynamic risk card

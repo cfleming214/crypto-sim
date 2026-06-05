@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './ui/Toast';
+import { configureNotifications, requestNotificationPermission, notifyNow } from '../lib/notifications';
 import { Bell, Clock } from 'lucide-react-native';
 
 // Surfaces background events that previously happened silently in TICK_PRICES:
@@ -14,11 +15,14 @@ export function EventWatcher() {
   const seenAlerts = useRef<Set<string>>(new Set());
   const armedRef = useRef(false);
 
-  // Seed with whatever exists at mount so only post-mount events toast.
+  // Seed with whatever exists at mount so only post-mount events toast; also
+  // set up OS notifications + request permission (no-ops until a native rebuild).
   useEffect(() => {
     for (const t of state.trades) seenTrades.current.add(t.id);
     for (const a of state.triggeredAlerts) seenAlerts.current.add(a.id);
     armedRef.current = true;
+    configureNotifications();
+    requestNotificationPermission();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -27,12 +31,9 @@ export function EventWatcher() {
       if (seenTrades.current.has(t.id)) continue;
       seenTrades.current.add(t.id);
       if (!t.id.startsWith('LMT-')) continue;  // background limit fills only
-      show({
-        title: 'Limit order filled',
-        subtitle: `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.units.toFixed(4)} ${t.symbol} at $${t.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-        icon: Clock,
-        variant: t.side === 'buy' ? 'up' : 'warn',
-      });
+      const body = `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.units.toFixed(4)} ${t.symbol} at $${t.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+      show({ title: 'Limit order filled', subtitle: body, icon: Clock, variant: t.side === 'buy' ? 'up' : 'warn' });
+      notifyNow('Limit order filled', body);
     }
   }, [state.trades]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -41,12 +42,9 @@ export function EventWatcher() {
     for (const a of state.triggeredAlerts) {
       if (seenAlerts.current.has(a.id)) continue;
       seenAlerts.current.add(a.id);
-      show({
-        title: `${a.symbol} price alert`,
-        subtitle: `Price ${a.direction === 'above' ? 'rose above' : 'fell below'} your target`,
-        icon: Bell,
-        variant: 'warn',
-      });
+      const body = `Price ${a.direction === 'above' ? 'rose above' : 'fell below'} your target`;
+      show({ title: `${a.symbol} price alert`, subtitle: body, icon: Bell, variant: 'warn' });
+      notifyNow(`${a.symbol} price alert`, body);
     }
   }, [state.triggeredAlerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
