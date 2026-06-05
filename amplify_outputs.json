@@ -122,6 +122,20 @@
               "isRequired": false,
               "attributes": []
             },
+            "gamificationJson": {
+              "name": "gamificationJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "seasonStartXp": {
+              "name": "seasonStartXp",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
@@ -497,6 +511,20 @@
               "isRequired": false,
               "attributes": [],
               "isArrayNullable": true
+            },
+            "inviteCode": {
+              "name": "inviteCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "challengerHandle": {
+              "name": "challengerHandle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
             },
             "createdAt": {
               "name": "createdAt",
