@@ -5,7 +5,13 @@ import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNu
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
+import { applyDailyClaim, CASH_EVENT_SYMBOL } from '../services/gamification';
 import { useAuth } from './AuthContext';
+
+// AsyncStorage key for local gamification state (daily-claim streak). Persisted
+// for guests and signed-in users alike; cloud cross-device sync comes later via
+// UserProfile.gamificationJson.
+const GAMIFICATION_KEY = 'gamification.v1';
 
 // Cold-start fallback only. The full tradeable list comes from the Token
 // catalog (DynamoDB, populated by the crypto-dashboard admin) via
@@ -147,6 +153,7 @@ const INITIAL_STATE: AppState = {
   dismissedNudgeIds: [],
   hasOnboarded: false,
   tradeSymbol: 'BTC',
+  lastClaimDay: null,
   activePortfolioId: 'main',
   portfolios: {},
 };
@@ -185,7 +192,9 @@ type Action =
   | { type: 'INIT_CONTEST_PORTFOLIO'; competitionId: string; slice?: PortfolioSlice }
   | { type: 'CLEAR_USER_DATA' }
   | { type: 'SET_GLOBAL_STATS'; stats: { totalMarketCap: number; change24h: number } }
-  | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } };
+  | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } }
+  | { type: 'CLAIM_DAILY_REWARD' }
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -676,6 +685,47 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, globalStats: action.stats };
     case 'SET_FEAR_GREED':
       return { ...state, fearGreed: action.reading };
+    case 'HYDRATE_GAMIFICATION':
+      // Restore locally-persisted daily-claim state. streak is only overwritten
+      // when storage provides one (signed-in users get the authoritative streak
+      // from the cloud UserProfile via LOAD_PROFILE, which runs after this).
+      return {
+        ...state,
+        lastClaimDay: action.data.lastClaimDay ?? state.lastClaimDay,
+        user: typeof action.data.streak === 'number'
+          ? { ...state.user, streak: action.data.streak }
+          : state.user,
+      };
+    case 'CLAIM_DAILY_REWARD': {
+      // Daily reward applies only to the main portfolio (contests have their own
+      // fresh bankroll). The card is gated to main, but guard here too.
+      if (state.activePortfolioId !== 'main') return state;
+      const res = applyDailyClaim({ streak: state.user.streak, lastClaimDay: state.lastClaimDay }, Date.now());
+      if (!res.claimed) return state;  // already claimed today → no-op
+      // Record the cash bonus as a sentinel cash-injection trade (symbol 'USD',
+      // kind 'reward'). The equity-history reconstruction treats symbol 'USD' as
+      // a pure cash delta, so the portfolio line steps up at the claim without
+      // distorting the reverse-replay baseline. amount = the cash granted.
+      const rewardTrade: Trade = {
+        id: `RWD-${Date.now()}`,
+        symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: res.cash,
+        units: 0, price: 0, timestamp: Date.now(),
+        xpEarned: res.xp, slippage: 0, kind: 'reward',
+      };
+      const newCash = state.cash + res.cash;
+      const holdingsValue = state.holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      return {
+        ...state,
+        cash: newCash,
+        bankroll: newCash + holdingsValue,
+        lastClaimDay: res.lastClaimDay,
+        trades: [rewardTrade, ...state.trades],
+        user: { ...state.user, xp: state.user.xp + res.xp, streak: res.streak },
+      };
+    }
     case 'SET_COMPETITIONS':
       return { ...state, competitions: action.competitions };
     case 'JOIN_TOURNAMENT': {
@@ -839,6 +889,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const lastActionRef = useRef<Action | null>(null);
   const [saveTick, setSaveTick] = useState(0);  // incremented by wrappedDispatch to trigger save effect
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
+  const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
   const { status: authStatus } = useAuth();
 
   // Wrap dispatch so any state-mutating action that should persist to the
@@ -851,7 +902,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SET_HANDLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
-    'RESET_DEMO',
+    'RESET_DEMO', 'CLAIM_DAILY_REWARD',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1013,6 +1064,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(OFFLINE_PORTFOLIO_KEY, payload).catch(() => {});
   }, [authStatus, state.cash, state.holdings, state.trades, state.watchlist, state.stopLosses]);
 
+  // Gamification (daily-claim) persistence — hydrate once on mount, regardless
+  // of auth. For signed-in users the cloud LOAD_PROFILE runs later and sets the
+  // authoritative streak; lastClaimDay stays device-local until Phase 9 adds a
+  // cloud field. The ref gates the save effect below so it can't clobber storage
+  // before we've read it.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(GAMIFICATION_KEY);
+        if (raw) {
+          const g = JSON.parse(raw);
+          dispatch({
+            type: 'HYDRATE_GAMIFICATION',
+            data: {
+              lastClaimDay: typeof g.lastClaimDay === 'string' ? g.lastClaimDay : null,
+              streak: typeof g.streak === 'number' ? g.streak : undefined,
+            },
+          });
+        }
+      } catch {
+        // Corrupt/absent → leave defaults (null lastClaimDay, streak 0).
+      }
+      gamiHydratedRef.current = true;
+    })();
+  }, []);
+
+  // Gamification persistence — save. Only after hydration and only once a claim
+  // has actually happened (lastClaimDay !== null), so CLEAR_USER_DATA's reset to
+  // null on sign-out can't wipe a guest's stored streak.
+  useEffect(() => {
+    if (!gamiHydratedRef.current || state.lastClaimDay === null) return;
+    AsyncStorage.setItem(
+      GAMIFICATION_KEY,
+      JSON.stringify({ lastClaimDay: state.lastClaimDay, streak: state.user.streak }),
+    ).catch(() => {});
+  }, [state.lastClaimDay, state.user.streak]);
+
   // Seed the starter position once a brand-new portfolio (no holdings, no
   // trades) has live prices available. Runs for guests and new cloud accounts
   // alike; the reducer no-ops once there's any activity, and wrappedDispatch
@@ -1048,7 +1136,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Route the save to the active portfolio's persistence source.
     if (state.activePortfolioId === 'main') {
       saveProfile(state);
-      if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
+      // BUY/SELL prepend a coin trade; CLAIM_DAILY_REWARD prepends a 'USD'
+      // cash-injection trade. Persist whichever just landed at trades[0] so it
+      // survives reload (the reconstruction reads symbol 'USD' as a cash event).
+      if ((action.type === 'BUY' || action.type === 'SELL' || action.type === 'CLAIM_DAILY_REWARD') && state.trades.length > 0) {
         saveTrade(state.trades[0]);
       }
     } else {

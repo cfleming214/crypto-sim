@@ -8,10 +8,19 @@ import { Chip } from '../components/ui/Chip';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { ArrowUp, ArrowDown, Shield, User, Flame, Clock } from 'lucide-react-native';
+import { ArrowUp, ArrowDown, Shield, User, Clock, Gift } from 'lucide-react-native';
+
+// A reward/cash-injection event (e.g. daily-reward bonus) is recorded as a
+// sentinel trade with symbol 'USD' / kind 'reward' — not a coin trade.
+const isReward = (t: { symbol: string; kind?: string }) => t.kind === 'reward' || t.symbol === 'USD';
 
 function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
   const { colors } = useTheme();
+  if (type === 'reward') return (
+    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.upSoft, alignItems: 'center', justifyContent: 'center' }}>
+      <Gift color={colors.up} size={18} strokeWidth={1.75} />
+    </View>
+  );
   if (type === 'stop') return (
     <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
       <Shield color={colors.warn} size={18} strokeWidth={1.75} />
@@ -43,8 +52,10 @@ export function ActivityScreen() {
 
   // 7D P&L: sell proceeds minus buy costs in last 7 days
   const week7 = state.trades.filter(t => Date.now() - t.timestamp < 7 * 86400000);
-  const weekSellProceeds = week7.filter(t => t.side === 'sell').reduce((s, t) => s + t.amount, 0);
-  const weekBuyCost = week7.filter(t => t.side === 'buy').reduce((s, t) => s + t.amount, 0);
+  const weekSellProceeds = week7.filter(t => t.side === 'sell' && !isReward(t)).reduce((s, t) => s + t.amount, 0);
+  // Exclude reward cash-injections — a bonus isn't a buy cost, so counting it
+  // would understate the week's P&L.
+  const weekBuyCost = week7.filter(t => t.side === 'buy' && !isReward(t)).reduce((s, t) => s + t.amount, 0);
   const totalPnl = weekSellProceeds - weekBuyCost;
 
   // Win rate: sell trades where slippage is positive (proxy for profitable exit)
@@ -93,15 +104,15 @@ export function ActivityScreen() {
                     >
                       <CardSection last={i === today.length - 1}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                          <TradeIcon side={t.side} />
+                          <TradeIcon side={t.side} type={isReward(t) ? 'reward' : undefined} />
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                              <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{isReward(t) ? 'Daily reward' : `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.symbol}`}</Text>
                               <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                               <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                                {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                {isReward(t) ? 'Bonus cash' : `${t.units.toFixed(4)} ${t.symbol}`} · {new Date(t.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                               </Text>
                               <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
                             </View>
@@ -125,15 +136,15 @@ export function ActivityScreen() {
                     >
                       <CardSection last={i === earlier.length - 1}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                          <TradeIcon side={t.side} />
+                          <TradeIcon side={t.side} type={isReward(t) ? 'reward' : undefined} />
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                              <Text style={{ fontWeight: '600', color: colors.ink }}>{t.side === 'buy' ? 'Bought' : 'Sold'} {t.symbol}</Text>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{isReward(t) ? 'Daily reward' : `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.symbol}`}</Text>
                               <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                               <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                                {t.units.toFixed(4)} {t.symbol} · {new Date(t.timestamp).toLocaleDateString()}
+                                {isReward(t) ? 'Bonus cash' : `${t.units.toFixed(4)} ${t.symbol}`} · {new Date(t.timestamp).toLocaleDateString()}
                               </Text>
                               <Text style={{ fontSize: 12, color: colors.up, fontVariant: ['tabular-nums'] }}>+{t.xpEarned} XP</Text>
                             </View>
@@ -205,12 +216,12 @@ export function ActivityScreen() {
 
       {tab === 'XP log' && (() => {
         const xpEvents: { Icon: React.ComponentType<any>; label: string; xp: string; time: string }[] = [];
-        if (state.user.streak >= 1) {
-          xpEvents.push({ Icon: Flame, label: `${state.user.streak}-day streak bonus`, xp: '+50 XP', time: 'Today · 12:00 AM' });
-        }
         for (const t of state.trades) {
-          const label = t.side === 'buy' ? `Bought ${t.symbol}` : `Sold ${t.symbol}`;
-          const Icon = t.side === 'buy' ? ArrowUp : ArrowDown;
+          const reward = isReward(t);
+          const label = reward
+            ? 'Daily reward'
+            : t.side === 'buy' ? `Bought ${t.symbol}` : `Sold ${t.symbol}`;
+          const Icon = reward ? Gift : t.side === 'buy' ? ArrowUp : ArrowDown;
           const d = new Date(t.timestamp);
           const isToday = Date.now() - t.timestamp < 24 * 60 * 60 * 1000;
           const time = isToday

@@ -27,6 +27,15 @@ export interface Trade {
   timestamp: number;
   xpEarned: number;
   slippage: number;
+  // 'reward' = a cash-injection event (e.g. daily-reward bonus), recorded with
+  // symbol 'USD' (the CASH_EVENT_SYMBOL sentinel), units 0, amount = bonus. It
+  // is not a coin trade; ledger replay treats symbol 'USD' as a pure cash delta.
+  // Optional/back-compat: undefined on coin trades and on rows reloaded from the
+  // cloud (the Trade model has no `kind` column — the symbol carries the mark).
+  kind?: 'trade' | 'reward';
+  // Realized P&L on a sell, in dollars (proceeds − cost basis at avgCost). Set
+  // when the sell executes; undefined on buys/older rows.
+  realizedPnl?: number;
 }
 
 export interface Tournament {
@@ -138,6 +147,11 @@ export interface AppState {
   dismissedNudgeIds: string[];
   hasOnboarded: boolean;
   tradeSymbol: string;
+  // Daily-reward claim tracking. UTC day-key ("YYYY-MM-DD") of the last claim,
+  // or null if never claimed. Drives the streak (see user.streak) and the
+  // "claim available / come back tomorrow" state. Persisted to AsyncStorage
+  // ('gamification.v1'); cloud sync added later via UserProfile.gamificationJson.
+  lastClaimDay: string | null;
   // External market context, refreshed alongside fetchPrices.
   globalStats?: { totalMarketCap: number; change24h: number };
   fearGreed?:   { value: number; label: string };

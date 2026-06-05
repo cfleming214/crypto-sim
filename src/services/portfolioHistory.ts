@@ -1,4 +1,5 @@
 import { fetchOhlc } from './priceService';
+import { CASH_EVENT_SYMBOL } from './gamification';
 import type { Trade, Holding } from '../store/types';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,10 @@ export async function computePortfolioHistory(
   for (let i = tradesAsc.length - 1; i >= 0; i--) {
     const tr = tradesAsc[i];
     if (tr.symbol === 'USDC') continue;
+    // Cash-injection event (e.g. daily reward): pure cash delta, no units. The
+    // forward replay adds it to cash, so reverse-replay removes it from the
+    // baseline (cash0) — keeping the start before any bonuses were granted.
+    if (tr.symbol === CASH_EVENT_SYMBOL) { cash0 -= tr.amount; continue; }
     if (tr.side === 'buy') {
       cash0 += tr.amount;
       units0.set(tr.symbol, (units0.get(tr.symbol) ?? 0) - tr.units);
@@ -108,7 +113,10 @@ export async function computePortfolioHistory(
   // 3) Every symbol ever held in the window = baseline holdings + traded symbols.
   const symbols = new Set<string>();
   for (const sym of holdings0.keys()) symbols.add(sym);
-  for (const tr of tradesAsc) if (tr.symbol !== 'USDC') symbols.add(tr.symbol);
+  for (const tr of tradesAsc) {
+    if (tr.symbol === 'USDC' || tr.symbol === CASH_EVENT_SYMBOL) continue;
+    symbols.add(tr.symbol);
+  }
 
   // 4) Fetch each coin's historical close series in parallel. A missing series
   // (no geckoId / delisted / rate-limited) becomes a flat line at the last-known
@@ -179,6 +187,8 @@ export async function computePortfolioHistory(
     while (ti < tradesAsc.length && tradesAsc[ti].timestamp <= gt) {
       const tr = tradesAsc[ti++];
       if (tr.symbol === 'USDC') continue;
+      // Cash-injection event (daily reward): step cash up, no position change.
+      if (tr.symbol === CASH_EVENT_SYMBOL) { cash += tr.amount; continue; }
       if (tr.side === 'buy') {
         cash -= tr.amount;
         units.set(tr.symbol, (units.get(tr.symbol) ?? 0) + tr.units);

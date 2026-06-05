@@ -11,11 +11,25 @@ import { RiskMeter } from '../components/ui/RiskMeter';
 import { CoinGlyph, Avatar } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { DonutChart } from '../components/charts/DonutChart';
+import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
 import { computePortfolioHistory, type EquityPoint, type PortfolioHistoryResult } from '../services/portfolioHistory';
-import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb } from 'lucide-react-native';
+import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame } from 'lucide-react-native';
+
+// "2h 5m" / "45s" — compact countdown to the next daily claim (next UTC midnight).
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return 'now';
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
 
 // Cache of reconstructed value series, keyed `${portfolioId}:${tf}:${tradesSig}`.
 // Module-level so flipping timeframes (or returning to the tab) is instant; a
@@ -239,6 +253,14 @@ export function PortfolioScreen() {
   const [rebalanceVisible, setRebalanceVisible] = useState(false);
   const [rebalanceLines, setRebalanceLines] = useState<RebalanceLine[]>([]);
   const [rebalanceTarget, setRebalanceTarget] = useState(0);
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
+  // Ticks once a second so the daily-reward countdown updates live and the
+  // claim button re-enables exactly at UTC midnight.
+  const [now, setNow] = useState(() => Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const totalEquity = state.bankroll;
   const startEquity = 10000;
@@ -429,6 +451,18 @@ export function PortfolioScreen() {
     setRebalanceVisible(true);
   };
 
+  // Daily reward — only on the main portfolio (contests have their own bankroll).
+  // applyDailyClaim is pure: when claimable it returns the XP/cash this claim
+  // would grant (preview); otherwise we show a countdown to the next UTC day.
+  const claimable = !isContest && canClaim(state.lastClaimDay, now);
+  const claimPreview = applyDailyClaim({ streak: state.user.streak, lastClaimDay: state.lastClaimDay }, now);
+  const nextClaimMs = nextClaimAt(now) - now;
+  const handleClaim = () => {
+    if (!claimable) return;
+    dispatch({ type: 'CLAIM_DAILY_REWARD' });
+    setConfettiTrigger(t => t + 1);
+  };
+
   // Dynamic risk card
   const riskVariant = state.riskScore >= 80 ? 'up' : state.riskScore >= 50 ? 'warn' : 'down';
   const riskLabel = state.riskScore >= 80 ? 'Healthy' : state.riskScore >= 50 ? 'Caution' : 'High risk';
@@ -569,6 +603,47 @@ export function PortfolioScreen() {
           </View>
         );
       })}
+
+      {/* Daily reward — claim once per UTC day, streak grows the payout */}
+      {!isContest && (
+        <View style={{ position: 'relative' }}>
+          <ConfettiBurst trigger={confettiTrigger} />
+          <Card>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
+                  <Gift color={colors.brandOn} size={18} strokeWidth={1.9} />
+                </View>
+                <View>
+                  <Text style={{ fontWeight: '700', color: colors.ink }}>Daily reward</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                    <Flame color={colors.warn} size={12} strokeWidth={2} />
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                      {state.user.streak > 0 ? `${state.user.streak}-day streak` : 'Start your streak'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              {claimable ? (
+                <Button testID="daily-reward-claim-btn" variant="brand" size="sm" onPress={handleClaim}>
+                  {`Claim +${claimPreview.xp} XP`}
+                </Button>
+              ) : (
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <Chip variant="up">Claimed</Chip>
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>Next in {formatCountdown(nextClaimMs)}</Text>
+                </View>
+              )}
+            </View>
+            {claimable && (
+              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 10 }}>
+                {`Claim today for +${claimPreview.xp} XP and +$${claimPreview.cash} bonus cash`}
+                {state.user.streak > 0 ? ` — keep your ${state.user.streak}-day streak going.` : '.'}
+              </Text>
+            )}
+          </Card>
+        </View>
+      )}
 
       {/* Available cash — shown above holdings, not as a row inside the list */}
       <Card>
