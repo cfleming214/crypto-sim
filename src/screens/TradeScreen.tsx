@@ -526,7 +526,7 @@ export function TradeScreen() {
     <>
       <ScreenShell
         eyebrow="Trade"
-        title={`${symbol} / USD`}
+        title={coin.name}
         scrollable={false}
         style={{ flex: 1 }}
         rightActions={
