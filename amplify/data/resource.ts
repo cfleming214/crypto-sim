@@ -54,6 +54,10 @@ const schema = a.schema({
     // Token symbols this contest restricts trading to. Empty / null = all
     // practice-enabled tokens are allowed (default for legacy rows).
     allowedTokenSymbols: a.string().array(),
+    // 1v1 duels (type === '1v1'): a short shareable code the opponent enters to
+    // join, and the challenger's handle for display. Null on normal contests.
+    inviteCode: a.string(),
+    challengerHandle: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),

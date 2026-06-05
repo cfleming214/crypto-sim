@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -11,8 +12,9 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
+import { createDuel, acceptDuel } from '../services/competitionService';
 import { useNavigation } from '@react-navigation/native';
-import { Clock, Flame, Bell, Trophy, Target } from 'lucide-react-native';
+import { Clock, Flame, Bell, Trophy, Target, Swords, X } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
@@ -32,12 +34,41 @@ const TYPE_LABEL: Record<string, string> = {
 
 export function CompeteScreen() {
   const { colors } = useTheme();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const { getLive, getOpen, isJoined, join, timeRemaining } = useCompetitions();
   const { emailVerified, status } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
+  const [duelModalOpen, setDuelModalOpen] = useState(false);
+  const [duelCode, setDuelCode] = useState('');
+  const [duelBusy, setDuelBusy] = useState(false);
+
+  const handleChallenge = async () => {
+    if (duelBusy) return;
+    setDuelBusy(true);
+    const res = await createDuel(state.user.handle, 10000);
+    setDuelBusy(false);
+    if (!res) { Alert.alert('Could not create duel', 'Please try again in a moment.'); return; }
+    dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: res.competition.id });
+    const code = res.competition.inviteCode ?? '';
+    try {
+      await Share.share({ message: `I challenge you to a 24h crypto trading duel! Open the app → Compete → 1v1, and enter code ${code}.` });
+    } catch {}
+    nav.navigate('TournamentDetail', { id: res.competition.id });
+  };
+
+  const handleAcceptDuel = async () => {
+    if (duelBusy || !duelCode.trim()) return;
+    setDuelBusy(true);
+    const comp = await acceptDuel(duelCode, state.user.handle, 10000);
+    setDuelBusy(false);
+    if (!comp) { Alert.alert('Invalid code', 'That duel code wasn’t found, or the duel is already full.'); return; }
+    dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: comp.id });
+    setDuelModalOpen(false);
+    setDuelCode('');
+    nav.navigate('TournamentDetail', { id: comp.id });
+  };
 
   const xp = state.user.xp;
   const xpGoal = 6000;
@@ -235,6 +266,32 @@ export function CompeteScreen() {
           </View>
         </Card>
       </TouchableOpacity>
+      {/* 1v1 Duel */}
+      <Card variant="tinted">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center' }}>
+            <Swords color={colors.brand} size={20} strokeWidth={1.9} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Head-to-head
+            </Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>1v1 Duel</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+              Challenge a friend to 24h, highest P&L wins
+            </Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <Button testID="duel-challenge-btn" variant="brand" size="sm" style={{ flex: 1 }} loading={duelBusy} onPress={handleChallenge}>
+            Challenge a friend
+          </Button>
+          <Button testID="duel-enter-code-btn" variant="ghost" size="sm" style={{ flex: 1 }} onPress={() => setDuelModalOpen(true)}>
+            Enter a code
+          </Button>
+        </View>
+      </Card>
+
       {/* Price-prediction mini-game */}
       <TouchableOpacity testID="compete-prediction-link" onPress={() => nav.navigate('Predict')} activeOpacity={0.85}>
         <Card variant="tinted">
@@ -259,6 +316,40 @@ export function CompeteScreen() {
           </View>
         </Card>
       </TouchableOpacity>
+
+      {/* Enter-a-duel-code modal */}
+      <Modal visible={duelModalOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDuelModalOpen(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Enter duel code</Text>
+            <TouchableOpacity onPress={() => setDuelModalOpen(false)} style={{ padding: 6 }}>
+              <X color={colors.ink} size={22} strokeWidth={1.75} />
+            </TouchableOpacity>
+          </View>
+          <View style={{ paddingHorizontal: 20, gap: 14 }}>
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              Paste the 6-character code your friend shared to join their duel.
+            </Text>
+            <TextInput
+              testID="duel-code-input"
+              value={duelCode}
+              onChangeText={t => setDuelCode(t.toUpperCase())}
+              placeholder="ABC123"
+              placeholderTextColor={colors.ink4}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={6}
+              style={{
+                backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14,
+                fontSize: 22, fontWeight: '700', letterSpacing: 4, textAlign: 'center', color: colors.ink,
+              }}
+            />
+            <Button variant="brand" loading={duelBusy} disabled={duelCode.trim().length < 4} onPress={handleAcceptDuel}>
+              Join duel
+            </Button>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       <EmailVerificationModal
         visible={verifyOpen}

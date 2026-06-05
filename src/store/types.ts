@@ -63,6 +63,8 @@ export interface Competition {
   entryCount: number;
   numberOfPrizes: number;   // count of paid positions
   prizes: number[];         // dollar amount per rank (index 0 = #1)
+  inviteCode?: string;      // 1v1 duels only — shareable join code
+  challengerHandle?: string; // 1v1 duels only — who created the duel
 }
 
 export interface CompetitionEntry {

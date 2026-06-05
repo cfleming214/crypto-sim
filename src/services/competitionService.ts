@@ -37,6 +37,8 @@ function mapCompetition(d: any): Competition {
     entryCount: d.entryCount ?? 0,
     numberOfPrizes: d.numberOfPrizes ?? prizes.length,
     prizes,
+    inviteCode: d.inviteCode ?? undefined,
+    challengerHandle: d.challengerHandle ?? undefined,
   };
 }
 
@@ -128,6 +130,83 @@ export async function joinCompetition(
     return mapEntry(data);
   } catch (e) {
     console.warn('joinCompetition failed:', e);
+    return null;
+  }
+}
+
+// 1v1 duels. A duel is just a Competition (type '1v1', maxPlayers 2) that
+// starts 'live' immediately, so no owner-only status flip is needed — each
+// player simply creates their own CompetitionEntry, and the existing
+// tickLeaderboard / closeCompetition crons rank + settle it like any contest.
+
+const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+
+function makeInviteCode(): string {
+  let s = '';
+  for (let i = 0; i < 6; i++) s += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)];
+  return s;
+}
+
+const DUEL_DURATION_MS = 24 * 60 * 60 * 1000;
+
+// Create a duel (the challenger). Returns the Competition (with inviteCode) and
+// the challenger's entry, or null on failure.
+export async function createDuel(
+  handle: string,
+  bankroll: number,
+): Promise<{ competition: Competition; entry: CompetitionEntry | null } | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const now = Date.now();
+    const inviteCode = makeInviteCode();
+    const { data: comp } = await client.models.Competition.create({
+      name: `Duel · ${handle}`,
+      type: '1v1',
+      status: 'live',
+      prizePool: 'Bragging rights',
+      maxPlayers: 2,
+      stake: 'Free',
+      startAt: new Date(now).toISOString(),
+      endAt: new Date(now + DUEL_DURATION_MS).toISOString(),
+      entryCount: 1,
+      numberOfPrizes: 0,
+      prizesJson: '[]',
+      inviteCode,
+      challengerHandle: handle,
+    });
+    const competition = mapCompetition(comp);
+    const entry = await joinCompetition(competition.id, handle, bankroll);
+    return { competition, entry };
+  } catch (e) {
+    console.warn('createDuel failed:', e);
+    return null;
+  }
+}
+
+// Accept a duel by invite code (the opponent). Finds the Competition, creates
+// the opponent's entry, and returns the Competition (or null if code invalid /
+// duel already full).
+export async function acceptDuel(
+  inviteCode: string,
+  handle: string,
+  bankroll: number,
+): Promise<Competition | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const code = inviteCode.trim().toUpperCase();
+    if (!code) return null;
+    const { data } = await client.models.Competition.list({ filter: { inviteCode: { eq: code } } });
+    const row = (data as any[])[0];
+    if (!row) return null;
+    const competition = mapCompetition(row);
+    const filled = await layerEntryCounts(client, [competition]);
+    if ((filled[0]?.entryCount ?? 0) >= (competition.maxPlayers || 2)) return null; // duel full
+    await joinCompetition(competition.id, handle, bankroll);
+    return competition;
+  } catch (e) {
+    console.warn('acceptDuel failed:', e);
     return null;
   }
 }
