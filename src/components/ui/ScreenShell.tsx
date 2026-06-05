@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ChevronLeft } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing, fontSize } from '../../theme/tokens';
+import { ShakeText } from './ShakeText';
 
 interface ScreenShellProps {
   eyebrow?: string;
@@ -17,6 +18,8 @@ interface ScreenShellProps {
   contentStyle?: ViewStyle;
   brand?: boolean;
   onRefresh?: () => Promise<void>;
+  /** Jitter the title when it changes (used for the live portfolio value). */
+  animateTitle?: boolean;
 }
 
 export function ScreenShell({
@@ -29,6 +32,7 @@ export function ScreenShell({
   contentStyle,
   brand = false,
   onRefresh,
+  animateTitle = false,
 }: ScreenShellProps) {
   const { colors, isDark } = useTheme();
   const [refreshing, setRefreshing] = React.useState(false);
@@ -68,7 +72,9 @@ export function ScreenShell({
               </Text>
             )}
             {title && (
-              <Text style={[styles.title, { color: ink }]}>{title}</Text>
+              animateTitle
+                ? <ShakeText style={[styles.title, { color: ink }]}>{title}</ShakeText>
+                : <Text style={[styles.title, { color: ink }]}>{title}</Text>
             )}
           </View>
           {rightActions && <View style={styles.rightActions}>{rightActions}</View>}

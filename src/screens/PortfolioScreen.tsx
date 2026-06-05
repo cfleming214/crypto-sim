@@ -464,6 +464,7 @@ export function PortfolioScreen() {
     <ScreenShell
       eyebrow={eyebrowLabel}
       title={`$${totalEquity.toFixed(2)}`}
+      animateTitle
       onRefresh={handleRefresh}
       rightActions={
         <TouchableOpacity onPress={() => nav.navigate('Profile')}>
