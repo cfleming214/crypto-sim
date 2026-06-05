@@ -8,6 +8,7 @@ import { BracketsScreen } from '../screens/BracketsScreen';
 import { CopyTradeScreen } from '../screens/CopyTradeScreen';
 import { TopTradersScreen } from '../screens/TopTradersScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
+import { PredictionScreen } from '../screens/PredictionScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
 import { AuthScreen } from '../screens/AuthScreen';
@@ -23,6 +24,7 @@ export type RootStackParamList = {
   CopyTrade: { traderId: string };
   TopTraders: undefined;
   Replay: { eraId?: string };
+  Predict: undefined;
   Notifications: undefined;
   Activity: undefined;
 };
@@ -48,6 +50,7 @@ export function RootNavigator() {
       <Stack.Screen name="CopyTrade" component={CopyTradeScreen} />
       <Stack.Screen name="TopTraders" component={TopTradersScreen} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
+      <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
       <Stack.Screen

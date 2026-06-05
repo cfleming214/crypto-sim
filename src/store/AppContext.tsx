@@ -5,7 +5,7 @@ import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNu
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
-import { applyDailyClaim, sellXp, realizedPnl, CASH_EVENT_SYMBOL } from '../services/gamification';
+import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -222,8 +222,9 @@ type Action =
   | { type: 'SET_GLOBAL_STATS'; stats: { totalMarketCap: number; change24h: number } }
   | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } }
   | { type: 'CLAIM_DAILY_REWARD' }
+  | { type: 'RECORD_PREDICTION'; outcome: PredictionOutcome }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number> } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -740,12 +741,24 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         lastClaimDay: action.data.lastClaimDay ?? state.lastClaimDay,
         achievements: action.data.achievements ?? state.achievements,
+        predictionWins: action.data.predictionWins ?? state.predictionWins,
+        predictionLosses: action.data.predictionLosses ?? state.predictionLosses,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
       };
     case 'SET_ACHIEVEMENTS':
       return { ...state, achievements: action.achievements };
+    case 'RECORD_PREDICTION': {
+      if (action.outcome === 'push') return state;  // tie → no win/loss, no XP
+      const won = action.outcome === 'win';
+      return {
+        ...state,
+        predictionWins: state.predictionWins + (won ? 1 : 0),
+        predictionLosses: state.predictionLosses + (won ? 0 : 1),
+        user: { ...state.user, xp: state.user.xp + (won ? PREDICTION_XP : 0) },
+      };
+    }
     case 'CLAIM_DAILY_REWARD': {
       // Daily reward applies only to the main portfolio (contests have their own
       // fresh bankroll). The card is gated to main, but guard here too.
@@ -952,7 +965,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SET_HANDLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
-    'RESET_DEMO', 'CLAIM_DAILY_REWARD',
+    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1131,6 +1144,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               lastClaimDay: typeof g.lastClaimDay === 'string' ? g.lastClaimDay : null,
               streak: typeof g.streak === 'number' ? g.streak : undefined,
               achievements: g.achievements && typeof g.achievements === 'object' ? g.achievements : undefined,
+              predictionWins: typeof g.predictionWins === 'number' ? g.predictionWins : undefined,
+              predictionLosses: typeof g.predictionLosses === 'number' ? g.predictionLosses : undefined,
             },
           });
         }
@@ -1146,16 +1161,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // can't wipe a guest's stored progress.
   useEffect(() => {
     if (!gamiHydratedRef.current) return;
-    if (state.lastClaimDay === null && Object.keys(state.achievements).length === 0) return;
+    const empty = state.lastClaimDay === null
+      && Object.keys(state.achievements).length === 0
+      && state.predictionWins === 0
+      && state.predictionLosses === 0;
+    if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
       JSON.stringify({
         lastClaimDay: state.lastClaimDay,
         streak: state.user.streak,
         achievements: state.achievements,
+        predictionWins: state.predictionWins,
+        predictionLosses: state.predictionLosses,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses]);
 
   // Seed the starter position once a brand-new portfolio (no holdings, no
   // trades) has live prices available. Runs for guests and new cloud accounts

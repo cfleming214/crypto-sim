@@ -167,6 +167,28 @@ export function evaluateAchievements(s: AchievementInput): Set<AchievementId> {
   return e;
 }
 
+// ---------------------------------------------------------------------------
+// Price-prediction mini-game (Phase 5). Lock a price, pick a direction, and
+// after PREDICTION_SECONDS compare against the live price.
+// ---------------------------------------------------------------------------
+
+export type PredictionDirection = 'up' | 'down';
+export type PredictionOutcome = 'win' | 'loss' | 'push';
+
+export const PREDICTION_SECONDS = 60;
+export const PREDICTION_XP = 25;   // awarded on a win
+
+// Resolve a prediction. An exact tie (no move) is a push (no win/loss recorded).
+export function resolvePrediction(
+  dir: PredictionDirection,
+  lockedPrice: number,
+  finalPrice: number,
+): PredictionOutcome {
+  if (finalPrice === lockedPrice) return 'push';
+  const movedUp = finalPrice > lockedPrice;
+  return (dir === 'up') === movedUp ? 'win' : 'loss';
+}
+
 export function applyDailyClaim(prev: DailyClaimState, now: number): DailyClaimResult {
   const today = todayKey(now);
   if (prev.lastClaimDay === today) {

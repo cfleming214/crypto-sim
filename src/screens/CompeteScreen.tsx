@@ -12,7 +12,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { useNavigation } from '@react-navigation/native';
-import { Clock, Flame, Bell, Trophy } from 'lucide-react-native';
+import { Clock, Flame, Bell, Trophy, Target } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
@@ -235,6 +235,31 @@ export function CompeteScreen() {
           </View>
         </Card>
       </TouchableOpacity>
+      {/* Price-prediction mini-game */}
+      <TouchableOpacity testID="compete-prediction-link" onPress={() => nav.navigate('Predict')} activeOpacity={0.85}>
+        <Card variant="tinted">
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center' }}>
+                <Target color={colors.brand} size={20} strokeWidth={1.9} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Mini-game
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>
+                  Price prediction
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                  Higher or lower in 60s? Win XP
+                </Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 18, color: colors.ink3 }}>›</Text>
+          </View>
+        </Card>
+      </TouchableOpacity>
+
       <EmailVerificationModal
         visible={verifyOpen}
         reason="Verify your email to join this contest. We use it for prize notifications and account recovery."
