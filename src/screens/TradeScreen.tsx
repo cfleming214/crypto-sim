@@ -12,6 +12,7 @@ import { fetchOhlc, type OhlcCandle } from '../services/priceService';
 import { latestRSI } from '../lib/indicators';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { ConfettiBurst } from '../components/ui/ConfettiBurst';
+import { ShakeText } from '../components/ui/ShakeText';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { realizedPnl as calcRealizedPnl, sellXp } from '../services/gamification';
@@ -410,6 +411,14 @@ export function TradeScreen() {
   const price = coin.price;
   const change24h = coin.change24h;
   const isUp = change24h >= 0;
+  // Absolute 24h move in dollars (prev = price / (1 + pct/100)), compactly
+  // formatted; the sign/color is applied where it's rendered.
+  const abs24hChange = Math.abs(price - price / (1 + change24h / 100));
+  const change24hStr =
+    abs24hChange >= 1000 ? abs24hChange.toLocaleString('en-US', { maximumFractionDigits: 0 })
+    : abs24hChange >= 1   ? abs24hChange.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : abs24hChange >= 0.01 ? abs24hChange.toFixed(2)
+    : abs24hChange.toFixed(6);
 
   const handleConfirm = (amount: number, limitPrice?: number) => {
     if (!modalSide) return;
@@ -556,14 +565,14 @@ export function TradeScreen() {
             </View>
           </ScrollView>
 
-          {/* Price */}
+          {/* Price (below the coin selectors) — jitters on each price update */}
           <View>
-            <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: -0.7 }}>
+            <ShakeText style={{ fontSize: 28, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: -0.7 }}>
               ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: price < 0.01 ? 8 : 2 })}
-            </Text>
+            </ShakeText>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
               <Chip variant={isUp ? 'up' : 'down'}>
-                {isUp ? '↑' : '↓'} {isUp ? '+' : ''}{change24h.toFixed(2)}%
+                {isUp ? '↑' : '↓'} {isUp ? '+' : '−'}${change24hStr} · {isUp ? '+' : ''}{change24h.toFixed(2)}%
               </Chip>
               <Text style={{ fontSize: 12, color: colors.ink3 }}>24h</Text>
             </View>
