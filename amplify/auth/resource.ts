@@ -5,6 +5,12 @@ import { defineAuth, defineFunction } from '@aws-amplify/backend';
 const preSignUp = defineFunction({
   name: 'pre-sign-up',
   entry: './pre-sign-up-handler.ts',
+  // Place this Lambda in the AUTH stack (not the shared `function` stack).
+  // Otherwise: auth → function (this trigger) → data (other fns grant table
+  // access) → auth (data's Cognito authorization) is a CloudFormation circular
+  // dependency. Co-locating the trigger with auth makes that edge intra-stack,
+  // leaving function → data → auth as a valid DAG.
+  resourceGroupName: 'auth',
 });
 
 export const auth = defineAuth({
