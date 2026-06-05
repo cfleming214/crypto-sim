@@ -70,8 +70,12 @@ export function NotificationsScreen() {
   const [tab, setTab] = useState('All');
   const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
 
-  // Derive trade notifications from real trades
-  const tradeNotifs: Notif[] = state.trades.slice(0, 5).map(t => ({
+  // Derive trade notifications from real coin trades (exclude reward
+  // cash-injection events, which use the sentinel 'USD' symbol).
+  const tradeNotifs: Notif[] = state.trades
+    .filter(t => t.kind !== 'reward' && t.symbol !== 'USD')
+    .slice(0, 5)
+    .map(t => ({
     key: t.id,
     Icon: t.side === 'buy' ? ArrowUp : ArrowDown,
     color: null,

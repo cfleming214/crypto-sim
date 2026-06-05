@@ -9,6 +9,7 @@ import { AuthProvider } from './src/store/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui/Toast';
 import { AchievementWatcher } from './src/components/AchievementWatcher';
+import { EventWatcher } from './src/components/EventWatcher';
 
 configureAmplify();
 
@@ -21,6 +22,7 @@ export default function App() {
             <ThemeProvider>
               <ToastProvider>
                 <AchievementWatcher />
+                <EventWatcher />
                 <NavigationContainer>
                   <RootNavigator />
                 </NavigationContainer>
