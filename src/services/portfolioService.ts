@@ -206,57 +206,86 @@ export async function saveContestPortfolio(competitionId: string, slice: Portfol
   }
 }
 
-export async function loadProfile(): Promise<Partial<AppState> | null> {
+// Load the user's cloud profile IF one already exists. Unlike a plain load,
+// this never creates a starter — the caller decides between seeding a fresh
+// starter (createStarterProfile) and adopting the guest's local portfolio
+// (adoptGuestProfile). 'error' is kept distinct from 'new' so a transient list
+// failure is never mistaken for a brand-new account (which would trigger a
+// write and risk clobbering a returning user's real data).
+export type ProfileLoadResult =
+  | { status: 'exists'; profile: Partial<AppState> }
+  | { status: 'new' }
+  | { status: 'error' };
+
+export async function loadProfileIfExists(): Promise<ProfileLoadResult> {
   const client = await getClient();
-  if (!client) return null;
+  if (!client) return { status: 'error' };
   try {
     const { data: profiles } = await client.models.UserProfile.list();
-    let profile: Partial<AppState>;
-    if (!profiles.length) {
-      // First sign-in (i.e. just signed up) — create the user's DynamoDB
-      // profile row so they land on a fresh $10K / Bronze I state instead of
-      // the demo's pre-loaded INITIAL_STATE. The starter holds only cash; the
-      // 0.01 BTC starter position is seeded client-side (SEED_STARTER) once
-      // live prices are available, then persisted on the next save.
-      let handle = 'newtrader';
-      try {
-        const { getCurrentUser } = await import('aws-amplify/auth');
-        const u = await getCurrentUser();
-        // Pool uses email as the username; prefer the email local-part as a
-        // friendly default handle, falling back to the raw username.
-        const loginId = u.signInDetails?.loginId ?? u.username ?? '';
-        handle = loginId.includes('@') ? loginId.split('@')[0] : (loginId || 'newtrader');
-      } catch {
-        // No session yet → keep the default handle.
-      }
-      const starter = {
-        handle,
-        xp:           0,
-        league:       'Bronze',
-        division:     1,
-        streak:       0,
-        cash:         10000,
-        bankroll:     10000,
-        riskScore:    100,
-        holdingsJson: '[]',
-        avatarColor:  '#6366F1',
-      };
-      await client.models.UserProfile.create(starter);
-      profile = await profileFromRecord(starter);
-    } else {
-      profile = await profileFromRecord(profiles[0]);
-    }
-
-    // Also restore trade history and joined-competition list so the user
-    // sees their actual past activity, not whatever INITIAL_STATE has.
+    if (!profiles.length) return { status: 'new' };
+    const profile = await profileFromRecord(profiles[0]);
+    // Also restore trade history and joined-competition list so the user sees
+    // their actual past activity, not whatever INITIAL_STATE has.
     const [trades, joinedTournamentIds] = await Promise.all([
       loadUserTrades(client),
       loadJoinedCompetitions(client),
     ]);
-    return { ...profile, trades, joinedTournamentIds };
+    return { status: 'exists', profile: { ...profile, trades, joinedTournamentIds } };
+  } catch {
+    return { status: 'error' };
+  }
+}
+
+// Create a fresh $10K / Bronze I starter row for a brand-new account that has
+// nothing worth keeping. The 0.01 BTC starter position is seeded client-side
+// (SEED_STARTER) once live prices arrive, then persisted on the next save.
+export async function createStarterProfile(): Promise<Partial<AppState> | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    let handle = 'newtrader';
+    try {
+      const { getCurrentUser } = await import('aws-amplify/auth');
+      const u = await getCurrentUser();
+      // Pool uses email as the username; prefer the email local-part as a
+      // friendly default handle, falling back to the raw username.
+      const loginId = u.signInDetails?.loginId ?? u.username ?? '';
+      handle = loginId.includes('@') ? loginId.split('@')[0] : (loginId || 'newtrader');
+    } catch {
+      // No session yet → keep the default handle.
+    }
+    const starter = {
+      handle,
+      xp:           0,
+      league:       'Bronze',
+      division:     1,
+      streak:       0,
+      cash:         10000,
+      bankroll:     10000,
+      riskScore:    100,
+      holdingsJson: '[]',
+      avatarColor:  '#6366F1',
+    };
+    await client.models.UserProfile.create(starter);
+    const profile = await profileFromRecord(starter);
+    return { ...profile, trades: [], joinedTournamentIds: [] };
   } catch {
     return null;
   }
+}
+
+// Adopt the guest's local portfolio as a brand-new account's cloud profile:
+// write the UserProfile/PublicProfile from current state and persist the guest
+// trade ledger so history + equity reconstruction survive the sign-up. Used on
+// first sign-up when the guest has real activity (see hasMeaningfulGuestPortfolio
+// in AppContext); local state is kept as-is, so no LOAD_PROFILE overwrite.
+export async function adoptGuestProfile(guest: AppState): Promise<void> {
+  // saveProfile create-vs-updates the UserProfile row from `guest`.
+  await saveProfile(guest);
+  // Persist each guest trade. The Trade model has no timestamp column, so
+  // these adopt the sign-up time as createdAt — holdings/cash (the portfolio
+  // itself) are exact; only the ledger's historical spacing is approximated.
+  await Promise.all(guest.trades.map(saveTrade));
 }
 
 export async function saveProfile(state: AppState): Promise<void> {

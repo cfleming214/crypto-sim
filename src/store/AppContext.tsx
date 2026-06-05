@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useRef, useSta
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice } from './types';
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
+import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
@@ -900,6 +900,14 @@ const AppContext = createContext<AppContextValue>({
   getHolding: () => null,
 });
 
+// True when the guest has done anything beyond the auto-seeded starter (0.01
+// BTC + its SEED- trade): a real buy/sell/daily-reward always leaves a non-SEED
+// trade in the ledger. Used at first sign-up to decide whether to adopt the
+// guest portfolio into the new account vs. start them on a fresh starter.
+function hasMeaningfulGuestPortfolio(s: AppState): boolean {
+  return s.trades.some(t => !t.id.startsWith('SEED-'));
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -909,6 +917,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [profileLoaded, setProfileLoaded] = useState(false); // true once the cloud profile load resolves (gates seeding)
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
+  const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
+  stateRef.current = state;
   const { status: authStatus } = useAuth();
 
   // Wrap dispatch so any state-mutating action that should persist to the
@@ -1001,8 +1011,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // without this, the brief empty INITIAL_STATE at mount spawns a duplicate
     // starter-seed trade in the cloud on every login.
     setProfileLoaded(false);
-    loadProfile()
-      .then(profile => { if (profile) dispatch({ type: 'LOAD_PROFILE', profile }); })
+    // Snapshot the portfolio AS OF the moment of authentication. On sign-IN this
+    // is whatever loaded; on first sign-UP (guest → authenticated, which does NOT
+    // fire CLEAR_USER_DATA) it's the guest's live portfolio — the thing we want
+    // to carry into the new account instead of resetting.
+    const guestSnapshot = stateRef.current;
+    loadProfileIfExists()
+      .then(async (res) => {
+        if (res.status === 'exists') {
+          // Returning sign-in → load the cloud account.
+          dispatch({ type: 'LOAD_PROFILE', profile: res.profile });
+        } else if (res.status === 'new') {
+          // Brand-new account. If the guest actually built something, register
+          // that portfolio to the new user (write it to the cloud, keep local
+          // state). Otherwise seed a fresh starter.
+          if (hasMeaningfulGuestPortfolio(guestSnapshot)) {
+            await adoptGuestProfile(guestSnapshot);
+            // Keep local state — it already IS the adopted portfolio. No
+            // LOAD_PROFILE, so cash/holdings/trades are preserved exactly.
+          } else {
+            const starter = await createStarterProfile();
+            if (starter) dispatch({ type: 'LOAD_PROFILE', profile: starter });
+          }
+        }
+        // res.status === 'error' → keep local state (network hiccup); a later
+        // saveProfile/subscription reconciles. Never write on an error.
+      })
       .finally(() => setProfileLoaded(true));
 
     fetchCompetitions().then(competitions => {
