@@ -90,7 +90,7 @@ export function AuthScreen() {
           </View>
 
           <Card style={{ gap: 12 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Username</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Email</Text>
             <TextInput
               testID="auth-username-input"
               style={inputStyle}
@@ -98,8 +98,9 @@ export function AuthScreen() {
               onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="username"
-              placeholder="trader_42"
+              autoComplete="email"
+              keyboardType="email-address"
+              placeholder="you@email.com"
               placeholderTextColor={colors.ink4}
             />
             <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Password</Text>

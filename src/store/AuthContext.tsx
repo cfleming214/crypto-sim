@@ -89,11 +89,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignUp = async (usernameInput: string, password: string) => {
     const { signUp, signIn } = await import('aws-amplify/auth');
-    await signUp({ username: usernameInput, password });
-    // Pool has no required attributes and no login alias, so the user is
-    // CONFIRMED immediately — sign them in directly without a verification step.
+    // The deployed pool signs in by email (usernameAttributes = ['email']) and
+    // requires the email attribute, so the input IS the email — pass it as both
+    // the username and the email attribute. The preSignUp Lambda trigger
+    // auto-confirms the user (autoConfirmUser + autoVerifyEmail), so there's no
+    // code-entry step and we can sign them straight in. (Real email verification
+    // is gated later on contest entry — see handleStartEmailVerification.)
+    const email = usernameInput.trim().toLowerCase();
+    await signUp({
+      username: email,
+      password,
+      options: { userAttributes: { email } },
+    });
     await signIn({
-      username: usernameInput,
+      username: email,
       password,
       options: { authFlowType: 'USER_PASSWORD_AUTH' },
     });

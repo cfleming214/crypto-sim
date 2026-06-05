@@ -1,4 +1,11 @@
-import { defineAuth } from '@aws-amplify/backend';
+import { defineAuth, defineFunction } from '@aws-amplify/backend';
+
+// Auto-confirms new sign-ups so users can sign in immediately (the pool signs in
+// by email but the app verifies email later, on contest entry). See the handler.
+const preSignUp = defineFunction({
+  name: 'pre-sign-up',
+  entry: './pre-sign-up-handler.ts',
+});
 
 export const auth = defineAuth({
   // Email sign-in. This matches the already-deployed Cognito pool
@@ -9,5 +16,8 @@ export const auth = defineAuth({
   // every backend deploy.
   loginWith: {
     email: true,
+  },
+  triggers: {
+    preSignUp,
   },
 });
