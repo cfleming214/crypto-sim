@@ -1,15 +1,13 @@
 import { defineAuth } from '@aws-amplify/backend';
 
 export const auth = defineAuth({
-  // Username-only sign-in. Email is an optional, mutable attribute that users
-  // add + verify later (gated on contest entry). No login alias is configured,
-  // so signup collects only username + password and Cognito issues no
-  // verification code at create time.
-  loginWith: {},
-  userAttributes: {
-    email: {
-      required: false,
-      mutable: true,
-    },
+  // Email sign-in. This matches the already-deployed Cognito pool
+  // (username_attributes / standard_required_attributes / user_verification_types
+  // are all email), so applying it is a no-op against the live pool's immutable
+  // sign-in config — no user-pool recreation. An empty loginWith ({}) is invalid
+  // under current ampx ("at least one auth method must be enabled") and blocked
+  // every backend deploy.
+  loginWith: {
+    email: true,
   },
 });
