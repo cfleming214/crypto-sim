@@ -74,6 +74,29 @@ export function nextClaimAt(now: number): number {
 // Apply a claim. Idempotent within a UTC day: claiming twice the same day is a
 // no-op (claimed:false). A consecutive day continues the streak; any gap resets
 // it to 1. The first claim ever (lastClaimDay null) starts the streak at 1.
+// ---------------------------------------------------------------------------
+// Trade economics (Phase 2): realized P&L on a sell + XP scaled by it.
+// ---------------------------------------------------------------------------
+
+// Realized P&L in dollars: proceeds (units × sellPrice) − cost basis
+// (units × avgCost). Positive = profit on the units sold.
+export function realizedPnl(avgCost: number, units: number, sellPrice: number): number {
+  return units * (sellPrice - avgCost);
+}
+
+// XP awarded for a sell. Every exit earns a base; a profitable exit adds a bonus
+// of ~1 XP per 1% return on cost basis (capped), so winning trades feel good
+// while losses still earn the base "lesson" XP. `proceeds` = units × sellPrice.
+const SELL_XP_BASE = 10;
+const SELL_XP_BONUS_CAP = 120;
+export function sellXp(pnl: number, proceeds: number): number {
+  if (pnl <= 0) return SELL_XP_BASE;
+  const cost = proceeds - pnl;                 // units × avgCost
+  const returnPct = cost > 0 ? (pnl / cost) * 100 : 0;
+  const bonus = Math.min(SELL_XP_BONUS_CAP, Math.max(0, Math.round(returnPct)));
+  return SELL_XP_BASE + bonus;
+}
+
 export function applyDailyClaim(prev: DailyClaimState, now: number): DailyClaimResult {
   const today = todayKey(now);
   if (prev.lastClaimDay === today) {

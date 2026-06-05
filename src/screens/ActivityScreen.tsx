@@ -61,6 +61,9 @@ export function ActivityScreen() {
   // Win rate: sell trades where slippage is positive (proxy for profitable exit)
   const allSells = state.trades.filter(t => t.side === 'sell');
   const wins = allSells.filter(t => {
+    // Prefer the realized P&L recorded at sell time (exact); fall back to the
+    // old heuristic for legacy rows that predate realizedPnl.
+    if (typeof t.realizedPnl === 'number') return t.realizedPnl > 0;
     const h = state.holdings.find(x => x.symbol === t.symbol);
     return h ? t.price > h.avgCost : t.slippage >= 0;
   });

@@ -5,7 +5,7 @@ import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNu
 import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
-import { applyDailyClaim, CASH_EVENT_SYMBOL } from '../services/gamification';
+import { applyDailyClaim, sellXp, realizedPnl, CASH_EVENT_SYMBOL } from '../services/gamification';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -254,18 +254,22 @@ function reducer(state: AppState, action: Action): AppState {
           if (h) {
             const unitsToSell = Math.min(order.amount / coin.price, h.units);
             const proceeds = unitsToSell * coin.price;
+            const pnl = realizedPnl(h.avgCost, unitsToSell, coin.price);
+            const xpEarned = sellXp(pnl, proceeds);
             const holdings = unitsToSell >= h.units
               ? newState.holdings.filter(x => x.symbol !== order.symbol)
               : newState.holdings.map(x => x.symbol === order.symbol ? { ...x, units: x.units - unitsToSell } : x);
             const trade: Trade = {
               id: order.id, symbol: order.symbol, side: 'sell', amount: proceeds,
-              units: unitsToSell, price: coin.price, timestamp: Date.now(), xpEarned: 10, slippage: 0,
+              units: unitsToSell, price: coin.price, timestamp: Date.now(),
+              xpEarned, slippage: 0, realizedPnl: pnl,
             };
             newState = {
               ...newState,
               cash: newState.cash + proceeds,
               holdings,
               trades: [trade, ...newState.trades],
+              user: { ...newState.user, xp: newState.user.xp + xpEarned },
             };
           }
         }
@@ -490,13 +494,16 @@ function reducer(state: AppState, action: Action): AppState {
       if (!coin || !holding) return state;
       const unitsToSell = Math.min(action.amount / coin.price, holding.units);
       const proceeds = unitsToSell * coin.price;
+      const pnl = realizedPnl(holding.avgCost, unitsToSell, coin.price);
+      const sellXpEarned = sellXp(pnl, proceeds);
       const holdings = unitsToSell >= holding.units
         ? state.holdings.filter(h => h.symbol !== action.symbol)
         : state.holdings.map(h => h.symbol === action.symbol ? { ...h, units: h.units - unitsToSell } : h);
       const trade: Trade = {
         id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         symbol: action.symbol, side: 'sell', amount: proceeds,
-        units: unitsToSell, price: coin.price, timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+        units: unitsToSell, price: coin.price, timestamp: Date.now(),
+        xpEarned: sellXpEarned, slippage: 0.001, realizedPnl: pnl,
       };
       const newCashSell = state.cash + proceeds;
       const newBankrollSell = newCashSell + holdings.reduce((s, h) => {
@@ -513,6 +520,7 @@ function reducer(state: AppState, action: Action): AppState {
         holdings,
         trades: [trade, ...state.trades],
         stopLosses: newStopLosses,
+        user: { ...state.user, xp: state.user.xp + sellXpEarned },
         riskScore: computeRiskScore(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses),
         coachNudges: sellNudges,
         // dismissedNudgeIds preserved — see BUY for rationale.

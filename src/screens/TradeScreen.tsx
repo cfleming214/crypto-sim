@@ -11,10 +11,15 @@ import { CandleChart, type Indicator } from '../components/charts/CandleChart';
 import { fetchOhlc, type OhlcCandle } from '../services/priceService';
 import { latestRSI } from '../lib/indicators';
 import { CoinGlyph } from '../components/ui/Avatar';
+import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { realizedPnl as calcRealizedPnl, sellXp } from '../services/gamification';
 import { Star, MoreHorizontal, Shield, Check, X, ChevronDown, Bell, Share2, ExternalLink } from 'lucide-react-native';
 import { NumPad } from '../components/ui/NumPad';
+
+// A buy of this size or larger gets a confetti celebration (a notable position).
+const BIG_BUY_USD = 1000;
 
 const QUICK_AMOUNTS = [50, 100, 250, 500];
 
@@ -340,7 +345,8 @@ export function TradeScreen() {
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number } | null>(null);
+  const [lastTrade, setLastTrade] = useState<{ side: string; amount: number; units: number; xp: number; realizedPnl?: number; costBasis?: number } | null>(null);
+  const [confetti, setConfetti] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [fetchedCandles, setFetchedCandles] = useState<OhlcCandle[]>([]);
@@ -418,8 +424,22 @@ export function TradeScreen() {
       return;
     }
     const units = amount / price;
-    dispatch({ type: modalSide === 'buy' ? 'BUY' : 'SELL', symbol, amount });
-    setLastTrade({ side: modalSide, amount, units });
+    if (modalSide === 'buy') {
+      dispatch({ type: 'BUY', symbol, amount });
+      setLastTrade({ side: 'buy', amount, units, xp: 25 });
+      if (amount >= BIG_BUY_USD) setConfetti(c => c + 1);
+    } else {
+      // Mirror the reducer so the success screen shows the exact realized P&L /
+      // XP it just recorded (units capped at the held amount).
+      const holding = state.holdings.find(h => h.symbol === symbol);
+      const unitsToSell = holding ? Math.min(amount / price, holding.units) : units;
+      const pnl = holding ? calcRealizedPnl(holding.avgCost, unitsToSell, price) : 0;
+      const costBasis = holding ? unitsToSell * holding.avgCost : 0;
+      const xp = sellXp(pnl, unitsToSell * price);
+      dispatch({ type: 'SELL', symbol, amount });
+      setLastTrade({ side: 'sell', amount, units: unitsToSell, xp, realizedPnl: pnl, costBasis });
+      if (pnl > 0) setConfetti(c => c + 1);
+    }
     setModalSide(null);
     setShowSuccess(true);
   };
@@ -428,6 +448,7 @@ export function TradeScreen() {
     const hasStop = !!state.stopLosses[symbol];
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <ConfettiBurst trigger={confetti} />
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
           <View style={{ alignItems: 'center', paddingVertical: 24, gap: 14 }}>
             <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.upSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -438,7 +459,16 @@ export function TradeScreen() {
               {lastTrade.side === 'buy' ? 'Bought' : 'Sold'} {lastTrade.units.toFixed(5)} {symbol}
             </Text>
             <Text style={{ fontSize: 13, color: colors.ink3 }}>at ${price.toLocaleString('en-US', { maximumFractionDigits: 2 })} · just now</Text>
-            <Chip variant="up">+25 XP</Chip>
+            {typeof lastTrade.realizedPnl === 'number' && (
+              <Text style={{ fontSize: 16, fontWeight: '700', color: lastTrade.realizedPnl >= 0 ? colors.up : colors.down }}>
+                {lastTrade.realizedPnl >= 0 ? 'Realized +$' : 'Realized −$'}
+                {Math.abs(lastTrade.realizedPnl).toFixed(2)}
+                {lastTrade.costBasis && lastTrade.costBasis > 0
+                  ? ` (${lastTrade.realizedPnl >= 0 ? '▲' : '▼'}${Math.abs((lastTrade.realizedPnl / lastTrade.costBasis) * 100).toFixed(1)}%)`
+                  : ''}
+              </Text>
+            )}
+            <Chip variant="up">+{lastTrade.xp} XP</Chip>
           </View>
 
           {/* Trailing stop CTA — only shown after a buy without an existing stop */}

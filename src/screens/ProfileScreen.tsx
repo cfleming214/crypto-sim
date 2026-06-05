@@ -206,8 +206,14 @@ export function ProfileScreen() {
 
   const pnl = state.bankroll - 10000;
   const sellTrades = state.trades.filter(t => t.side === 'sell');
+  // Prefer the realized P&L recorded at sell time (exact); fall back to the old
+  // current-holding heuristic for legacy rows without realizedPnl.
   const winRate = sellTrades.length > 0
-    ? Math.round(sellTrades.filter(t => t.price > (state.holdings.find(h => h.symbol === t.symbol)?.avgCost ?? t.price)).length / sellTrades.length * 100)
+    ? Math.round(sellTrades.filter(t =>
+        typeof t.realizedPnl === 'number'
+          ? t.realizedPnl > 0
+          : t.price > (state.holdings.find(h => h.symbol === t.symbol)?.avgCost ?? t.price)
+      ).length / sellTrades.length * 100)
     : 0;
   // Best rank across all joined contests: find this user's rank in each
   // live leaderboard, take the lowest (best) number.
