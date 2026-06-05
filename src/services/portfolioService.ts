@@ -107,7 +107,11 @@ async function loadUserTrades(client: any): Promise<import('../store/types').Tra
       amount:    t.amount ?? 0,
       units:     t.units ?? 0,
       price:     t.price ?? 0,
-      timestamp: t.createdAt ? new Date(t.createdAt).getTime() : Date.now(),
+      // Prefer the original client trade time; fall back to the row's cloud
+      // write time for rows written before the `timestamp` field existed.
+      timestamp: typeof t.timestamp === 'number'
+        ? t.timestamp
+        : (t.createdAt ? new Date(t.createdAt).getTime() : Date.now()),
       xpEarned:  t.xpEarned ?? 0,
       slippage:  t.slippage ?? 0,
     }));
@@ -282,9 +286,9 @@ export async function createStarterProfile(): Promise<Partial<AppState> | null> 
 export async function adoptGuestProfile(guest: AppState): Promise<void> {
   // saveProfile create-vs-updates the UserProfile row from `guest`.
   await saveProfile(guest);
-  // Persist each guest trade. The Trade model has no timestamp column, so
-  // these adopt the sign-up time as createdAt — holdings/cash (the portfolio
-  // itself) are exact; only the ledger's historical spacing is approximated.
+  // Persist each guest trade. saveTrade now writes the original client
+  // `timestamp`, so the adopted ledger keeps its real ordering/spacing for the
+  // equity reconstruction (not the cloud write time).
   await Promise.all(guest.trades.map(saveTrade));
 }
 
@@ -606,14 +610,15 @@ export async function saveTrade(trade: Trade): Promise<void> {
   if (!client) return;
   try {
     await client.models.Trade.create({
-      tradeId:  trade.id,
-      symbol:   trade.symbol,
-      side:     trade.side,
-      amount:   trade.amount,
-      units:    trade.units,
-      price:    trade.price,
-      xpEarned: trade.xpEarned,
-      slippage: trade.slippage,
+      tradeId:   trade.id,
+      symbol:    trade.symbol,
+      side:      trade.side,
+      amount:    trade.amount,
+      units:     trade.units,
+      price:     trade.price,
+      xpEarned:  trade.xpEarned,
+      slippage:  trade.slippage,
+      timestamp: trade.timestamp,
     });
   } catch (e) {
     console.warn('saveTrade failed:', e);

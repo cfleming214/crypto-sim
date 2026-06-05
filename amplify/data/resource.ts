@@ -31,6 +31,11 @@ const schema = a.schema({
     price: a.float().required(),
     xpEarned: a.integer(),
     slippage: a.float(),
+    // Original client trade time (ms epoch). The row's createdAt is the cloud
+    // write time, which is wrong for trades bulk-saved on sign-up adoption;
+    // this preserves the real ordering for equity reconstruction. Optional for
+    // back-compat with rows written before this field existed.
+    timestamp: a.float(),
   }).authorization(allow => [allow.owner()]),
 
   LeaderboardEntry: a.model({
