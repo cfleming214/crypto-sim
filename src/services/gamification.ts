@@ -97,6 +97,76 @@ export function sellXp(pnl: number, proceeds: number): number {
   return SELL_XP_BASE + bonus;
 }
 
+// ---------------------------------------------------------------------------
+// Achievements (Phase 3). Data-driven defs + a pure evaluator. Icons are string
+// keys mapped to lucide components in the UI layer (this file stays React-free).
+// ---------------------------------------------------------------------------
+
+export type AchievementId =
+  | 'first-trade' | 'trades-10' | 'trades-100' | 'trades-500'
+  | 'streak-7' | 'streak-30' | 'diamond-hands' | 'safe-trader'
+  | 'copycat' | 'top-50' | 'win-bracket' | 'big-winner'
+  | 'first-10x' | 'predictor';
+
+export interface AchievementDef {
+  id: AchievementId;
+  name: string;
+  description: string;
+  icon: string;   // lucide key, see ACHIEVEMENT_ICONS in the UI layer
+}
+
+export const ACHIEVEMENTS: AchievementDef[] = [
+  { id: 'first-trade',   name: 'First trade',    description: 'Make your first trade',                 icon: 'Star' },
+  { id: 'trades-10',     name: '10 trades',      description: 'Complete 10 trades',                    icon: 'ArrowLeftRight' },
+  { id: 'trades-100',    name: '100 trades',     description: 'Complete 100 trades',                   icon: 'ArrowLeftRight' },
+  { id: 'trades-500',    name: '500 trades',     description: 'Complete 500 trades',                   icon: 'ArrowLeftRight' },
+  { id: 'streak-7',      name: '7-day streak',   description: 'Claim the daily reward 7 days running', icon: 'Flame' },
+  { id: 'streak-30',     name: '30-day streak',  description: 'Claim the daily reward 30 days running', icon: 'Flame' },
+  { id: 'diamond-hands', name: 'Diamond hands',  description: 'Hold 4 or more coins at once',          icon: 'Gem' },
+  { id: 'safe-trader',   name: 'Safe trader',    description: 'Set a stop-loss order',                 icon: 'Shield' },
+  { id: 'copycat',       name: 'Copycat',        description: 'Mirror another trader',                 icon: 'Users' },
+  { id: 'top-50',        name: 'Top 50',         description: 'Reach the top 50 of a contest',         icon: 'Trophy' },
+  { id: 'win-bracket',   name: 'Win bracket',    description: 'Finish #1 in a contest',                icon: 'Crown' },
+  { id: 'big-winner',    name: 'Big winner',     description: 'Realize a $1,000+ profit on one sell',  icon: 'TrendingUp' },
+  { id: 'first-10x',     name: 'First 10x',      description: 'Sell a position up 10x (900%+)',        icon: 'Rocket' },
+  { id: 'predictor',     name: 'Predictor',      description: 'Win 5 price predictions',               icon: 'Target' },
+];
+
+export interface AchievementInput {
+  coinTradeCount: number;        // trades excluding reward/seed events
+  streak: number;
+  holdingsCount: number;
+  stopLossCount: number;
+  mirrorCount: number;
+  bestRank: number;              // Infinity if never ranked
+  wonBracket: boolean;
+  bestRealizedPnl: number;       // largest single-sell realized $ profit
+  bestRealizedReturnPct: number; // largest single-sell realized return %
+  predictionWins: number;
+}
+
+// The set of achievement ids currently earned given the input snapshot. Pure +
+// monotonic in practice (conditions only become true) — the watcher diffs this
+// against the persisted unlock map to detect *new* unlocks.
+export function evaluateAchievements(s: AchievementInput): Set<AchievementId> {
+  const e = new Set<AchievementId>();
+  if (s.coinTradeCount >= 1) e.add('first-trade');
+  if (s.coinTradeCount >= 10) e.add('trades-10');
+  if (s.coinTradeCount >= 100) e.add('trades-100');
+  if (s.coinTradeCount >= 500) e.add('trades-500');
+  if (s.streak >= 7) e.add('streak-7');
+  if (s.streak >= 30) e.add('streak-30');
+  if (s.holdingsCount >= 4) e.add('diamond-hands');
+  if (s.stopLossCount > 0) e.add('safe-trader');
+  if (s.mirrorCount > 0) e.add('copycat');
+  if (s.bestRank <= 50) e.add('top-50');
+  if (s.wonBracket) e.add('win-bracket');
+  if (s.bestRealizedPnl >= 1000) e.add('big-winner');
+  if (s.bestRealizedReturnPct >= 900) e.add('first-10x');
+  if (s.predictionWins >= 5) e.add('predictor');
+  return e;
+}
+
 export function applyDailyClaim(prev: DailyClaimState, now: number): DailyClaimResult {
   const today = todayKey(now);
   if (prev.lastClaimDay === today) {

@@ -154,6 +154,9 @@ const INITIAL_STATE: AppState = {
   hasOnboarded: false,
   tradeSymbol: 'BTC',
   lastClaimDay: null,
+  achievements: {},
+  predictionWins: 0,
+  predictionLosses: 0,
   activePortfolioId: 'main',
   portfolios: {},
 };
@@ -194,7 +197,8 @@ type Action =
   | { type: 'SET_GLOBAL_STATS'; stats: { totalMarketCap: number; change24h: number } }
   | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } }
   | { type: 'CLAIM_DAILY_REWARD' }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number } };
+  | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number> } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -700,10 +704,13 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         lastClaimDay: action.data.lastClaimDay ?? state.lastClaimDay,
+        achievements: action.data.achievements ?? state.achievements,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
       };
+    case 'SET_ACHIEVEMENTS':
+      return { ...state, achievements: action.achievements };
     case 'CLAIM_DAILY_REWARD': {
       // Daily reward applies only to the main portfolio (contests have their own
       // fresh bankroll). The card is gated to main, but guard here too.
@@ -1088,6 +1095,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             data: {
               lastClaimDay: typeof g.lastClaimDay === 'string' ? g.lastClaimDay : null,
               streak: typeof g.streak === 'number' ? g.streak : undefined,
+              achievements: g.achievements && typeof g.achievements === 'object' ? g.achievements : undefined,
             },
           });
         }
@@ -1098,16 +1106,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Gamification persistence — save. Only after hydration and only once a claim
-  // has actually happened (lastClaimDay !== null), so CLEAR_USER_DATA's reset to
-  // null on sign-out can't wipe a guest's stored streak.
+  // Gamification persistence — save. Only after hydration, and skip the empty
+  // state (no claim + no achievements) so CLEAR_USER_DATA's reset on sign-out
+  // can't wipe a guest's stored progress.
   useEffect(() => {
-    if (!gamiHydratedRef.current || state.lastClaimDay === null) return;
+    if (!gamiHydratedRef.current) return;
+    if (state.lastClaimDay === null && Object.keys(state.achievements).length === 0) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
-      JSON.stringify({ lastClaimDay: state.lastClaimDay, streak: state.user.streak }),
+      JSON.stringify({
+        lastClaimDay: state.lastClaimDay,
+        streak: state.user.streak,
+        achievements: state.achievements,
+      }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements]);
 
   // Seed the starter position once a brand-new portfolio (no holdings, no
   // trades) has live prices available. Runs for guests and new cloud accounts

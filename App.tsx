@@ -7,6 +7,8 @@ import { ThemeProvider } from './src/theme/ThemeContext';
 import { AppProvider } from './src/store/AppContext';
 import { AuthProvider } from './src/store/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { ToastProvider } from './src/components/ui/Toast';
+import { AchievementWatcher } from './src/components/AchievementWatcher';
 
 configureAmplify();
 
@@ -17,9 +19,12 @@ export default function App() {
         <AuthProvider>
           <AppProvider>
             <ThemeProvider>
-              <NavigationContainer>
-                <RootNavigator />
-              </NavigationContainer>
+              <ToastProvider>
+                <AchievementWatcher />
+                <NavigationContainer>
+                  <RootNavigator />
+                </NavigationContainer>
+              </ToastProvider>
             </ThemeProvider>
           </AppProvider>
         </AuthProvider>

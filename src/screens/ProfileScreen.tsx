@@ -11,6 +11,8 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
+import { ACHIEVEMENTS } from '../services/gamification';
+import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
@@ -190,16 +192,17 @@ export function ProfileScreen() {
     .filter((r): r is number => r !== null);
   const bestLiveRank = topRanks.length > 0 ? Math.min(...topRanks) : Infinity;
 
-  const achievements = [
-    { Icon: Star,           name: 'First $',       earned: state.trades.length > 0 },
-    { Icon: Flame,          name: '7-day streak',  earned: state.user.streak >= 7 },
-    { Icon: Trophy,         name: 'Top 50',        earned: bestLiveRank <= 50 },
-    { Icon: Shield,         name: 'Safe trader',   earned: Object.keys(state.stopLosses).length > 0 },
-    { Icon: User,           name: 'Copycat',       earned: activeMirrorCount > 0 },
-    { Icon: ArrowLeftRight, name: '100 trades',    earned: state.trades.length >= 100 },
-    { Icon: BarChart2,      name: 'Diamond hands', earned: state.holdings.length >= 4 },
-    { Icon: Trophy,         name: 'Win bracket',   earned: hasWonBracket },
-  ];
+  // Achievements come from the engine + persisted unlock map (state.achievements),
+  // kept current by the global AchievementWatcher. We render earned state and the
+  // unlock date here; new unlocks toast + confetti elsewhere.
+  const achievements = ACHIEVEMENTS.map(def => ({
+    id: def.id,
+    name: def.name,
+    description: def.description,
+    Icon: achievementIcon(def.icon),
+    earned: def.id in state.achievements,
+    unlockedAt: state.achievements[def.id] as number | undefined,
+  }));
   const earnedCount = achievements.filter(a => a.earned).length;
   const { signOut, status } = useAuth();
   const nav = useNavigation<any>();
@@ -408,13 +411,13 @@ export function ProfileScreen() {
         <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>{earnedCount} / {achievements.length}</Text>
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        {achievements.map(({ Icon, name, earned }) => (
+        {achievements.map(({ Icon, name, description, earned, unlockedAt }) => (
           <TouchableOpacity
             key={name}
             style={{ width: '22%', alignItems: 'center', opacity: earned ? 1 : 0.35 }}
             onPress={() => earned
-              ? Alert.alert(name, 'Achievement unlocked! You earned this badge for your progress.', [{ text: 'Nice!' }])
-              : Alert.alert(name, 'Keep trading to unlock this achievement!', [{ text: 'OK' }])
+              ? Alert.alert(name, `${description}${unlockedAt ? `\n\nUnlocked ${new Date(unlockedAt).toLocaleDateString()}` : ''}`, [{ text: 'Nice!' }])
+              : Alert.alert(name, description, [{ text: 'OK' }])
             }
             activeOpacity={0.75}
           >

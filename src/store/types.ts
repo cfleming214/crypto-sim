@@ -152,6 +152,13 @@ export interface AppState {
   // "claim available / come back tomorrow" state. Persisted to AsyncStorage
   // ('gamification.v1'); cloud sync added later via UserProfile.gamificationJson.
   lastClaimDay: string | null;
+  // Unlocked achievements: achievement id → unlockedAt (ms epoch). Persisted in
+  // 'gamification.v1'. The watcher evaluates the engine and records new unlocks.
+  achievements: Record<string, number>;
+  // Price-prediction mini-game lifetime stats (Phase 5). Persisted in
+  // 'gamification.v1'. predictionWins feeds the "Predictor" achievement.
+  predictionWins: number;
+  predictionLosses: number;
   // External market context, refreshed alongside fetchPrices.
   globalStats?: { totalMarketCap: number; change24h: number };
   fearGreed?:   { value: number; label: string };
