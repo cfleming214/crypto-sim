@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -341,6 +341,7 @@ export function TradeScreen() {
   const { colors } = useTheme();
   const { state, getCoin, dispatch } = useApp();
   const nav = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const [tf, setTf] = useState('24H');
   const [modalSide, setModalSide] = useState<'buy' | 'sell' | null>(null);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
@@ -545,7 +546,7 @@ export function TradeScreen() {
           </>
         }
       >
-        <View style={{ flex: 1, gap: 14, paddingHorizontal: 20 }}>
+        <View style={{ flex: 1, gap: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 8 }}>
           {/* Coin selector. flexGrow:0 stops the horizontal ScrollView from
               stretching to fill the flex:1 column (which left a big gap between
               the chips and the price); it now hugs the chips' height. */}
