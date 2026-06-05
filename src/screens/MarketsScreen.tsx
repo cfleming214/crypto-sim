@@ -13,6 +13,18 @@ import { formatLargeNumber } from '../services/priceService';
 import { useNavigation } from '@react-navigation/native';
 import { Search, Star, SlidersHorizontal, X } from 'lucide-react-native';
 
+// Absolute 24h price move in dollars, derived from the current price and the
+// 24h % change (prev = price / (1 + pct/100)). Returned unsigned and compactly
+// formatted; the caller supplies the +/− sign and color.
+function fmtMoneyDelta(price: number, changePct: number): string {
+  const prev = price / (1 + changePct / 100);
+  const d = Math.abs(price - prev);
+  if (d >= 1000) return d.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (d >= 1) return d.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (d >= 0.01) return d.toFixed(2);
+  return d.toFixed(6);
+}
+
 type ChangeFilter = 'all' | 'gainers' | 'losers';
 type McapFilter = 'all' | 'large' | 'mid' | 'small';
 
@@ -338,7 +350,7 @@ export function MarketsScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                     <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name} · MC {a.marketCap}</Text>
                     <Text style={{ fontSize: 12, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                      {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                      {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                     </Text>
                   </View>
                 </View>
