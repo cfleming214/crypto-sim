@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './ui/Toast';
 import { configureNotifications, requestNotificationPermission, notifyNow } from '../lib/notifications';
-import { Bell, Clock } from 'lucide-react-native';
+import { leagueRank } from '../services/gamification';
+import { Bell, Clock, Award } from 'lucide-react-native';
+
+const DIV_ROMAN = ['', 'I', 'II', 'III'];
 
 // Surfaces background events that previously happened silently in TICK_PRICES:
 // limit-order fills (Trade ids prefixed 'LMT-') and triggered price alerts. Each
@@ -14,6 +17,8 @@ export function EventWatcher() {
   const seenTrades = useRef<Set<string>>(new Set());
   const seenAlerts = useRef<Set<string>>(new Set());
   const armedRef = useRef(false);
+  const prevLeagueRef = useRef<{ league: string; division: number } | null>(null);
+  const leagueArmedRef = useRef(false);
 
   // Seed with whatever exists at mount so only post-mount events toast; also
   // set up OS notifications + request permission (no-ops until a native rebuild).
@@ -23,7 +28,28 @@ export function EventWatcher() {
     armedRef.current = true;
     configureNotifications();
     requestNotificationPermission();
+    // Delay-arm league toasts so the initial cloud profile load (which sets the
+    // league for the first time) doesn't read as a promotion.
+    const t = setTimeout(() => { leagueArmedRef.current = true; }, 4000);
+    return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // League promotion / relegation (set by the weekly settle-season cron, arrives
+  // via LOAD_PROFILE). Toast the change once the warm-up has passed.
+  useEffect(() => {
+    const cur = { league: state.user.league, division: state.user.division };
+    const prev = prevLeagueRef.current;
+    prevLeagueRef.current = cur;
+    if (!leagueArmedRef.current || !prev) return;
+    if (prev.league === cur.league && prev.division === cur.division) return;
+    const promoted = leagueRank(cur.league, cur.division) > leagueRank(prev.league, prev.division);
+    show({
+      title: promoted ? 'Promoted!' : 'League updated',
+      subtitle: `${cur.league} ${DIV_ROMAN[cur.division] ?? ''}`.trim(),
+      icon: Award,
+      variant: promoted ? 'up' : 'warn',
+    });
+  }, [state.user.league, state.user.division]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!armedRef.current) return;

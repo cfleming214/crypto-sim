@@ -189,6 +189,38 @@ export function resolvePrediction(
   return (dir === 'up') === movedUp ? 'win' : 'loss';
 }
 
+// ---------------------------------------------------------------------------
+// League ladder (Phase 9). A weekly cron settles each player's league/division
+// from the XP they earned during the season. Pure + shared so the client and
+// the settle-season Lambda agree on tiers. Division 1 = top of the band ('I').
+// ---------------------------------------------------------------------------
+
+export const LEAGUES = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'] as const;
+export type League = typeof LEAGUES[number];
+
+// Minimum season-XP for each league index (parallel to LEAGUES).
+export const LEAGUE_THRESHOLDS = [0, 500, 1500, 3500, 7000];
+
+export function assignLeague(seasonXp: number): { league: League; division: number } {
+  let idx = 0;
+  for (let i = LEAGUES.length - 1; i >= 0; i--) {
+    if (seasonXp >= LEAGUE_THRESHOLDS[i]) { idx = i; break; }
+  }
+  const bandStart = LEAGUE_THRESHOLDS[idx];
+  const bandEnd = idx < LEAGUES.length - 1 ? LEAGUE_THRESHOLDS[idx + 1] : bandStart + 7000;
+  const frac = bandEnd > bandStart ? (seasonXp - bandStart) / (bandEnd - bandStart) : 1;
+  const division = Math.min(3, Math.max(1, 3 - Math.floor(frac * 3))); // 1 (I, top) .. 3 (III)
+  return { league: LEAGUES[idx], division };
+}
+
+// Higher = better, for comparing two league/division pairs (promotion vs
+// relegation). League weight dominates; lower division number is better.
+export function leagueRank(league: string, division: number): number {
+  const li = LEAGUES.indexOf(league as League);
+  const idx = li >= 0 ? li : 0;
+  return idx * 10 + (3 - division); // e.g. Gold I = 2*10 + 2 = 22
+}
+
 export function applyDailyClaim(prev: DailyClaimState, now: number): DailyClaimResult {
   const today = todayKey(now);
   if (prev.lastClaimDay === today) {

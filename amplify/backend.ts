@@ -12,6 +12,7 @@ import { resetDemo } from './functions/reset-demo/resource.js';
 import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
+import { settleSeason } from './functions/settle-season/resource.js';
 
 // NOTE: backend.ts is loaded by the CDK assembler with a type-stripping transformer
 // that handles annotations but NOT `as` casts or other TS-only expressions. Keep
@@ -30,6 +31,7 @@ const backend = defineBackend({
   evaluateCoach,
   executeTrade,
   runMirror,
+  settleSeason,
 });
 
 // Enable USER_PASSWORD_AUTH on the Cognito user pool client. The default
@@ -122,3 +124,14 @@ mirrorFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 mirrorFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 mirrorFn.addEnvironment('MIRROR_TABLE_NAME', mirrorTable.tableName);
+
+// --- settleSeason: weekly league promotion/relegation ---
+const seasonFn = backend.settleSeason.resources.lambda;
+profileTable.grantReadWriteData(seasonFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+seasonFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+
+new Rule(Stack.of(seasonFn), 'SettleSeasonRule', {
+  schedule: Schedule.rate(Duration.days(7)),
+  targets: [new LambdaFunction(seasonFn)],
+});

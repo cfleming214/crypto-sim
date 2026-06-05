@@ -57,6 +57,11 @@ export async function uploadAvatarPhoto(localUri: string): Promise<{ key: string
 
 async function profileFromRecord(p: any): Promise<Partial<AppState>> {
   const avatarUri = p.avatarKey ? (await resolveAvatarUrl(p.avatarKey)) ?? undefined : undefined;
+  // Cross-device gamification blob (daily-claim, achievements, predictions).
+  // Only merged when present + valid, so an older row without it leaves the
+  // locally-hydrated values (gamification.v1) intact.
+  let gami: any = null;
+  if (p.gamificationJson) { try { gami = JSON.parse(p.gamificationJson); } catch { gami = null; } }
   return {
     user: {
       handle:      p.handle ?? 'you',
@@ -73,6 +78,12 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
     bankroll:  p.bankroll ?? 10000,
     riskScore: p.riskScore ?? 0,
     holdings:  p.holdingsJson ? JSON.parse(p.holdingsJson) : [],
+    ...(gami ? {
+      lastClaimDay:     typeof gami.lastClaimDay === 'string' ? gami.lastClaimDay : null,
+      achievements:     gami.achievements && typeof gami.achievements === 'object' ? gami.achievements : {},
+      predictionWins:   typeof gami.predictionWins === 'number' ? gami.predictionWins : 0,
+      predictionLosses: typeof gami.predictionLosses === 'number' ? gami.predictionLosses : 0,
+    } : {}),
   };
 }
 
@@ -254,6 +265,14 @@ export async function saveProfile(state: AppState): Promise<void> {
       holdingsJson: JSON.stringify(state.holdings),
       avatarKey:    state.user.avatarKey,
       avatarColor:  state.user.avatarColor,
+      // Cross-device gamification blob. seasonStartXp is intentionally NOT
+      // written here — it's owned by the settle-season Lambda.
+      gamificationJson: JSON.stringify({
+        lastClaimDay:     state.lastClaimDay,
+        achievements:     state.achievements,
+        predictionWins:   state.predictionWins,
+        predictionLosses: state.predictionLosses,
+      }),
     };
     const { data: existing } = await client.models.UserProfile.list();
     if (existing.length) {

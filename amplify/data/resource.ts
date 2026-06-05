@@ -13,6 +13,13 @@ const schema = a.schema({
     holdingsJson: a.string(),
     avatarKey: a.string(),       // S3 storage key (e.g. "profile.jpg") — full path is avatars/{identityId}/{avatarKey}
     avatarColor: a.string(),
+    // Local gamification blob (daily-claim, achievements, prediction stats) for
+    // cross-device sync — written by the client.
+    gamificationJson: a.string(),
+    // Season baseline XP, written ONLY by the settle-season Lambda each week.
+    // seasonXp = xp - seasonStartXp drives league/division. Kept out of
+    // gamificationJson so client saves never clobber it.
+    seasonStartXp: a.integer(),
   }).authorization(allow => [allow.owner()]),
 
   Trade: a.model({
