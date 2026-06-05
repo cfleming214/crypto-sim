@@ -345,7 +345,7 @@ export function TournamentDetailScreen() {
         <Button
           variant="brand"
           style={{ flex: 1 }}
-          onPress={() => nav.navigate('MainTabs', { screen: 'Trade' })}
+          onPress={() => nav.navigate('Trade')}
         >
           Trade now
         </Button>

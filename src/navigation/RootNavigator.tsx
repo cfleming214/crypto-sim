@@ -1,6 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
+import { TradeScreen } from '../screens/TradeScreen';
 import { TradeDetailScreen } from '../screens/TradeDetailScreen';
 import { TournamentDetailScreen } from '../screens/TournamentDetailScreen';
 import { LeagueScreen } from '../screens/LeagueScreen';
@@ -19,6 +20,7 @@ import { useAuth } from '../store/AuthContext';
 export type RootStackParamList = {
   Auth: { mode?: 'signin' | 'signup' } | undefined;
   MainTabs: { screen?: string; params?: any } | undefined;
+  Trade: { symbol?: string } | undefined;
   TradeDetail: { tradeId?: string; symbol?: string };
   TournamentDetail: { id: string };
   League: undefined;
@@ -46,6 +48,7 @@ export function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={TabNavigator} />
+      <Stack.Screen name="Trade" component={TradeScreen} />
       <Stack.Screen name="TradeDetail" component={TradeDetailScreen} />
       <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
       <Stack.Screen name="League" component={LeagueScreen} />

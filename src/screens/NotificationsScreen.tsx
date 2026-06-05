@@ -131,7 +131,7 @@ export function NotificationsScreen() {
       onPress: () => {
         dispatch({ type: 'DISMISS_PRICE_ALERT', alertId: a.id });
         dispatch({ type: 'SET_TRADE_SYMBOL', symbol: a.symbol });
-        nav.navigate('MainTabs', { screen: 'Trade' });
+        nav.navigate('Trade');
       },
     };
   });
