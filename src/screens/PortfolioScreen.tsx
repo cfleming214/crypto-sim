@@ -17,6 +17,7 @@ import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
 import { computePortfolioHistory, type EquityPoint, type PortfolioHistoryResult } from '../services/portfolioHistory';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
+import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
 import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame } from 'lucide-react-native';
 
@@ -388,67 +389,32 @@ export function PortfolioScreen() {
   };
 
   const handleRebalance = () => {
-    const top5 = state.holdings.slice(0, 5);
+    // Same pure planner the REBALANCE reducer applies, so this preview matches
+    // the trades that execute exactly. It auto-selects DEPLOY (build a top-5
+    // basket from idle cash — e.g. right after a reset, where only the starter
+    // seed is held) vs EQUALIZE (level an existing basket).
+    const plan = planRebalance(state.holdings, state.cash, state.coins);
 
-    // Cold-start: no holdings yet → propose buying a balanced basket from cash.
-    if (top5.length === 0) {
-      const targetCoins = state.coins.filter(c => c.symbol !== 'USDC').slice(0, 5);
-      if (targetCoins.length === 0 || state.cash < 50) {
+    if (plan.lines.length === 0) {
+      const anyPriced = state.holdings.some(h => h.symbol !== 'USDC' && (getCoin(h.symbol)?.price ?? 0) > 0);
+      if (!anyPriced && state.cash < 50) {
         Alert.alert('Not enough cash', 'You need at least $50 cash to build a balanced portfolio.');
-        return;
+      } else {
+        Alert.alert('Already balanced', 'Your top holdings are already within 5% of equal weight.');
       }
-      const investable = state.cash * 0.95;
-      const perCoin    = investable / targetCoins.length;
-      const lines: RebalanceLine[] = targetCoins.map(c => ({
-        symbol:     c.symbol,
-        side:       'buy',
-        amount:     perCoin,
-        currentPct: 0,
-        targetPct:  Math.round(95 / targetCoins.length),
-      }));
-      setRebalanceLines(lines);
-      setRebalanceTarget(perCoin);
-      setRebalanceVisible(true);
       return;
     }
 
-    const holdingValues = top5.flatMap(h => {
-      const coin = getCoin(h.symbol);
-      if (!coin) return [];
-      const currentValue = h.units * coin.price;
-      return [{ symbol: h.symbol, currentValue, price: coin.price }];
-    });
-    if (holdingValues.length === 0) {
-      Alert.alert('Cannot rebalance', 'Your holdings are not currently priced. Try again in a moment.');
-      return;
-    }
-    const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
-    const targetPerCoin = totalInvested / holdingValues.length;
-
-    const lines: RebalanceLine[] = [];
-    for (const h of holdingValues) {
-      const diff = h.currentValue - targetPerCoin;
-      if (diff > 5) {
-        lines.push({
-          symbol: h.symbol,
-          side: 'sell',
-          amount: diff,
-          currentPct: Math.round((h.currentValue / totalEquity) * 100),
-          targetPct: Math.round((targetPerCoin / totalEquity) * 100),
-        });
-      } else if (diff < -5) {
-        lines.push({
-          symbol: h.symbol,
-          side: 'buy',
-          amount: Math.abs(diff),
-          currentPct: Math.round((h.currentValue / totalEquity) * 100),
-          targetPct: Math.round((targetPerCoin / totalEquity) * 100),
-        });
-      }
-    }
+    const lines: RebalanceLine[] = plan.lines.map(l => ({
+      symbol: l.symbol,
+      side: l.side,
+      amount: l.amount,
+      currentPct: Math.round(l.currentPct),
+      targetPct: Math.round(l.targetPct),
+    }));
 
     setRebalanceLines(lines);
-    setRebalanceTarget(targetPerCoin);
+    setRebalanceTarget(plan.targetPerCoin);
     setRebalanceVisible(true);
   };
 

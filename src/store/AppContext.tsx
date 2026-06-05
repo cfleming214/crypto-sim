@@ -6,6 +6,7 @@ import { loadProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoa
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
+import { planRebalance } from '../services/rebalance';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -574,95 +575,49 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'REBALANCE': {
-      const top5 = state.holdings.slice(0, 5);
-
-      // Cold-start rebalance: no holdings yet, so build a balanced portfolio
-      // from cash. Splits 95% across the top 5 non-stablecoin coins, leaves
-      // 5% as cash buffer.
-      if (top5.length === 0) {
-        const targetCoins = state.coins.filter(c => c.symbol !== 'USDC').slice(0, 5);
-        if (targetCoins.length === 0 || state.cash < 50) return state;
-        const investable = state.cash * 0.95;
-        const perCoin = investable / targetCoins.length;
-
-        const newHoldings = targetCoins.map(c => ({
-          symbol:  c.symbol,
-          units:   perCoin / c.price,
-          avgCost: c.price,
-        }));
-        const newTradesFromCold: Trade[] = targetCoins.map(c => ({
-          id:        `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-          symbol:    c.symbol,
-          side:      'buy',
-          amount:    perCoin,
-          units:     perCoin / c.price,
-          price:     c.price,
-          timestamp: Date.now(),
-          xpEarned:  25,
-          slippage:  0.001,
-        }));
-        const newCashCold     = state.cash - investable;
-        const newBankrollCold = newCashCold + newHoldings.reduce((s, h) => {
-          const c = state.coins.find(x => x.symbol === h.symbol);
-          return s + (c ? c.price * h.units : 0);
-        }, 0);
-        return {
-          ...state,
-          cash:      newCashCold,
-          bankroll:  newBankrollCold,
-          holdings:  newHoldings,
-          trades:    [...newTradesFromCold, ...state.trades],
-          user:      { ...state.user, xp: state.user.xp + 50 },
-          riskScore: computeRiskScore(newHoldings, newCashCold, newBankrollCold, state.coins, state.stopLosses),
-        };
-      }
-
-      const holdingValues = top5.flatMap(h => {
-        const coin = state.coins.find(c => c.symbol === h.symbol);
-        if (!coin) return [];
-        return [{ ...h, coin, currentValue: h.units * coin.price }];
-      });
-      if (holdingValues.length === 0) return state;
-      const totalInvested = holdingValues.reduce((s, h) => s + h.currentValue, 0);
-      const targetPerCoin = totalInvested / holdingValues.length;
+      // Plan via the shared pure planner (src/services/rebalance.ts) so the
+      // trades we apply here EXACTLY match the preview the user confirmed in the
+      // RebalanceSheet. It picks DEPLOY (build an equal-weight top-5 basket from
+      // idle cash — e.g. right after a reset, when only the starter seed is
+      // held) vs EQUALIZE (level an existing multi-coin basket) automatically.
+      const plan = planRebalance(state.holdings, state.cash, state.coins);
+      if (plan.lines.length === 0) return state;
 
       let newHoldings = [...state.holdings];
       let newCash = state.cash;
       const newTrades = [...state.trades];
 
-      for (const h of holdingValues) {
-        const excess = h.currentValue - targetPerCoin;
-        if (excess <= 5) continue;
-        const unitsToSell = excess / h.coin.price;
-        newHoldings = newHoldings.map(x =>
-          x.symbol === h.symbol ? { ...x, units: x.units - unitsToSell } : x,
-        ).filter(x => x.units > 0.000001);
-        newCash += excess;
+      // Sells first so their proceeds fund the buys in the same pass.
+      for (const line of plan.lines) {
+        if (line.side !== 'sell') continue;
+        newHoldings = newHoldings
+          .map(x => (x.symbol === line.symbol ? { ...x, units: x.units - line.units } : x))
+          .filter(x => x.units > 0.000001);
+        newCash += line.amount;
         newTrades.unshift({
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-          symbol: h.symbol, side: 'sell', amount: excess,
-          units: unitsToSell, price: h.coin.price,
+          symbol: line.symbol, side: 'sell', amount: line.amount,
+          units: line.units, price: line.price,
           timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
         });
       }
 
-      for (const h of holdingValues) {
-        const deficit = targetPerCoin - h.currentValue;
-        if (deficit <= 5 || newCash < deficit) continue;
-        const unitsToBuy = deficit / h.coin.price;
-        const existing = newHoldings.find(x => x.symbol === h.symbol);
+      for (const line of plan.lines) {
+        if (line.side !== 'buy') continue;
+        if (newCash < line.amount) continue; // skip if proceeds didn't cover it
+        const existing = newHoldings.find(x => x.symbol === line.symbol);
         newHoldings = existing
           ? newHoldings.map(x =>
-              x.symbol === h.symbol
-                ? { ...x, units: x.units + unitsToBuy, avgCost: (x.avgCost * x.units + deficit) / (x.units + unitsToBuy) }
+              x.symbol === line.symbol
+                ? { ...x, units: x.units + line.units, avgCost: (x.avgCost * x.units + line.amount) / (x.units + line.units) }
                 : x,
             )
-          : [...newHoldings, { symbol: h.symbol, units: unitsToBuy, avgCost: h.coin.price }];
-        newCash -= deficit;
+          : [...newHoldings, { symbol: line.symbol, units: line.units, avgCost: line.price }];
+        newCash -= line.amount;
         newTrades.unshift({
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-          symbol: h.symbol, side: 'buy', amount: deficit,
-          units: unitsToBuy, price: h.coin.price,
+          symbol: line.symbol, side: 'buy', amount: line.amount,
+          units: line.units, price: line.price,
           timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
         });
       }
