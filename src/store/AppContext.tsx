@@ -951,6 +951,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const priceRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const lastActionRef = useRef<Action | null>(null);
   const [saveTick, setSaveTick] = useState(0);  // incremented by wrappedDispatch to trigger save effect
+  const [profileLoaded, setProfileLoaded] = useState(false); // true once the cloud profile load resolves (gates seeding)
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
   const { status: authStatus } = useAuth();
@@ -1041,9 +1042,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
 
-    loadProfile().then(profile => {
-      if (profile) dispatch({ type: 'LOAD_PROFILE', profile });
-    });
+    // Gate seeding on the profile load completing (see the SEED_STARTER effect):
+    // without this, the brief empty INITIAL_STATE at mount spawns a duplicate
+    // starter-seed trade in the cloud on every login.
+    setProfileLoaded(false);
+    loadProfile()
+      .then(profile => { if (profile) dispatch({ type: 'LOAD_PROFILE', profile }); })
+      .finally(() => setProfileLoaded(true));
 
     fetchCompetitions().then(competitions => {
       dispatch({ type: 'SET_COMPETITIONS', competitions });
@@ -1182,12 +1187,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // trades) has live prices available. Runs for guests and new cloud accounts
   // alike; the reducer no-ops once there's any activity, and wrappedDispatch
   // persists it for signed-in users so it doesn't re-seed every load.
+  //
+  // CRITICAL: for signed-in users, wait until the cloud profile has loaded
+  // (profileLoaded). At mount the state is briefly the empty INITIAL_STATE, and
+  // seeding then would (a) write a DUPLICATE starter-seed trade to the cloud on
+  // every login and (b) corrupt the reconstructed equity curve — each extra
+  // 0.01-BTC seed over-subtracts the reverse-replay baseline, dragging the early
+  // line negative. Guests don't reload from the cloud, so they seed immediately.
   useEffect(() => {
+    if (authStatus === 'authenticated' && !profileLoaded) return;
     const btc = state.coins.find(c => c.symbol === 'BTC');
     if (btc && btc.price > 0 && state.holdings.length === 0 && state.trades.length === 0) {
       wrappedDispatch({ type: 'SEED_STARTER' });
     }
-  }, [state.coins, state.holdings.length, state.trades.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authStatus, profileLoaded, state.coins, state.holdings.length, state.trades.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auth-gated leaderboard subscriptions, one per joined competition.
   // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.

@@ -100,7 +100,7 @@ async function loadUserTrades(client: any): Promise<import('../store/types').Tra
       if (page?.data?.length) data.push(...page.data);
       nextToken = page?.nextToken;
     } while (nextToken);
-    return (data as any[]).map(t => ({
+    const mapped = (data as any[]).map(t => ({
       id:        t.tradeId ?? t.id,
       symbol:    t.symbol,
       side:      t.side as 'buy' | 'sell',
@@ -110,7 +110,17 @@ async function loadUserTrades(client: any): Promise<import('../store/types').Tra
       timestamp: t.createdAt ? new Date(t.createdAt).getTime() : Date.now(),
       xpEarned:  t.xpEarned ?? 0,
       slippage:  t.slippage ?? 0,
-    })).sort((a, b) => b.timestamp - a.timestamp);
+    }));
+    // Collapse duplicate starter-seed trades. A historical race (seeding before
+    // the cloud profile loaded) could write one 'SEED-' trade per login; they're
+    // identical 0.01-BTC $0 grants and each one over-subtracts the equity
+    // reconstruction baseline (units go negative), dragging the early curve down.
+    // Keep only the earliest seed.
+    const seedIds = mapped.filter(t => t.id.startsWith('SEED-'))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    const keepSeedId = seedIds[0]?.id;
+    const deduped = mapped.filter(t => !t.id.startsWith('SEED-') || t.id === keepSeedId);
+    return deduped.sort((a, b) => b.timestamp - a.timestamp);
   } catch {
     return [];
   }

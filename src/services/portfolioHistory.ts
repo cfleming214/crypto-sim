@@ -100,7 +100,10 @@ export async function computePortfolioHistory(
     }
   }
   const holdings0 = new Map<string, number>();
-  for (const [sym, u] of units0) if (Math.abs(u) > 1e-9) holdings0.set(sym, u);
+  // Only positive baselines — you can't hold negative units. A corrupt ledger
+  // (e.g. duplicate seed trades over-subtracting) could otherwise drive a
+  // baseline negative and tank the early curve; clamp it out defensively.
+  for (const [sym, u] of units0) if (u > 1e-9) holdings0.set(sym, u);
 
   // 2) Window + CoinGecko granularity.
   const earliestTrade = tradesAsc.length ? tradesAsc[0].timestamp : now;
