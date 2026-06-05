@@ -10,7 +10,8 @@ import { MarketsScreen } from '../screens/MarketsScreen';
 import { TradeScreen } from '../screens/TradeScreen';
 import { CompeteScreen } from '../screens/CompeteScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
-import { Home, BarChart2, ArrowLeftRight, Trophy, User, Bell, Search } from 'lucide-react-native';
+import { NewsScreen } from '../screens/NewsScreen';
+import { Home, BarChart2, ArrowLeftRight, Trophy, User, Bell, Search, Newspaper } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator();
 
@@ -68,6 +69,11 @@ export function TabNavigator() {
         name="Markets"
         component={MarketsScreen}
         options={{ tabBarIcon: ({ color }) => <BarChart2 color={color} size={22} strokeWidth={1.75} /> }}
+      />
+      <Tab.Screen
+        name="News"
+        component={NewsScreen}
+        options={{ tabBarIcon: ({ color }) => <Newspaper color={color} size={22} strokeWidth={1.75} /> }}
       />
       <Tab.Screen
         name="Trade"

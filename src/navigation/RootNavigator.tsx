@@ -11,7 +11,9 @@ import { ReplayScreen } from '../screens/ReplayScreen';
 import { PredictionScreen } from '../screens/PredictionScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
+import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { AuthScreen } from '../screens/AuthScreen';
+import type { NewsArticle } from '../services/newsService';
 import { useAuth } from '../store/AuthContext';
 
 export type RootStackParamList = {
@@ -27,6 +29,7 @@ export type RootStackParamList = {
   Predict: undefined;
   Notifications: undefined;
   Activity: undefined;
+  NewsDetail: { article: NewsArticle };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -53,6 +56,7 @@ export function RootNavigator() {
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
+      <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
       <Stack.Screen
         name="Auth"
         component={AuthScreen}
