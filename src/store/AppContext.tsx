@@ -43,6 +43,22 @@ const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [
 // signs in the cloud UserProfile is the source of truth.
 const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
 
+// A market-sentiment nudge derived from the Fear & Greed index. Extreme greed
+// (>=75) warns about froth; extreme fear (<=25) encourages sticking to a plan.
+// Neutral bands produce nothing. Stable ids ('fng-greed'/'fng-fear') so it
+// dedupes/dismisses cleanly and can be merged independently of trade nudges.
+function fearGreedNudge(fg?: { value: number; label: string }): CoachNudge | null {
+  if (!fg) return null;
+  const now = Date.now();
+  if (fg.value >= 75) {
+    return { id: 'fng-greed', message: `Fear & Greed is ${fg.value} (${fg.label}) — markets are frothy. Consider trimming winners and checking your stop-losses.`, severity: 'warn', createdAt: now };
+  }
+  if (fg.value <= 25) {
+    return { id: 'fng-fear', message: `Fear & Greed is ${fg.value} (${fg.label}) — extreme fear. Stick to your plan; dips can be accumulation chances, not panic exits.`, severity: 'tip', createdAt: now };
+  }
+  return null;
+}
+
 function computeCoachNudges(
   holdings: { symbol: string; units: number }[],
   cash: number,
@@ -50,31 +66,40 @@ function computeCoachNudges(
   coins: { symbol: string; price: number; change24h: number }[],
   stopLosses: Record<string, number>,
   tradeCount: number,
+  fearGreed?: { value: number; label: string },
 ): CoachNudge[] {
-  if (bankroll <= 0 || holdings.length === 0) return [];
   const nudges: CoachNudge[] = [];
   const now = Date.now();
 
-  for (const h of holdings) {
-    const coin = coins.find(c => c.symbol === h.symbol);
-    if (!coin) continue;
-    const pct = (h.units * coin.price) / bankroll;
-    if (pct > 0.4) {
-      nudges.push({ id: `conc-${h.symbol}`, message: `${h.symbol} is ${Math.round(pct * 100)}% of your portfolio — consider trimming to below 40%`, severity: 'warn', createdAt: now });
+  // Portfolio-specific nudges (only meaningful once invested).
+  if (bankroll > 0 && holdings.length > 0) {
+    for (const h of holdings) {
+      const coin = coins.find(c => c.symbol === h.symbol);
+      if (!coin) continue;
+      const pct = (h.units * coin.price) / bankroll;
+      if (pct > 0.4) {
+        nudges.push({ id: `conc-${h.symbol}`, message: `${h.symbol} is ${Math.round(pct * 100)}% of your portfolio — consider trimming to below 40%`, severity: 'warn', createdAt: now });
+      }
+      if (coin.change24h < -8 && !stopLosses[h.symbol]) {
+        nudges.push({ id: `vol-${h.symbol}`, message: `${h.symbol} is down ${Math.abs(coin.change24h).toFixed(0)}% today with no stop-loss set`, severity: 'warn', createdAt: now });
+      }
     }
-    if (coin.change24h < -8 && !stopLosses[h.symbol]) {
-      nudges.push({ id: `vol-${h.symbol}`, message: `${h.symbol} is down ${Math.abs(coin.change24h).toFixed(0)}% today with no stop-loss set`, severity: 'warn', createdAt: now });
+    if (cash / bankroll < 0.05) {
+      nudges.push({ id: 'cash-low', message: 'Your cash buffer is below 5% — you may not have room to buy dips', severity: 'warn', createdAt: now });
+    }
+    if (holdings.length === 1) {
+      nudges.push({ id: 'diversify', message: `You're 100% in ${holdings[0].symbol} — spreading across 3–5 assets reduces single-coin risk`, severity: 'tip', createdAt: now });
+    }
+    if (tradeCount > 0 && tradeCount % 10 === 0) {
+      nudges.push({ id: `milestone-${tradeCount}`, message: `Nice! ${tradeCount} trades completed — review your win/loss ratio in Activity`, severity: 'info', createdAt: now });
     }
   }
-  if (cash / bankroll < 0.05) {
-    nudges.push({ id: 'cash-low', message: 'Your cash buffer is below 5% — you may not have room to buy dips', severity: 'warn', createdAt: now });
-  }
-  if (holdings.length === 1) {
-    nudges.push({ id: 'diversify', message: `You're 100% in ${holdings[0].symbol} — spreading across 3–5 assets reduces single-coin risk`, severity: 'tip', createdAt: now });
-  }
-  if (tradeCount > 0 && tradeCount % 10 === 0) {
-    nudges.push({ id: `milestone-${tradeCount}`, message: `Nice! ${tradeCount} trades completed — review your win/loss ratio in Activity`, severity: 'info', createdAt: now });
-  }
+
+  // Market-sentiment nudge (independent of holdings), appended after the
+  // portfolio warnings so those keep priority within the 3-nudge cap.
+  const fng = fearGreedNudge(fearGreed);
+  if (fng) nudges.push(fng);
+
   return nudges.slice(0, 3);
 }
 
@@ -398,6 +423,7 @@ function reducer(state: AppState, action: Action): AppState {
         merged.coins,
         merged.stopLosses,
         merged.trades.length,
+        merged.fearGreed,
       );
       return {
         ...merged,
@@ -478,7 +504,7 @@ function reducer(state: AppState, action: Action): AppState {
         const c = state.coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
-      const newNudges = computeCoachNudges(holdings, newCash, newBankroll, state.coins, state.stopLosses, state.trades.length + 1);
+      const newNudges = computeCoachNudges(holdings, newCash, newBankroll, state.coins, state.stopLosses, state.trades.length + 1, state.fearGreed);
       return {
         ...state,
         cash: newCash,
@@ -516,7 +542,7 @@ function reducer(state: AppState, action: Action): AppState {
       }, 0);
       const newStopLosses = { ...state.stopLosses };
       if (unitsToSell >= holding.units) delete newStopLosses[action.symbol];
-      const sellNudges = computeCoachNudges(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses, state.trades.length + 1);
+      const sellNudges = computeCoachNudges(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses, state.trades.length + 1, state.fearGreed);
       return {
         ...state,
         cash: newCashSell,
@@ -695,8 +721,17 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_GLOBAL_STATS':
       return { ...state, globalStats: action.stats };
-    case 'SET_FEAR_GREED':
-      return { ...state, fearGreed: action.reading };
+    case 'SET_FEAR_GREED': {
+      // Refresh the F&G sentiment nudge in place without disturbing other
+      // (trade- or cloud-sourced) nudges: drop any prior fng-* nudge, then add
+      // the current one if the band is extreme and it isn't dismissed. Capped 3.
+      const fng = fearGreedNudge(action.reading);
+      const withoutFng = state.coachNudges.filter(n => !n.id.startsWith('fng-'));
+      const coachNudges = fng && !state.dismissedNudgeIds.includes(fng.id)
+        ? [...withoutFng, fng].slice(0, 3)
+        : withoutFng;
+      return { ...state, fearGreed: action.reading, coachNudges };
+    }
     case 'HYDRATE_GAMIFICATION':
       // Restore locally-persisted daily-claim state. streak is only overwritten
       // when storage provides one (signed-in users get the authoritative streak
@@ -831,7 +866,7 @@ function reducer(state: AppState, action: Action): AppState {
         // relevant. dismissedNudgeIds preserved across switches — nudge ids
         // are symbolic (e.g. conc-BTC), so a dismiss on one portfolio still
         // suppresses the same condition if it surfaces on another.
-        coachNudges: computeCoachNudges(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses, target.trades.length),
+        coachNudges: computeCoachNudges(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses, target.trades.length, state.fearGreed),
         riskScore: computeRiskScore(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses),
       };
     }
