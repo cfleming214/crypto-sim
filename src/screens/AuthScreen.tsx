@@ -25,10 +25,8 @@ export function AuthScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [acceptedData, setAcceptedData] = useState(false);
 
-  // A single checkbox + tappable label row. Reused for the two distinct
-  // sign-up consents (legal agreement and leaderboard data-upload consent).
+  // A checkbox + tappable label row for the sign-up Terms/Privacy consent.
   const CheckRow = ({ checked, onToggle, testID, children }: {
     checked: boolean; onToggle: () => void; testID: string; children: React.ReactNode;
   }) => (
@@ -68,8 +66,8 @@ export function AuthScreen() {
     // Hard gate: account creation requires accepting the Terms & Privacy Policy
     // (App Store guideline 1.2 EULA + 5.1.2 consent). The button is also
     // disabled, but guard here too.
-    if (mode === 'signup' && (!acceptedTerms || !acceptedData)) {
-      Alert.alert('Please agree to continue', 'You must accept the Terms of Use and Privacy Policy and consent to public-leaderboard data upload to create an account.');
+    if (mode === 'signup' && !acceptedTerms) {
+      Alert.alert('Please agree to continue', 'You must accept the Terms of Use and Privacy Policy to create an account.');
       return;
     }
     setLoading(true);
@@ -152,17 +150,12 @@ export function AuthScreen() {
             />
 
             {mode === 'signup' ? (
-              <>
-                <CheckRow testID="auth-terms-checkbox" checked={acceptedTerms} onToggle={() => setAcceptedTerms(v => !v)}>
-                  I agree to the{' '}
-                  <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
-                  {' '}and{' '}
-                  <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
-                </CheckRow>
-                <CheckRow testID="auth-data-checkbox" checked={acceptedData} onToggle={() => setAcceptedData(v => !v)}>
-                  I consent to my handle and scores being uploaded to CryptoComp's servers and shown on public leaderboards.
-                </CheckRow>
-              </>
+              <CheckRow testID="auth-terms-checkbox" checked={acceptedTerms} onToggle={() => setAcceptedTerms(v => !v)}>
+                I agree to the{' '}
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
+                {' '}and{' '}
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
+              </CheckRow>
             ) : (
               <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18, marginTop: 2 }}>
                 By signing in you agree to the{' '}
@@ -176,7 +169,7 @@ export function AuthScreen() {
               testID="auth-submit-btn"
               variant="brand"
               onPress={handleSubmit}
-              disabled={loading || (mode === 'signup' && (!acceptedTerms || !acceptedData))}
+              disabled={loading || (mode === 'signup' && !acceptedTerms)}
               style={{ marginTop: 4 }}
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
