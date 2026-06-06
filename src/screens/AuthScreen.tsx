@@ -145,7 +145,7 @@ export function AuthScreen() {
                   <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
                   {' '}and{' '}
                   <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>
-                  , including that my handle and scores are shown on public leaderboards.
+                  , and I understand that my handle and scores will be uploaded to CryptoComp's servers and shown on public leaderboards.
                 </Text>
               </TouchableOpacity>
             ) : (
