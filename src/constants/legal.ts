@@ -10,6 +10,7 @@ export const LEGAL_BASE = 'https://cfleming214.github.io/crypto-sim';
 export const LEGAL_URLS = {
   terms:   `${LEGAL_BASE}/terms.html`,
   privacy: `${LEGAL_BASE}/privacy.html`,
+  support: `${LEGAL_BASE}/support.html`,
 } as const;
 
 // Where reviewers / users can reach a human about reported content (also cited
