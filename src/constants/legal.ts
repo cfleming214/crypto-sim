@@ -11,6 +11,7 @@ export const LEGAL_URLS = {
   terms:   `${LEGAL_BASE}/terms.html`,
   privacy: `${LEGAL_BASE}/privacy.html`,
   support: `${LEGAL_BASE}/support.html`,
+  contact: `${LEGAL_BASE}/contact.html`,
 } as const;
 
 // Where reviewers / users can reach a human about reported content (also cited
