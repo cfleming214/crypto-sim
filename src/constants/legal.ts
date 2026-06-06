@@ -16,4 +16,4 @@ export const LEGAL_URLS = {
 
 // Where reviewers / users can reach a human about reported content (also cited
 // in the Terms' moderation clause).
-export const SUPPORT_EMAIL = 'support@cryptocomp.app';
+export const SUPPORT_EMAIL = 'simpledesignllcca@gmail.com';
