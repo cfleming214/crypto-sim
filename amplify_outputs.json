@@ -252,6 +252,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "timestamp": {
+              "name": "timestamp",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,

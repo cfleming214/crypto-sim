@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice } from './types';
+import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
@@ -43,6 +43,11 @@ const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [
 // watchlist, stop-losses). Persisted only while unauthenticated; once a user
 // signs in the cloud UserProfile is the source of truth.
 const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
+
+// AsyncStorage key for the device's blocked-users list. Per-device (not
+// per-account): a user's block choices persist across sign-out/sign-in so
+// abusive traders stay hidden. Cleared only on account deletion.
+const BLOCKED_KEY = 'blocked.v1';
 
 // A market-sentiment nudge derived from the Fear & Greed index. Extreme greed
 // (>=75) warns about froth; extreme fear (<=25) encourages sticking to a plan.
@@ -183,6 +188,7 @@ const INITIAL_STATE: AppState = {
   achievements: {},
   predictionWins: 0,
   predictionLosses: 0,
+  blockedUsers: [],
   activePortfolioId: 'main',
   portfolios: {},
 };
@@ -225,6 +231,9 @@ type Action =
   | { type: 'CLAIM_DAILY_REWARD' }
   | { type: 'RECORD_PREDICTION'; outcome: PredictionOutcome }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
+  | { type: 'BLOCK_USER'; user: BlockedUser }
+  | { type: 'UNBLOCK_USER'; owner: string }
+  | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
   | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number } };
 
 function tickPrices(coins: Coin[]): Coin[] {
@@ -704,6 +713,16 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case 'SET_ACHIEVEMENTS':
       return { ...state, achievements: action.achievements };
+    case 'BLOCK_USER': {
+      // De-dupe by owner so re-blocking is idempotent. The matching content
+      // disappears from every feed on the next render (feeds filter on this).
+      if (state.blockedUsers.some(b => b.owner === action.user.owner)) return state;
+      return { ...state, blockedUsers: [...state.blockedUsers, action.user] };
+    }
+    case 'UNBLOCK_USER':
+      return { ...state, blockedUsers: state.blockedUsers.filter(b => b.owner !== action.owner) };
+    case 'HYDRATE_BLOCKED':
+      return { ...state, blockedUsers: action.blockedUsers };
     case 'RECORD_PREDICTION': {
       if (action.outcome === 'push') return state;  // tie → no win/loss, no XP
       const won = action.outcome === 'win';
@@ -797,6 +816,10 @@ function reducer(state: AppState, action: Action): AppState {
         ...INITIAL_STATE,
         coins:        state.coins,
         competitions: state.competitions,
+        // Blocked users are per-device, not per-account — a sign-out shouldn't
+        // un-hide traders this device chose to block. Preserved across the wipe;
+        // only account deletion purges the 'blocked.v1' store.
+        blockedUsers: state.blockedUsers,
       };
     }
     case 'SWITCH_PORTFOLIO': {
@@ -917,6 +940,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [profileLoaded, setProfileLoaded] = useState(false); // true once the cloud profile load resolves (gates seeding)
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
+  const blockedHydratedRef = useRef(false);      // gate blocked-users saves until we've loaded the stored list
   const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
   stateRef.current = state;
   const { status: authStatus } = useAuth();
@@ -1171,6 +1195,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }),
     ).catch(() => {});
   }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses]);
+
+  // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
+  // then save on every change. The ref gates the save so the empty initial list
+  // can't clobber a stored one before hydration completes.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(BLOCKED_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            dispatch({
+              type: 'HYDRATE_BLOCKED',
+              blockedUsers: parsed.filter((b: any) => b && typeof b.owner === 'string'),
+            });
+          }
+        }
+      } catch {
+        // Corrupt/absent → leave the empty default.
+      }
+      blockedHydratedRef.current = true;
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!blockedHydratedRef.current) return;
+    AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify(state.blockedUsers)).catch(() => {});
+  }, [state.blockedUsers]);
 
   // Seed the starter position once a brand-new portfolio (no holdings, no
   // trades) has live prices available. Runs for guests and new cloud accounts

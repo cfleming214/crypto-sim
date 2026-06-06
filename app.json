@@ -10,7 +10,8 @@
       "bundleIdentifier": "com.simpledesignllc.cryptocomp",
       "supportsTablet": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "CryptoComp lets you choose a photo from your library to use as your profile avatar. Selected photos are uploaded only to your own account and are never shared without your action."
       }
     },
     "android": {

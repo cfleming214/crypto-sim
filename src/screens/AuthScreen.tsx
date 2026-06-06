@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Alert, ScrollView,
+  KeyboardAvoidingView, Platform, Alert, ScrollView, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Trophy, X } from 'lucide-react-native';
+import { Trophy, X, Check } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../store/AuthContext';
+import { LEGAL_URLS } from '../constants/legal';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -23,6 +24,7 @@ export function AuthScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const inputStyle = {
     backgroundColor: colors.surface2,
@@ -36,6 +38,13 @@ export function AuthScreen() {
 
   const handleSubmit = async () => {
     if (loading) return;
+    // Hard gate: account creation requires accepting the Terms & Privacy Policy
+    // (App Store guideline 1.2 EULA + 5.1.2 consent). The button is also
+    // disabled, but guard here too.
+    if (mode === 'signup' && !acceptedTerms) {
+      Alert.alert('Please agree to continue', 'You must accept the Terms of Use and Privacy Policy to create an account.');
+      return;
+    }
     setLoading(true);
     try {
       const u = username.trim();
@@ -115,7 +124,46 @@ export function AuthScreen() {
               placeholderTextColor={colors.ink4}
             />
 
-            <Button testID="auth-submit-btn" variant="brand" onPress={handleSubmit} disabled={loading} style={{ marginTop: 4 }}>
+            {mode === 'signup' ? (
+              <TouchableOpacity
+                testID="auth-terms-checkbox"
+                onPress={() => setAcceptedTerms(v => !v)}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 4 }}
+              >
+                <View style={{
+                  width: 22, height: 22, borderRadius: 6, marginTop: 1,
+                  borderWidth: 1.5,
+                  borderColor: acceptedTerms ? colors.brand : colors.hairline,
+                  backgroundColor: acceptedTerms ? colors.brand : 'transparent',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {acceptedTerms && <Check color={colors.brandOn} size={15} strokeWidth={3} />}
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: colors.ink2, lineHeight: 19 }}>
+                  I agree to the{' '}
+                  <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
+                  {' '}and{' '}
+                  <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>
+                  , including that my handle and scores are shown on public leaderboards.
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18, marginTop: 2 }}>
+                By signing in you agree to the{' '}
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
+                {' '}and{' '}
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
+              </Text>
+            )}
+
+            <Button
+              testID="auth-submit-btn"
+              variant="brand"
+              onPress={handleSubmit}
+              disabled={loading || (mode === 'signup' && !acceptedTerms)}
+              style={{ marginTop: 4 }}
+            >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
           </Card>

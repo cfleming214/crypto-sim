@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -13,10 +13,11 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
+import { LEGAL_URLS } from '../constants/legal';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -204,8 +205,43 @@ export function ProfileScreen() {
     unlockedAt: state.achievements[def.id] as number | undefined,
   }));
   const earnedCount = achievements.filter(a => a.earned).length;
-  const { signOut, status } = useAuth();
+  const { signOut, deleteAccount, status } = useAuth();
   const nav = useNavigation<any>();
+
+  // Two-step confirmation, then a permanent client-side wipe + Cognito
+  // deleteUser (App Store guideline 5.1.1(v)). On success auth flips to
+  // unauthenticated and this screen is replaced by the guest/sign-up wall.
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account and all of your data — profile, trades, public leaderboard entry, and avatar. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => Alert.alert(
+            'Permanently delete account',
+            `Are you absolutely sure? @${state.user.handle} and all associated data will be removed immediately.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete forever',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await deleteAccount();
+                  } catch (e: any) {
+                    Alert.alert('Could not delete account', e?.message ?? 'Something went wrong. Please try again.');
+                  }
+                },
+              },
+            ],
+          ),
+        },
+      ],
+    );
+  };
 
   const pnl = state.bankroll - 10000;
   const sellTrades = state.trades.filter(t => t.side === 'sell');
@@ -405,6 +441,45 @@ export function ProfileScreen() {
         </TouchableOpacity>
       </Card>
 
+      {/* Safety & legal */}
+      <Card variant="noPad">
+        <TouchableOpacity testID="profile-blocked-users" onPress={() => nav.navigate('BlockedUsers')}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Ban color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Blocked users</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
+        <TouchableOpacity testID="profile-terms" onPress={() => Linking.openURL(LEGAL_URLS.terms)}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <FileText color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Terms of Use</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
+        <TouchableOpacity testID="profile-privacy" onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>
+          <CardSection last>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Shield color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Privacy Policy</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+      </Card>
+
       {/* Achievements */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Achievements</Text>
@@ -531,6 +606,22 @@ export function ProfileScreen() {
           <Text style={{ fontWeight: '600', color: colors.down }}>Sign out</Text>
         </TouchableOpacity>
       )}
+
+      {/* Account deletion — permanent, App Store guideline 5.1.1(v). */}
+      <TouchableOpacity
+        testID="profile-delete-account-btn"
+        onPress={confirmDeleteAccount}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+          gap: 8, paddingVertical: 14,
+          borderRadius: 12, borderWidth: 1, borderColor: colors.hairline,
+          backgroundColor: 'transparent',
+        }}
+        activeOpacity={0.7}
+      >
+        <Trash2 color={colors.down} size={18} strokeWidth={1.75} />
+        <Text style={{ fontWeight: '600', color: colors.down }}>Delete account</Text>
+      </TouchableOpacity>
 
       <EditProfileModal visible={editVisible} onClose={() => setEditVisible(false)} />
     </ScreenShell>

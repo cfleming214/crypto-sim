@@ -5,15 +5,21 @@ import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Avatar } from '../components/ui/Avatar';
+import { MoreHorizontal } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { fetchTopTraders, subscribeToTopTraders, type PublicTrader } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
+import { useModeration } from '../hooks/useModeration';
 
 export function TopTradersScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
+  const { isBlocked, openMenu } = useModeration();
   const [traders, setTraders] = useState<PublicTrader[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Blocked traders are removed from the discovery feed instantly.
+  const visible = traders.filter(t => !isBlocked(t.owner));
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -49,7 +55,7 @@ export function TopTradersScreen() {
         </View>
       )}
 
-      {!loading && traders.length === 0 && isAmplifyConfigured && (
+      {!loading && visible.length === 0 && isAmplifyConfigured && (
         <Card variant="tinted">
           <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>No traders yet</Text>
           <Text style={{ color: colors.ink3, fontSize: 13 }}>
@@ -58,16 +64,16 @@ export function TopTradersScreen() {
         </Card>
       )}
 
-      {traders.length > 0 && (
+      {visible.length > 0 && (
         <Card variant="noPad">
-          {traders.map((t, i) => (
+          {visible.map((t, i) => (
             <TouchableOpacity
               key={t.id}
               testID={`top-traders-row-${t.id}`}
               onPress={() => nav.navigate('CopyTrade', { traderId: t.id })}
               activeOpacity={0.7}
             >
-              <CardSection last={i === traders.length - 1}>
+              <CardSection last={i === visible.length - 1}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <Text style={{
                     width: 24, textAlign: 'center',
@@ -105,6 +111,14 @@ export function TopTradersScreen() {
                       ${Math.round(t.bankroll).toLocaleString()}
                     </Text>
                   </View>
+                  <TouchableOpacity
+                    testID={`top-traders-menu-${t.id}`}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={() => openMenu({ owner: t.owner, handle: t.handle, context: 'trader_profile' })}
+                    style={{ paddingLeft: 6, paddingVertical: 4 }}
+                  >
+                    <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
+                  </TouchableOpacity>
                 </View>
               </CardSection>
             </TouchableOpacity>

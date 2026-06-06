@@ -109,6 +109,21 @@ const schema = a.schema({
     dismissed: a.boolean(),
   }).authorization(allow => [allow.owner()]),
 
+  // User-content moderation reports. Written by the client whenever a user
+  // flags content or blocks another trader (a block also files a report, per
+  // App Store guideline 1.2 — "blocking should also notify the developer").
+  // The reporter owns the row; the developer reviews/actions open reports in
+  // the AWS console / crypto-dashboard (direct DynamoDB, no per-user read).
+  Report: a.model({
+    reportedOwner:  a.string().required(), // PublicProfile.owner (Cognito sub) of the reported trader
+    reportedHandle: a.string(),            // their handle at report time, for display
+    context:        a.string(),            // 'trader_profile' | 'leaderboard' | 'duel'
+    reason:         a.string().required(), // 'block' | 'spam' | 'harassment' | 'inappropriate' | 'other'
+    note:           a.string(),            // optional free-text detail
+    reporterHandle: a.string(),            // who filed it
+    status:         a.string(),            // 'open' | 'actioned'
+  }).authorization(allow => [allow.owner()]),
+
   // PublicProfile is the discoverable face of a UserProfile — same owner
   // writes it, but every authenticated user can read it for trader
   // discovery / copy-trade. Kept in sync by the client whenever UserProfile

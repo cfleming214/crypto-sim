@@ -41,7 +41,9 @@ export function TournamentDetailScreen() {
   }
 
   const joined = isJoined(competitionId);
-  const entries = leaderboard[competitionId] ?? [];
+  // Blocked users are removed from the live leaderboard instantly.
+  const entries = (leaderboard[competitionId] ?? [])
+    .filter(e => !state.blockedUsers.some(b => b.handle === e.handle));
 
   // Pull the contest portfolio: active state if currently selected, else
   // the stashed slice from state.portfolios. Falls back to a fresh $10K

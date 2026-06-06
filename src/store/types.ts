@@ -103,6 +103,16 @@ export interface PriceAlert {
   triggeredAt?: number;
 }
 
+// A user the current device has blocked. Identified by the reported trader's
+// PublicProfile owner (Cognito sub) when available; for leaderboard entries
+// that don't expose an owner, `owner` falls back to the handle. `handle` is
+// kept for display on the Blocked-users screen. Blocked users are filtered out
+// of every feed (top traders, leaderboards, copy-trade) instantly.
+export interface BlockedUser {
+  owner: string;
+  handle: string;
+}
+
 // A trading portfolio — either the main offline portfolio (id: 'main') or a
 // per-contest portfolio (id: competitionId). Each is independent: separate
 // $10K starting cash, separate holdings, separate trades.
@@ -161,6 +171,10 @@ export interface AppState {
   // 'gamification.v1'. predictionWins feeds the "Predictor" achievement.
   predictionWins: number;
   predictionLosses: number;
+  // Users this device has blocked. Persisted to AsyncStorage ('blocked.v1')
+  // and preserved across sign-out (per-device, not per-account). Every
+  // user-content feed filters these out. See BlockedUser.
+  blockedUsers: BlockedUser[];
   // External market context, refreshed alongside fetchPrices.
   globalStats?: { totalMarketCap: number; change24h: number };
   fearGreed?:   { value: number; label: string };

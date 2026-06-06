@@ -101,8 +101,14 @@ export function LeagueScreen() {
 
   // "Your division" pulls live entries from the most recently joined
   // competition's leaderboard (subscribed real-time by AppContext).
+  // Hide blocked users from every ranking. Leaderboard entries only carry a
+  // handle, so match on that (BlockedUser stores both owner + handle).
+  const isBlockedHandle = (handle: string) =>
+    state.blockedUsers.some(b => b.handle === handle);
+
   const liveCompId = state.joinedTournamentIds[state.joinedTournamentIds.length - 1];
-  const liveEntries = liveCompId ? state.leaderboard[liveCompId] ?? [] : [];
+  const liveEntries = (liveCompId ? state.leaderboard[liveCompId] ?? [] : [])
+    .filter(e => !isBlockedHandle(e.handle));
   const livePlayers = liveEntries.map(e => ({
     rank: e.rank,
     handle: e.handle.startsWith('@') ? e.handle : `@${e.handle}`,
@@ -114,7 +120,9 @@ export function LeagueScreen() {
   }));
 
   // Global from real PublicProfile rows. Already sorted by pnlPct desc.
-  const globalPlayers = globalTraders.map((t, idx) => ({
+  const globalPlayers = globalTraders
+    .filter(t => !state.blockedUsers.some(b => b.owner === t.owner || b.handle === t.handle))
+    .map((t, idx) => ({
     rank: idx + 1,
     handle: `@${t.handle}`,
     name: t.handle,

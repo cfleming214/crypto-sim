@@ -12,6 +12,7 @@ import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchTrader, subscribeToTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
+import { useModeration } from '../hooks/useModeration';
 import { MoreHorizontal, Pause, X } from 'lucide-react-native';
 
 function relTime(ts: number): string {
@@ -83,6 +84,7 @@ export function CopyTradeScreen() {
   const { state } = useApp();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
+  const { openMenu } = useModeration();
   const traderId = route.params?.traderId as string | undefined;
 
   const [trader, setTrader] = useState<PublicTrader | null>(null);
@@ -168,8 +170,12 @@ export function CopyTradeScreen() {
         title={traderHandle}
         rightActions={
           <TouchableOpacity
+            testID="copytrade-menu-btn"
             style={{ padding: 8 }}
-            onPress={() => Alert.alert('More options', 'Block trader · Report · Share profile', [{ text: 'Close' }])}
+            onPress={() => openMenu(
+              { owner: trader.owner, handle: trader.handle, context: 'trader_profile' },
+              () => nav.goBack(),
+            )}
           >
             <MoreHorizontal color={colors.ink} size={20} strokeWidth={1.75} />
           </TouchableOpacity>

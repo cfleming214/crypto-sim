@@ -12,6 +12,8 @@ interface AuthContextValue {
   signIn: (username: string, password: string) => Promise<void>;
   signUp: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Permanently delete the account + all cloud data, then drop to guest. */
+  deleteAccount: () => Promise<void>;
   /** Refresh `email` / `emailVerified` from the current Cognito session. */
   refreshAttributes: () => Promise<void>;
   /** Start email-attribute update. Cognito sends a verification code to `email`. */
@@ -29,6 +31,7 @@ const AuthContext = createContext<AuthContextValue>({
   signIn: async () => {},
   signUp: async () => {},
   signOut: async () => {},
+  deleteAccount: async () => {},
   refreshAttributes: async () => {},
   startEmailVerification: async () => {},
   confirmEmail: async () => {},
@@ -119,6 +122,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setEmailVerified(false);
   };
 
+  const handleDeleteAccount = async () => {
+    const { deleteAccount } = await import('../services/moderationService');
+    await deleteAccount();
+    // deleteAccount() already called Cognito deleteUser + purged local stores.
+    // Drop to guest; AppContext's unauthenticated effect runs CLEAR_USER_DATA.
+    setStatus('unauthenticated');
+    setUserId(null);
+    setUsername(null);
+    setEmail(null);
+    setEmailVerified(false);
+  };
+
   const handleStartEmailVerification = async (emailInput: string) => {
     const { updateUserAttribute } = await import('aws-amplify/auth');
     const result = await updateUserAttribute({
@@ -151,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn: handleSignIn,
       signUp: handleSignUp,
       signOut: handleSignOut,
+      deleteAccount: handleDeleteAccount,
       refreshAttributes: loadAttributes,
       startEmailVerification: handleStartEmailVerification,
       confirmEmail: handleConfirmEmail,
