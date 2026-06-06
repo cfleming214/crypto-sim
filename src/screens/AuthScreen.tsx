@@ -25,6 +25,33 @@ export function AuthScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedData, setAcceptedData] = useState(false);
+
+  // A single checkbox + tappable label row. Reused for the two distinct
+  // sign-up consents (legal agreement and leaderboard data-upload consent).
+  const CheckRow = ({ checked, onToggle, testID, children }: {
+    checked: boolean; onToggle: () => void; testID: string; children: React.ReactNode;
+  }) => (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onToggle}
+      activeOpacity={0.7}
+      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 4 }}
+    >
+      <View style={{
+        width: 22, height: 22, borderRadius: 6, marginTop: 1,
+        borderWidth: 1.5,
+        borderColor: checked ? colors.brand : colors.hairline,
+        backgroundColor: checked ? colors.brand : 'transparent',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        {checked && <Check color={colors.brandOn} size={15} strokeWidth={3} />}
+      </View>
+      <Text style={{ flex: 1, fontSize: 13, color: colors.ink2, lineHeight: 19 }}>
+        {children}
+      </Text>
+    </TouchableOpacity>
+  );
 
   const inputStyle = {
     backgroundColor: colors.surface2,
@@ -41,8 +68,8 @@ export function AuthScreen() {
     // Hard gate: account creation requires accepting the Terms & Privacy Policy
     // (App Store guideline 1.2 EULA + 5.1.2 consent). The button is also
     // disabled, but guard here too.
-    if (mode === 'signup' && !acceptedTerms) {
-      Alert.alert('Please agree to continue', 'You must accept the Terms of Use and Privacy Policy to create an account.');
+    if (mode === 'signup' && (!acceptedTerms || !acceptedData)) {
+      Alert.alert('Please agree to continue', 'You must accept the Terms of Use and Privacy Policy and consent to public-leaderboard data upload to create an account.');
       return;
     }
     setLoading(true);
@@ -125,29 +152,17 @@ export function AuthScreen() {
             />
 
             {mode === 'signup' ? (
-              <TouchableOpacity
-                testID="auth-terms-checkbox"
-                onPress={() => setAcceptedTerms(v => !v)}
-                activeOpacity={0.7}
-                style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 4 }}
-              >
-                <View style={{
-                  width: 22, height: 22, borderRadius: 6, marginTop: 1,
-                  borderWidth: 1.5,
-                  borderColor: acceptedTerms ? colors.brand : colors.hairline,
-                  backgroundColor: acceptedTerms ? colors.brand : 'transparent',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {acceptedTerms && <Check color={colors.brandOn} size={15} strokeWidth={3} />}
-                </View>
-                <Text style={{ flex: 1, fontSize: 13, color: colors.ink2, lineHeight: 19 }}>
+              <>
+                <CheckRow testID="auth-terms-checkbox" checked={acceptedTerms} onToggle={() => setAcceptedTerms(v => !v)}>
                   I agree to the{' '}
                   <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
                   {' '}and{' '}
-                  <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>
-                  , and I understand that my handle and scores will be uploaded to CryptoComp's servers and shown on public leaderboards.
-                </Text>
-              </TouchableOpacity>
+                  <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
+                </CheckRow>
+                <CheckRow testID="auth-data-checkbox" checked={acceptedData} onToggle={() => setAcceptedData(v => !v)}>
+                  I consent to my handle and scores being uploaded to CryptoComp's servers and shown on public leaderboards.
+                </CheckRow>
+              </>
             ) : (
               <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18, marginTop: 2 }}>
                 By signing in you agree to the{' '}
@@ -161,7 +176,7 @@ export function AuthScreen() {
               testID="auth-submit-btn"
               variant="brand"
               onPress={handleSubmit}
-              disabled={loading || (mode === 'signup' && !acceptedTerms)}
+              disabled={loading || (mode === 'signup' && (!acceptedTerms || !acceptedData))}
               style={{ marginTop: 4 }}
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
