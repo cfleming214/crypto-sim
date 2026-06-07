@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
 import { TradeScreen } from '../screens/TradeScreen';
@@ -66,7 +67,13 @@ export function RootNavigator() {
       <Stack.Screen
         name="Auth"
         component={AuthScreen}
-        options={{ presentation: 'modal' }}
+        // On iPhone a sheet-style modal is fine. On iPad, React Navigation's
+        // 'modal' renders a short, centered page-sheet that can clip the form
+        // behind the keyboard and is swipe-dismissible — exactly the "login
+        // page with nothing else" an iPad reviewer can get stuck on. Force a
+        // full-screen modal on iPad so the whole sign-in form is always
+        // reachable.
+        options={{ presentation: Platform.OS === 'ios' && Platform.isPad ? 'fullScreenModal' : 'modal' }}
       />
     </Stack.Navigator>
   );
