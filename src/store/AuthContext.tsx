@@ -77,21 +77,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Sign in, tolerating a stale session already present on the device. Amplify
+  // v6 throws UserAlreadyAuthenticatedException ("There is already a signed in
+  // user.") if signIn is called while ANY session exists — e.g. a previous
+  // tester's account, a half-finished sign-up, or a token that outlived its
+  // checkSession. Left unhandled it strands the user on the login screen with a
+  // confusing error (this is what blocked the App Store reviewer). Clear the old
+  // session and retry so the new credentials always win.
+  // USER_PASSWORD_AUTH avoids the SRP challenge that's flaky on React Native
+  // (BigInt + crypto.getRandomValues under Hermes). Cognito accepts the
+  // plaintext password over TLS — same security surface area.
+  const doSignIn = async (username: string, password: string) => {
+    const { signIn, signOut } = await import('aws-amplify/auth');
+    const params = { username, password, options: { authFlowType: 'USER_PASSWORD_AUTH' as const } };
+    try {
+      await signIn(params);
+    } catch (e: any) {
+      if (e?.name === 'UserAlreadyAuthenticatedException') {
+        await signOut();
+        await signIn(params);
+      } else {
+        throw e;
+      }
+    }
+  };
+
   const handleSignIn = async (usernameInput: string, password: string) => {
-    const { signIn } = await import('aws-amplify/auth');
-    await signIn({
-      username: usernameInput,
-      password,
-      // USER_PASSWORD_AUTH avoids the SRP challenge that's flaky on React
-      // Native (BigInt + crypto.getRandomValues under Hermes). Cognito
-      // accepts plaintext password over TLS — same security surface area.
-      options: { authFlowType: 'USER_PASSWORD_AUTH' },
-    });
+    // The pool uses email as the username (usernameAttributes = ['email']).
+    // Normalize case/whitespace so "AppleReviewer@…" matches the stored
+    // "applereviewer@…" — the same normalization sign-up already does.
+    await doSignIn(usernameInput.trim().toLowerCase(), password);
     await checkSession();
   };
 
   const handleSignUp = async (usernameInput: string, password: string) => {
-    const { signUp, signIn } = await import('aws-amplify/auth');
+    const { signUp } = await import('aws-amplify/auth');
     // The deployed pool signs in by email (usernameAttributes = ['email']) and
     // requires the email attribute, so the input IS the email — pass it as both
     // the username and the email attribute. The preSignUp Lambda trigger
@@ -104,11 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
       options: { userAttributes: { email } },
     });
-    await signIn({
-      username: email,
-      password,
-      options: { authFlowType: 'USER_PASSWORD_AUTH' },
-    });
+    await doSignIn(email, password);
     await checkSession();
   };
 
