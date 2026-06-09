@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
+import { AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
+import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
+import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud } from '../services/equitySnapshots';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -943,7 +945,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const blockedHydratedRef = useRef(false);      // gate blocked-users saves until we've loaded the stored list
   const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
   stateRef.current = state;
+  const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (~15 min)
   const { status: authStatus } = useAuth();
+  const authRef = useRef(authStatus);            // latest auth status for timer/AppState callbacks
+  authRef.current = authStatus;
 
   // Wrap dispatch so any state-mutating action that should persist to the
   // cloud sets lastActionRef — the save effect below picks it up. Includes
@@ -1015,6 +1020,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Always-on: record the live portfolio balance every 60s so the equity chart
+  // is driven by ACTUAL observed values, not reconstruction. Reads the latest
+  // state at fire time (stateRef) and writes to the active portfolio's local
+  // snapshot store. Time the app is closed is filled in by backfillGap when the
+  // PortfolioScreen next loads (see services/equitySnapshots.ts). Skips the
+  // pre-price warmup (bankroll 0) so we don't seed a bogus point.
+  const CLOUD_FLUSH_MS = 15 * 60_000;
+  const flushEquityToCloud = async (series: { t: number; v: number }[]) => {
+    // Cloud-backup only the main portfolio (contests persist their own slice)
+    // and only when authenticated. Coarse (hourly/daily) copy to keep the
+    // DynamoDB write small. Caller is responsible for throttling.
+    if (authRef.current !== 'authenticated') return;
+    lastCloudFlushRef.current = Date.now();
+    await saveEquityHistory(downsampleForCloud(series, Date.now()));
+  };
+  useEffect(() => {
+    const capture = async () => {
+      const s = stateRef.current;
+      if (!(s.bankroll > 0)) return;
+      const series = await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
+      if (s.activePortfolioId === 'main' && Date.now() - lastCloudFlushRef.current >= CLOUD_FLUSH_MS) {
+        flushEquityToCloud(series);
+      }
+    };
+    const id = setInterval(capture, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Seed the equity graph's origin point at account creation, so a brand-new
+  // profile's chart starts at t0 (not a synthetic placeholder) and then builds
+  // minute-by-minute off the capture interval above. Runs once, as soon as the
+  // bankroll is warm: only when there are no snapshots yet AND no real trading
+  // activity (the 0.01 BTC starter grant is a SEED- row, which doesn't count).
+  const seededOriginRef = useRef(false);
+  useEffect(() => {
+    if (seededOriginRef.current) return;
+    if (!(state.bankroll > 0)) return;
+    const portfolioId = state.activePortfolioId;
+    const isFreshProfile = !state.trades.some(t => !t.id.startsWith('SEED-'));
+    if (!isFreshProfile) { seededOriginRef.current = true; return; }
+    seededOriginRef.current = true;
+    (async () => {
+      const existing = await loadSnapshots(portfolioId);
+      if (existing.length === 0) {
+        const originT = state.user.createdAt ?? Date.now();
+        await appendSnapshot(portfolioId, { t: originT, v: state.bankroll });
+      }
+    })();
+  }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt]);
+
+  // Flush the equity backup when the app backgrounds, so the latest local
+  // points survive even if the throttle window hasn't elapsed. This is the main
+  // cloud write for light sessions (open → glance → background).
+  useEffect(() => {
+    const sub = RNAppState.addEventListener('change', next => {
+      if (next !== 'background' && next !== 'inactive') return;
+      const s = stateRef.current;
+      if (s.activePortfolioId !== 'main' || authRef.current !== 'authenticated' || !(s.bankroll > 0)) return;
+      loadSnapshots('main').then(series => { if (series.length) flushEquityToCloud(series); });
+    });
+    return () => sub.remove();
+  }, []);
+
   // Wipe all per-user state when auth flips to unauthenticated. Otherwise a
   // sign-out followed by a different user's sign-in (no app reload) would
   // leave the previous user's portfolios / watchlist / alerts in state for
@@ -1045,6 +1113,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (res.status === 'exists') {
           // Returning sign-in → load the cloud account.
           dispatch({ type: 'LOAD_PROFILE', profile: res.profile });
+          // Seed the local equity-snapshot store from the cloud backup so the
+          // chart's history survives a reinstall / new device. Merges under the
+          // local store's retention; new 1-min points accrue from here.
+          loadEquityHistory().then(points => {
+            if (points.length) {
+              mergeSnapshots('main', points);
+              lastCloudFlushRef.current = Date.now();  // just synced — hold off the next flush
+            }
+          });
         } else if (res.status === 'new') {
           // Brand-new account. If the guest actually built something, register
           // that portfolio to the new user (write it to the cloud, keep local

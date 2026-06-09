@@ -13,11 +13,12 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2 } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
+import { PAYOUTS_ENABLED } from '../constants/featureFlags';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -424,7 +425,7 @@ export function ProfileScreen() {
         </CardSection>
 
         <TouchableOpacity onPress={() => nav.navigate('Activity')}>
-          <CardSection last>
+          <CardSection last={!PAYOUTS_ENABLED}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Activity color={colors.ink} size={18} strokeWidth={1.75} />
@@ -439,6 +440,22 @@ export function ProfileScreen() {
             </View>
           </CardSection>
         </TouchableOpacity>
+
+        {/* Real-money payout entry — hidden while PAYOUTS_ENABLED is off so the
+            submitted build stays a pure play-money simulator. */}
+        {PAYOUTS_ENABLED && (
+          <TouchableOpacity testID="profile-payouts" onPress={() => nav.navigate('PayoutSetup')}>
+            <CardSection last>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Banknote color={colors.ink} size={18} strokeWidth={1.75} />
+                  <Text style={{ fontWeight: '600', color: colors.ink }}>Prize payouts</Text>
+                </View>
+                <Text style={{ color: colors.ink3 }}>›</Text>
+              </View>
+            </CardSection>
+          </TouchableOpacity>
+        )}
       </Card>
 
       {/* Safety & legal */}

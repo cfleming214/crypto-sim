@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Set up payouts</title>
+  <!-- Stripe Connect embedded components. Loaded inside the app's WebView
+       (see src/components/StripeOnboarding.tsx). The React Native side injects
+       window.__STRIPE_PK__ (publishable key) and window.__STRIPE_CLIENT_SECRET__
+       (the Account Session client secret from the stripeConnect Lambda) BEFORE
+       this page's scripts run, and listens for the postMessage we send on exit.
+
+       REQUIRED: the host domain (cfleming214.github.io) must be added to the
+       allowed domains for embedded components in the Stripe Dashboard
+       (Connect settings) or the component refuses to render.
+
+       VERIFY the connect.js global API against current Stripe docs — the CDN
+       surface (StripeConnect.init / instance.create('account-onboarding') /
+       setOnExit) can change between versions. -->
+  <script src="https://connect-js.stripe.com/v1.0/connect.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #container { padding: 8px 12px; }
+    #msg { padding: 24px; color: #b00020; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="msg" style="display:none"></div>
+  <script>
+    function post(type) {
+      if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type: type }));
+    }
+    function fail(text) {
+      var m = document.getElementById('msg');
+      m.style.display = 'block';
+      m.textContent = text;
+      post('error');
+    }
+    try {
+      var pk = window.__STRIPE_PK__;
+      var clientSecret = window.__STRIPE_CLIENT_SECRET__;
+      if (!pk || !clientSecret) {
+        fail('Missing Stripe configuration.');
+      } else {
+        var instance = StripeConnect.init({
+          publishableKey: pk,
+          fetchClientSecret: function () { return Promise.resolve(clientSecret); },
+        });
+        var onboarding = instance.create('account-onboarding');
+        // Fired when the user finishes (or backs out of) onboarding.
+        onboarding.setOnExit(function () { post('exit'); });
+        document.getElementById('container').appendChild(onboarding);
+        post('loaded');
+      }
+    } catch (e) {
+      fail('Could not start onboarding: ' + (e && e.message ? e.message : e));
+    }
+  </script>
+</body>
+</html>

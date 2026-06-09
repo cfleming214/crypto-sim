@@ -15,7 +15,7 @@ import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPrices } from '../services/priceService';
-import { computePortfolioHistory, type EquityPoint, type PortfolioHistoryResult } from '../services/portfolioHistory';
+import { loadSnapshots, backfillGap, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
@@ -34,9 +34,6 @@ function formatCountdown(ms: number): string {
 }
 
 // Cache of reconstructed value series, keyed `${portfolioId}:${tf}:${tradesSig}`.
-// Module-level so flipping timeframes (or returning to the tab) is instant; a
-// new trade changes tradesSig and naturally invalidates the relevant entries.
-const HISTORY_CACHE = new Map<string, PortfolioHistoryResult>();
 
 const STOP_OPTIONS = [5, 10, 15];
 
@@ -270,11 +267,11 @@ export function PortfolioScreen() {
   const pnlPct = (pnl / startEquity) * 100;
   const pnlPositive = pnl >= 0;
 
-  // Real historical portfolio value, reconstructed from the trade ledger × real
-  // historical coin prices (src/services/portfolioHistory.ts) — NOT by valuing
-  // past holdings at today's price. This keeps past points fixed when you trade
-  // now and fills in periods the app was closed. Fetching per-coin history is
-  // async, so it lives in state behind an effect rather than a useMemo.
+  // Real historical portfolio balance, driven by ACTUAL recorded snapshots
+  // (services/equitySnapshots.ts): the live bankroll captured every 60s while
+  // the app is open, plus a one-time backfill of any closed-app gap (valuing
+  // the fixed current holdings at historical prices). No reconstruction from
+  // the trade ledger — so it can't be thrown off by a missing/mismatched trade.
   const TF_WINDOW_MS: Record<string, number> = {
     'Live': 15 * 60 * 1000,
     '1H':   60 * 60 * 1000,
@@ -286,56 +283,51 @@ export function PortfolioScreen() {
 
   const [history, setHistory] = useState<EquityPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyPartial, setHistoryPartial] = useState(false);
 
-  // Recompute only when the portfolio, timeframe, or trade ledger changes — NOT
-  // on the 2s price tick (state.coins/bankroll churn constantly). The live right
-  // edge is patched into chartData below without refetching. `state.cash`/
-  // `holdings` only change via trades (ticks move prices, not units), so reading
-  // them at fire time yields the correct reverse-replay baseline.
+  // Load the recorded snapshot series for the active portfolio, filling any
+  // closed-app gap once on open. Reloads when the portfolio switches or a trade
+  // lands (so a fresh buy/sell shows immediately). Timeframe filtering happens
+  // synchronously in the memo below, so flipping timeframes never refetches.
   const tradesSig = `${state.trades.length}:${state.trades[0]?.id ?? ''}`;
   React.useEffect(() => {
-    const token = { cancelled: false };
-    const key = `${state.activePortfolioId}:${tf}:${tradesSig}`;
-    const cached = HISTORY_CACHE.get(key);
-    if (cached) {
-      setHistory(cached.points);
-      setHistoryPartial(cached.partial);
-      setHistoryLoading(false);
-      return;
-    }
+    let cancelled = false;
     setHistoryLoading(true);
-    computePortfolioHistory(
-      state.trades,
-      { cash: state.cash, holdings: state.holdings },
-      tf,
-      {
-        nowValue: state.bankroll,
-        currentPrices: new Map(state.coins.map(c => [c.symbol, c.price])),
-        createdAt: isContest ? undefined : state.user.createdAt,
-        signal: token,
-      },
-    )
-      .then(res => {
-        if (token.cancelled) return;
-        HISTORY_CACHE.set(key, res);
-        setHistory(res.points);
-        setHistoryPartial(res.partial);
+    (async () => {
+      const pid = state.activePortfolioId;
+      const existing = await loadSnapshots(pid);
+      const now = Date.now();
+      // Gap start: last recorded point, else account creation, else a 30d floor.
+      const monthMs = 30 * 24 * 60 * 60 * 1000;
+      const lastT = existing.length
+        ? existing[existing.length - 1].t
+        : (isContest ? now - monthMs : (state.user.createdAt ?? now - monthMs));
+      const series = await backfillGap(
+        pid,
+        { cash: state.cash, holdings: state.holdings },
+        lastT,
+        now,
+        new Map(state.coins.map(c => [c.symbol, c.price])),
+      );
+      if (!cancelled) {
+        setHistory(series);
         setHistoryLoading(false);
-      })
-      .catch(() => { if (!token.cancelled) setHistoryLoading(false); });
-    return () => { token.cancelled = true; };
-  }, [tf, state.activePortfolioId, tradesSig]); // eslint-disable-line react-hooks/exhaustive-deps
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [state.activePortfolioId, tradesSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { chartData, chartTimestamps } = React.useMemo(() => {
-    if (history.length >= 2) {
-      const vals = history.map(p => p.v);
+    const windowMs = TF_WINDOW_MS[tf] ?? 0;
+    const cutoff = tf === 'MAX' ? 0 : Date.now() - windowMs;
+    const windowed = history.filter(p => p.t >= cutoff);
+    if (windowed.length >= 2) {
+      const vals = windowed.map(p => p.v);
       vals[vals.length - 1] = totalEquity; // live right edge — matches the header $
-      return { chartData: vals, chartTimestamps: history.map(p => p.t) };
+      return { chartData: vals, chartTimestamps: windowed.map(p => p.t) };
     }
     return {
       chartData:       [startEquity, totalEquity],
-      chartTimestamps: [Date.now() - (TF_WINDOW_MS[tf] ?? 0), Date.now()],
+      chartTimestamps: [Date.now() - (windowMs || 0), Date.now()],
     };
   }, [history, totalEquity, tf]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -521,18 +513,13 @@ export function PortfolioScreen() {
 
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
-        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} down={!pnlPositive} />
+        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} down={!pnlPositive} axes />
         {historyLoading && history.length === 0 && (
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={colors.ink3} />
           </View>
         )}
       </View>
-      {historyPartial && (
-        <Text style={{ fontSize: 10, color: colors.ink3, textAlign: 'center', marginTop: -6 }}>
-          Some history estimated
-        </Text>
-      )}
 
       <Segmented
         options={tfOptions}

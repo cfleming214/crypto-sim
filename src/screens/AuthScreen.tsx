@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Trophy, X, Check } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
@@ -25,6 +26,10 @@ export function AuthScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [confirmedAge, setConfirmedAge] = useState(false);
+
+  // Sign-up requires both the 18+ age confirmation and the Terms/Privacy consent.
+  const signupGateOk = acceptedTerms && confirmedAge;
 
   // A checkbox + tappable label row for the sign-up Terms/Privacy consent.
   const CheckRow = ({ checked, onToggle, testID, children }: {
@@ -63,11 +68,15 @@ export function AuthScreen() {
 
   const handleSubmit = async () => {
     if (loading) return;
-    // Hard gate: account creation requires accepting the Terms & Privacy Policy
-    // (App Store guideline 1.2 EULA + 5.1.2 consent). The button is also
-    // disabled, but guard here too.
-    if (mode === 'signup' && !acceptedTerms) {
-      Alert.alert('Please agree to continue', 'You must accept the Terms of Use and Privacy Policy to create an account.');
+    // Hard gate: account creation requires confirming 18+ and accepting the
+    // Terms & Privacy Policy (App Store guideline 1.2 EULA + 5.1.2 consent; the
+    // 18+ confirmation gates the real-money contest features). The button is
+    // also disabled, but guard here too.
+    if (mode === 'signup' && !signupGateOk) {
+      Alert.alert(
+        'Please confirm to continue',
+        'You must confirm you are 18 or older and accept the Terms of Use and Privacy Policy to create an account.',
+      );
       return;
     }
     setLoading(true);
@@ -77,6 +86,8 @@ export function AuthScreen() {
         await signIn(u, password);
       } else {
         await signUp(u, password);
+        // Record the age confirmation locally (timestamped) for our own records.
+        try { await AsyncStorage.setItem('ageConfirmed.v1', new Date().toISOString()); } catch { /* non-fatal */ }
       }
       // Auth flipped to authenticated — dismiss the modal so the gated
       // screen underneath re-renders with real content. goBack is a no-op
@@ -150,12 +161,17 @@ export function AuthScreen() {
             />
 
             {mode === 'signup' ? (
+              <>
+              <CheckRow testID="auth-age-checkbox" checked={confirmedAge} onToggle={() => setConfirmedAge(v => !v)}>
+                I confirm I am 18 years of age or older.
+              </CheckRow>
               <CheckRow testID="auth-terms-checkbox" checked={acceptedTerms} onToggle={() => setAcceptedTerms(v => !v)}>
                 I agree to the{' '}
                 <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
                 {' '}and{' '}
                 <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
               </CheckRow>
+              </>
             ) : (
               <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18, marginTop: 2 }}>
                 By signing in you agree to the{' '}
@@ -169,7 +185,7 @@ export function AuthScreen() {
               testID="auth-submit-btn"
               variant="brand"
               onPress={handleSubmit}
-              disabled={loading || (mode === 'signup' && !acceptedTerms)}
+              disabled={loading || (mode === 'signup' && !signupGateOk)}
               style={{ marginTop: 4 }}
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}

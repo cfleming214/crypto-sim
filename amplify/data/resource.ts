@@ -1,4 +1,5 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { stripeConnect } from '../functions/stripe-connect/resource.js';
 
 const schema = a.schema({
   UserProfile: a.model({
@@ -16,6 +17,11 @@ const schema = a.schema({
     // Local gamification blob (daily-claim, achievements, prediction stats) for
     // cross-device sync — written by the client.
     gamificationJson: a.string(),
+    // Recorded portfolio-balance history (private, full-fidelity backup of the
+    // local equity-snapshot store) so the chart survives reinstall / new device.
+    // JSON array of {t,v}; downsampled to hourly+daily before write, flushed on
+    // a throttled cadence by the client (see services/equitySnapshots.ts).
+    equityHistoryJson: a.string(),
     // Season baseline XP, written ONLY by the settle-season Lambda each week.
     // seasonXp = xp - seasonStartXp drives league/division. Kept out of
     // gamificationJson so client saves never clobber it.
@@ -167,6 +173,56 @@ const schema = a.schema({
   }).authorization(allow => [
     allow.authenticated().to(['read']),
   ]),
+
+  // A user's Stripe Connect (Express) account, used to pay out contest prizes.
+  // The row's `id` is deliberately the Cognito userId (the `sub`) so the
+  // settlement Lambda can resolve owner -> account with a single GetItem (the
+  // UserProfile table uses a random id and is NOT queryable by user). The
+  // stripeConnect / stripeWebhook Lambdas write every field via the DynamoDB
+  // SDK (bypassing model authz, like the Token catalog); the client only reads
+  // its own row to render onboarding status.
+  StripeAccount: a.model({
+    stripeAccountId:  a.string(),   // "acct_..." from Stripe
+    payoutsEnabled:   a.boolean(),  // capabilities.transfers active — can receive Transfers
+    detailsSubmitted: a.boolean(),  // finished the onboarding form
+    status:           a.string(),   // 'onboarding' | 'enabled' | 'restricted'
+  }).authorization(allow => [allow.owner().to(['read'])]),
+
+  // One row per prize owed to a winner. Created by close-competition when a
+  // contest finishes: auto-paid (status 'paid') if the winner has already
+  // onboarded, otherwise 'pending' until they claim it. Drives the Earnings tab.
+  // `userId` is the winner's Cognito sub (== StripeAccount.id) so the claim
+  // mutation can verify ownership without depending on the owner-field format.
+  Payout: a.model({
+    competitionId:    a.string().required(),
+    competitionName:  a.string(),
+    userId:           a.string().required(),  // Cognito sub of the winner
+    rank:             a.integer(),
+    amountCents:      a.integer().required(),  // prizesJson dollars * 100
+    status:           a.string().required(),   // 'pending'|'processing'|'paid'|'failed'
+    stripeTransferId: a.string(),
+    createdAt:        a.string().required(),
+    paidAt:           a.string(),
+  }).authorization(allow => [allow.owner().to(['read'])]),
+
+  // --- Stripe payout custom mutations (client -> stripeConnect Lambda) ---
+  // AppSync passes the authenticated identity (event.identity) to the handler,
+  // which disambiguates by event.fieldName. Each returns an a.json() blob.
+  startPayoutOnboarding: a.mutation()
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  refreshPayoutStatus: a.mutation()
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  claimPayout: a.mutation()
+    .arguments({ payoutId: a.string().required() })
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

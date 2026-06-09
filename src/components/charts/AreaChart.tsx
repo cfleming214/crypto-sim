@@ -13,6 +13,7 @@ interface AreaChartProps {
   style?: ViewStyle;
   timestamps?: number[];   // optional ms-epoch per data point — enables date in crosshair tooltip
   crosshair?: boolean;     // enable touch-driven inspection (default true when data supplied)
+  axes?: boolean;          // render $ (Y) + time (X) labels in gutters (default false)
 }
 
 function generatePath(data: number[], w: number, h: number, closed = false): string {
@@ -91,7 +92,22 @@ function formatTooltipTime(ts: number): string {
          d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair }: AreaChartProps) {
+// Compact label for the X axis: time-of-day for short spans, date for long ones.
+function formatAxisTime(ts: number, spanMs: number): string {
+  const d = new Date(ts);
+  if (spanMs < 24 * 60 * 60 * 1000) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// Compact dollar label for the Y axis (e.g. $10.4k, or $842 for small values).
+function formatAxisMoney(v: number): string {
+  if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  return `$${v.toFixed(0)}`;
+}
+
+export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair, axes = false }: AreaChartProps) {
   const { colors } = useTheme();
 
   const baseValueRef = useRef(baseValue ?? 10847);
@@ -113,33 +129,44 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const [layoutWidth, setLayoutWidth] = useState(300);
   const [crosshairIdx, setCrosshairIdx] = useState<number | null>(null);
 
+  // Axis gutters. When `axes` is on we inset the plot: a left gutter holds the
+  // $ (Y) labels and a bottom gutter holds the time (X) labels. The line + all
+  // SVG coords are computed against the inset plot region (plotH tall, starting
+  // at leftGutter px from the left).
+  const axesOn = axes && !!data && chartData.length >= 2;
+  const leftGutter = axesOn ? 40 : 0;
+  const bottomGutter = axesOn ? 16 : 0;
+  const plotH = height - bottomGutter;
+  const plotWidthPx = Math.max(1, layoutWidth - leftGutter);
+
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => crosshairEnabled,
     onMoveShouldSetPanResponder:  () => crosshairEnabled,
     onPanResponderGrant: (e) => {
-      const x = e.nativeEvent.locationX;
-      const ratio = Math.max(0, Math.min(1, x / Math.max(1, layoutWidth)));
+      const x = e.nativeEvent.locationX - leftGutter;
+      const ratio = Math.max(0, Math.min(1, x / plotWidthPx));
       setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
     },
     onPanResponderMove: (e) => {
-      const x = e.nativeEvent.locationX;
-      const ratio = Math.max(0, Math.min(1, x / Math.max(1, layoutWidth)));
+      const x = e.nativeEvent.locationX - leftGutter;
+      const ratio = Math.max(0, Math.min(1, x / plotWidthPx));
       setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
     },
     onPanResponderRelease: () => setCrosshairIdx(null),
     onPanResponderTerminate: () => setCrosshairIdx(null),
-  }), [crosshairEnabled, layoutWidth, chartData.length]);
+  }), [crosshairEnabled, plotWidthPx, leftGutter, chartData.length]);
 
-  // Precompute layout helpers for crosshair rendering
+  // Precompute layout helpers for crosshair + axis rendering (plot-region space)
   const min = Math.min(...chartData);
   const max = Math.max(...chartData);
   const range = max - min || 1;
-  const yForValue = (v: number) => height - ((v - min) / range) * height * 0.85 - height * 0.075;
+  const yForValue = (v: number) => plotH - ((v - min) / range) * plotH * 0.85 - plotH * 0.075;
   const xForIdx = (i: number) => (i / (chartData.length - 1)) * 300;
 
   const hoverIdx = crosshairIdx;
   const hoverValue = hoverIdx !== null ? chartData[hoverIdx] : null;
   const hoverTs = (hoverIdx !== null && timestamps) ? timestamps[hoverIdx] : null;
+  const showAxisLabels = axesOn && hoverIdx === null; // hide labels while inspecting
 
   return (
     <View
@@ -147,29 +174,70 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       onLayout={e => setLayoutWidth(e.nativeEvent.layout.width)}
       {...panResponder.panHandlers}
     >
-      <Svg width="100%" height={height} viewBox={`0 0 300 ${height}`} preserveAspectRatio="none">
-        <Path d={generatePath(chartData, 300, height, false)} stroke={color} strokeWidth="2" fill="none" />
-        {showDot && hoverIdx === null && (() => {
-          const last = chartData[chartData.length - 1];
-          return <Circle cx="300" cy={yForValue(last)} r="3.5" fill={color} />;
-        })()}
-        {hoverIdx !== null && hoverValue !== null && (
-          <>
-            <Line
-              x1={xForIdx(hoverIdx)} y1={0}
-              x2={xForIdx(hoverIdx)} y2={height}
-              stroke={colors.ink3}
-              strokeWidth="1"
-              strokeDasharray="3,3"
-            />
-            <Circle cx={xForIdx(hoverIdx)} cy={yForValue(hoverValue)} r="4.5" fill={color} stroke={colors.surface} strokeWidth="2" />
-          </>
-        )}
-      </Svg>
+      {/* Y-axis $ labels in the left gutter */}
+      {showAxisLabels && [max, (max + min) / 2, min].map((v, i) => {
+        const y = Math.max(0, Math.min(plotH - 12, yForValue(v) - 6));
+        // Skip the midpoint when the series is essentially flat (avoids three
+        // identical labels stacked on top of each other).
+        if (i === 1 && (max - min) / (max || 1) < 0.004) return null;
+        return (
+          <Text
+            key={i}
+            style={{
+              position: 'absolute', left: 0, top: y, width: leftGutter - 4,
+              textAlign: 'right', fontSize: 9, color: colors.ink4, fontVariant: ['tabular-nums'],
+            }}
+          >
+            {formatAxisMoney(v)}
+          </Text>
+        );
+      })}
+
+      {/* Plot region (inset by the gutters) */}
+      <View style={{ position: 'absolute', left: leftGutter, right: 0, top: 0, height: plotH }}>
+        <Svg width="100%" height={plotH} viewBox={`0 0 300 ${plotH}`} preserveAspectRatio="none">
+          <Path d={generatePath(chartData, 300, plotH, false)} stroke={color} strokeWidth="2" fill="none" />
+          {showDot && hoverIdx === null && (() => {
+            const last = chartData[chartData.length - 1];
+            return <Circle cx="300" cy={yForValue(last)} r="3.5" fill={color} />;
+          })()}
+          {hoverIdx !== null && hoverValue !== null && (
+            <>
+              <Line
+                x1={xForIdx(hoverIdx)} y1={0}
+                x2={xForIdx(hoverIdx)} y2={plotH}
+                stroke={colors.ink3}
+                strokeWidth="1"
+                strokeDasharray="3,3"
+              />
+              <Circle cx={xForIdx(hoverIdx)} cy={yForValue(hoverValue)} r="4.5" fill={color} stroke={colors.surface} strokeWidth="2" />
+            </>
+          )}
+        </Svg>
+      </View>
+
+      {/* X-axis time labels in the bottom gutter */}
+      {showAxisLabels && timestamps && timestamps.length >= 2 && (() => {
+        const first = timestamps[0];
+        const last = timestamps[timestamps.length - 1];
+        const span = last - first;
+        const mid = timestamps[Math.floor((timestamps.length - 1) / 2)];
+        const lbl = { fontSize: 9, color: colors.ink4 } as const;
+        return (
+          <View style={{
+            position: 'absolute', left: leftGutter, right: 4, top: plotH, height: bottomGutter,
+            flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <Text style={lbl}>{formatAxisTime(first, span)}</Text>
+            <Text style={lbl}>{formatAxisTime(mid, span)}</Text>
+            <Text style={lbl}>Now</Text>
+          </View>
+        );
+      })()}
 
       {/* Crosshair tooltip rendered above the chart in real pixel coords */}
       {hoverIdx !== null && hoverValue !== null && (() => {
-        const tooltipX = (hoverIdx / Math.max(1, chartData.length - 1)) * layoutWidth;
+        const tooltipX = leftGutter + (hoverIdx / Math.max(1, chartData.length - 1)) * plotWidthPx;
         // Keep tooltip within bounds — 140px wide approx
         const left = Math.max(4, Math.min(layoutWidth - 140, tooltipX - 70));
         return (

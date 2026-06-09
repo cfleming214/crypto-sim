@@ -1,5 +1,6 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { AppState, Trade, CompetitionEntry, PortfolioSlice } from '../store/types';
+import type { EquityPoint } from './equitySnapshots';
 
 // Lazily initialised so it doesn't blow up before Amplify.configure() is called
 let clientPromise: Promise<any> | null = null;
@@ -270,8 +271,10 @@ export async function createStarterProfile(): Promise<Partial<AppState> | null> 
       holdingsJson: '[]',
       avatarColor:  '#6366F1',
     };
-    await client.models.UserProfile.create(starter);
-    const profile = await profileFromRecord(starter);
+    // Use the created record (it carries the server createdAt) so the new
+    // account's equity graph can anchor its first point at account-creation time.
+    const { data: created } = await client.models.UserProfile.create(starter);
+    const profile = await profileFromRecord(created ?? starter);
     return { ...profile, trades: [], joinedTournamentIds: [] };
   } catch {
     return null;
@@ -602,6 +605,40 @@ export async function pauseMirror(leaderId: string): Promise<void> {
     }
   } catch (e) {
     console.warn('pauseMirror failed:', e);
+  }
+}
+
+// Backup of the recorded equity-snapshot series to the user's private
+// UserProfile row. Partial update — only equityHistoryJson is written, so it
+// never clobbers cash/holdings/xp written by saveProfile (and vice-versa). The
+// client throttles how often this fires (see equitySnapshots flush wiring);
+// `points` should already be downsampled via downsampleForCloud.
+export async function saveEquityHistory(points: EquityPoint[]): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    const { data: existing } = await client.models.UserProfile.list();
+    if (!existing.length) return;   // no profile yet — saveProfile creates it first
+    await client.models.UserProfile.update({
+      id: existing[0].id,
+      equityHistoryJson: JSON.stringify(points),
+    });
+  } catch (e) {
+    console.warn('saveEquityHistory failed:', e);
+  }
+}
+
+export async function loadEquityHistory(): Promise<EquityPoint[]> {
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    const { data } = await client.models.UserProfile.list();
+    const raw = (data?.[0] as any)?.equityHistoryJson;
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }
 

@@ -2,6 +2,7 @@ import { defineBackend } from '@aws-amplify/backend';
 import { Duration, Stack } from 'aws-cdk-lib';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
+import { FunctionUrlAuthType } from 'aws-cdk-lib/aws-lambda';
 import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
 import { storage } from './storage/resource.js';
@@ -13,6 +14,8 @@ import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
+import { stripeConnect } from './functions/stripe-connect/resource.js';
+import { stripeWebhook } from './functions/stripe-webhook/resource.js';
 
 // NOTE: backend.ts is loaded by the CDK assembler with a type-stripping transformer
 // that handles annotations but NOT `as` casts or other TS-only expressions. Keep
@@ -32,6 +35,8 @@ const backend = defineBackend({
   executeTrade,
   runMirror,
   settleSeason,
+  stripeConnect,
+  stripeWebhook,
 });
 
 // Enable USER_PASSWORD_AUTH on the Cognito user pool client. The default
@@ -47,8 +52,10 @@ backend.auth.resources.cfnResources.cfnUserPoolClient.explicitAuthFlows = [
 ];
 
 // DynamoDB table references
-const competitionTable = backend.data.resources.tables['Competition'];
-const entryTable       = backend.data.resources.tables['CompetitionEntry'];
+const competitionTable  = backend.data.resources.tables['Competition'];
+const entryTable        = backend.data.resources.tables['CompetitionEntry'];
+const stripeAccountTable = backend.data.resources.tables['StripeAccount'];
+const payoutTable        = backend.data.resources.tables['Payout'];
 
 // --- tickLeaderboard: runs every 5 minutes ---
 const tickFn = backend.tickLeaderboard.resources.lambda;
@@ -70,6 +77,13 @@ entryTable.grantReadWriteData(closeFn);
 closeFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 closeFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
+// Settlement: write Payout rows and read onboarding state to auto-Transfer.
+payoutTable.grantReadWriteData(closeFn);
+stripeAccountTable.grantReadData(closeFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.tableName);
 
 new Rule(Stack.of(closeFn), 'CloseCompetitionRule', {
   schedule: Schedule.rate(Duration.minutes(10)),
@@ -135,3 +149,27 @@ new Rule(Stack.of(seasonFn), 'SettleSeasonRule', {
   schedule: Schedule.rate(Duration.days(7)),
   targets: [new LambdaFunction(seasonFn)],
 });
+
+// --- stripeConnect: backs the payout onboarding / status / claim mutations ---
+const stripeConnectFn = backend.stripeConnect.resources.lambda;
+stripeAccountTable.grantReadWriteData(stripeConnectFn);
+payoutTable.grantReadWriteData(stripeConnectFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeConnectFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeConnectFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+
+// --- stripeWebhook: public Function URL, syncs account + payout state ---
+const stripeWebhookFn = backend.stripeWebhook.resources.lambda;
+stripeAccountTable.grantReadWriteData(stripeWebhookFn);
+payoutTable.grantReadWriteData(stripeWebhookFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeWebhookFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeWebhookFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+
+// Stripe's servers can't authenticate against Cognito, so expose the webhook on
+// an unauthenticated Function URL. The handler verifies the Stripe signature.
+const webhookUrl = stripeWebhookFn.addFunctionUrl({ authType: FunctionUrlAuthType.NONE });
+// Surface the URL in amplify_outputs so we can paste it into the Stripe Dashboard.
+backend.addOutput({ custom: { stripeWebhookUrl: webhookUrl.url } });

@@ -13,6 +13,7 @@ import { ReplayScreen } from '../screens/ReplayScreen';
 import { PredictionScreen } from '../screens/PredictionScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
+import { PayoutSetupScreen } from '../screens/PayoutSetupScreen';
 import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
@@ -33,6 +34,7 @@ export type RootStackParamList = {
   Predict: undefined;
   Notifications: undefined;
   Activity: undefined;
+  PayoutSetup: undefined;
   NewsDetail: { article: NewsArticle };
   BlockedUsers: undefined;
 };
@@ -62,6 +64,7 @@ export function RootNavigator() {
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
+      <Stack.Screen name="PayoutSetup" component={PayoutSetupScreen} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen

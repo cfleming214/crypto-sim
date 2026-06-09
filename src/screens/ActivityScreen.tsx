@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -8,7 +8,9 @@ import { Chip } from '../components/ui/Chip';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { ArrowUp, ArrowDown, Shield, User, Clock, Gift } from 'lucide-react-native';
+import { fetchPayouts, claimPayout, type PayoutRow } from '../services/stripeService';
+import { PAYOUTS_ENABLED } from '../constants/featureFlags';
+import { ArrowUp, ArrowDown, Shield, User, Clock, Gift, Trophy } from 'lucide-react-native';
 
 // A reward/cash-injection event (e.g. daily-reward bonus) is recorded as a
 // sentinel trade with symbol 'USD' / kind 'reward' — not a coin trade.
@@ -46,6 +48,38 @@ export function ActivityScreen() {
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const [tab, setTab] = useState('Trades');
+  const [payouts, setPayouts] = useState<PayoutRow[]>([]);
+  const [payoutsLoading, setPayoutsLoading] = useState(false);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+
+  const loadPayouts = useCallback(async () => {
+    setPayoutsLoading(true);
+    setPayouts(await fetchPayouts());
+    setPayoutsLoading(false);
+  }, []);
+
+  // Load earnings the first time the Earnings tab is opened (only when the
+  // real-money payout feature is enabled).
+  useEffect(() => {
+    if (tab === 'Earnings' && PAYOUTS_ENABLED) loadPayouts();
+  }, [tab, loadPayouts]);
+
+  const handleClaim = useCallback(async (p: PayoutRow) => {
+    setClaimingId(p.id);
+    const res = await claimPayout(p.id);
+    setClaimingId(null);
+    if (res.ok) {
+      Alert.alert('Payout sent', `$${(p.amountCents / 100).toFixed(2)} is on its way to your account.`);
+      loadPayouts();
+    } else if (res.needsOnboarding) {
+      Alert.alert('Set up payouts', 'Connect a bank account first to receive your prize.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Set up', onPress: () => nav.navigate('PayoutSetup') },
+      ]);
+    } else {
+      Alert.alert('Could not claim', res.error ?? 'Please try again later.');
+    }
+  }, [loadPayouts, nav]);
 
   const today = state.trades.filter(t => Date.now() - t.timestamp < 24 * 60 * 60 * 1000);
   const earlier = state.trades.filter(t => Date.now() - t.timestamp >= 24 * 60 * 60 * 1000);
@@ -209,12 +243,72 @@ export function ActivityScreen() {
       )}
 
       {tab === 'Earnings' && (
-        <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
-          <Text style={{ fontSize: 16, color: colors.ink3 }}>No earnings yet</Text>
-          <Text style={{ fontSize: 13, color: colors.ink4, textAlign: 'center', paddingHorizontal: 40 }}>
-            Finish a contest in the prize positions to see your payouts here.
-          </Text>
-        </View>
+        // Play-money simulator build: real-money payouts are disabled, so show
+        // the neutral empty state instead of the Stripe-backed claim list.
+        !PAYOUTS_ENABLED ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Text style={{ fontSize: 16, color: colors.ink3 }}>No earnings yet</Text>
+            <Text style={{ fontSize: 13, color: colors.ink4, textAlign: 'center', paddingHorizontal: 40 }}>
+              Finish a contest in the prize positions to see your payouts here.
+            </Text>
+          </View>
+        ) : payoutsLoading && payouts.length === 0 ? (
+          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+            <ActivityIndicator color={colors.brand} />
+          </View>
+        ) : payouts.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Text style={{ fontSize: 16, color: colors.ink3 }}>No earnings yet</Text>
+            <Text style={{ fontSize: 13, color: colors.ink4, textAlign: 'center', paddingHorizontal: 40 }}>
+              Finish a contest in the prize positions to see your payouts here.
+            </Text>
+          </View>
+        ) : (
+          <Card variant="noPad">
+            {payouts.map((p, i) => {
+              const dollars = `$${(p.amountCents / 100).toFixed(2)}`;
+              const paid = p.status === 'paid';
+              return (
+                <CardSection key={p.id} last={i === payouts.length - 1}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: paid ? colors.upSoft : colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
+                      <Trophy color={paid ? colors.up : colors.warn} size={18} strokeWidth={1.75} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontWeight: '600', color: colors.ink }} numberOfLines={1}>
+                          {p.competitionName || 'Contest prize'}
+                        </Text>
+                        <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{dollars}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                        <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                          {p.rank ? `Rank #${p.rank}` : 'Prize'}
+                          {paid && p.paidAt ? ` · Paid ${new Date(p.paidAt).toLocaleDateString()}` : ''}
+                        </Text>
+                        {paid ? (
+                          <Chip variant="up" style={{ paddingVertical: 2 }}>Paid</Chip>
+                        ) : p.status === 'failed' ? (
+                          <TouchableOpacity disabled={claimingId === p.id} onPress={() => handleClaim(p)}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.down }}>
+                              {claimingId === p.id ? 'Retrying…' : 'Retry'}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity disabled={claimingId === p.id} onPress={() => handleClaim(p)}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.brand }}>
+                              {claimingId === p.id ? 'Claiming…' : 'Claim'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                </CardSection>
+              );
+            })}
+          </Card>
+        )
       )}
 
       {tab === 'XP log' && (() => {
