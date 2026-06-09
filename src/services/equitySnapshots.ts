@@ -148,14 +148,22 @@ export async function backfillGap(
   currentPrices: Map<string, number>,
 ): Promise<EquityPoint[]> {
   const existing = await loadSnapshots(portfolioId);
-  if (toT - fromT < HOUR) return existing;   // nothing meaningful to fill
+  const span = toT - fromT;
+  if (span < 5 * MINUTE) return existing;   // nothing meaningful to fill
+
+  // Step the fill fine for short reopens so the Live (15m) and 1H windows have
+  // points, coarse for long absences to keep the series bounded. Without this a
+  // reopen left those windows with at most one hourly point → a flat 2-point
+  // fallback, even though 24H+ looked fine.
+  const step = span <= 3 * HOUR ? 5 * MINUTE : HOUR;
+  const startT = Math.ceil(fromT / step) * step;
 
   const tradable = slice.holdings.filter(h => h.symbol !== 'USDC' && h.units > 0);
 
   // No positions → the balance is pure cash and can't have moved while closed.
   if (tradable.length === 0) {
     const flat: EquityPoint[] = [];
-    for (let t = Math.ceil(fromT / HOUR) * HOUR; t < toT; t += HOUR) flat.push({ t, v: slice.cash });
+    for (let t = startT; t < toT; t += step) flat.push({ t, v: slice.cash });
     return mergeSnapshots(portfolioId, flat);
   }
 
@@ -181,7 +189,7 @@ export async function backfillGap(
   };
 
   const filled: EquityPoint[] = [];
-  for (let t = Math.ceil(fromT / HOUR) * HOUR; t < toT; t += HOUR) {
+  for (let t = startT; t < toT; t += step) {
     let v = slice.cash;
     for (const h of tradable) v += h.units * priceAt(h.symbol, t);
     if (v > 0) filled.push({ t, v });
