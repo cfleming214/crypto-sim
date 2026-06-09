@@ -127,6 +127,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   // coordinate space; the SVG viewBox is fixed at 0..300 with
   // preserveAspectRatio="none", so we just scale.
   const [layoutWidth, setLayoutWidth] = useState(300);
+  const [plotPx, setPlotPx] = useState(0); // real px width of the touch overlay
   const [crosshairIdx, setCrosshairIdx] = useState<number | null>(null);
 
   // Axis gutters. When `axes` is on we inset the plot: a left gutter holds the
@@ -139,22 +140,26 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const plotH = height - bottomGutter;
   const plotWidthPx = Math.max(1, layoutWidth - leftGutter);
 
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => crosshairEnabled,
-    onMoveShouldSetPanResponder:  () => crosshairEnabled,
-    onPanResponderGrant: (e) => {
-      const x = e.nativeEvent.locationX - leftGutter;
-      const ratio = Math.max(0, Math.min(1, x / plotWidthPx));
+  const panResponder = useMemo(() => {
+    // The pan handlers live on a transparent overlay (a plain View covering the
+    // plot region), so locationX is real pixels relative to the plot — it maps
+    // directly to the plot width. (Reading locationX off the SVG instead returns
+    // viewBox units (0..300), which made the crosshair only track the left third
+    // on wide screens.)
+    const setFromTouch = (e: { nativeEvent: { locationX: number } }) => {
+      const w = plotPx || plotWidthPx;
+      const ratio = Math.max(0, Math.min(1, e.nativeEvent.locationX / w));
       setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
-    },
-    onPanResponderMove: (e) => {
-      const x = e.nativeEvent.locationX - leftGutter;
-      const ratio = Math.max(0, Math.min(1, x / plotWidthPx));
-      setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
-    },
-    onPanResponderRelease: () => setCrosshairIdx(null),
-    onPanResponderTerminate: () => setCrosshairIdx(null),
-  }), [crosshairEnabled, plotWidthPx, leftGutter, chartData.length]);
+    };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => crosshairEnabled,
+      onMoveShouldSetPanResponder:  () => crosshairEnabled,
+      onPanResponderGrant: setFromTouch,
+      onPanResponderMove: setFromTouch,
+      onPanResponderRelease: () => setCrosshairIdx(null),
+      onPanResponderTerminate: () => setCrosshairIdx(null),
+    });
+  }, [crosshairEnabled, plotPx, plotWidthPx, chartData.length]);
 
   // Precompute layout helpers for crosshair + axis rendering (plot-region space)
   const min = Math.min(...chartData);
@@ -172,7 +177,6 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
     <View
       style={[{ height }, style]}
       onLayout={e => setLayoutWidth(e.nativeEvent.layout.width)}
-      {...panResponder.panHandlers}
     >
       {/* Y-axis $ labels in the left gutter */}
       {showAxisLabels && [max, (max + min) / 2, min].map((v, i) => {
@@ -265,6 +269,18 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
           </View>
         );
       })()}
+
+      {/* Transparent touch overlay covering the plot region. A plain View (no SVG
+          viewBox) so locationX is in real pixels relative to the plot width —
+          this is what makes the crosshair track the full width, not just the
+          left third on wide screens. */}
+      {crosshairEnabled && (
+        <View
+          style={{ position: 'absolute', left: leftGutter, right: 0, top: 0, height: plotH }}
+          onLayout={e => setPlotPx(e.nativeEvent.layout.width)}
+          {...panResponder.panHandlers}
+        />
+      )}
     </View>
   );
 }

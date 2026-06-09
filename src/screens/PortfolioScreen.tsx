@@ -316,6 +316,18 @@ export function PortfolioScreen() {
     return () => { cancelled = true; };
   }, [state.activePortfolioId, tradesSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the chart growing while the app stays open. The equity-snapshot capture
+  // appends a point every ~60s (AppContext), so re-read the store periodically —
+  // otherwise new points only appeared after closing and reopening the app.
+  React.useEffect(() => {
+    const pid = state.activePortfolioId;
+    const id = setInterval(async () => {
+      const series = await loadSnapshots(pid);
+      if (series.length) setHistory(prev => (series.length >= prev.length ? series : prev));
+    }, 30000);
+    return () => clearInterval(id);
+  }, [state.activePortfolioId]);
+
   const { chartData, chartTimestamps } = React.useMemo(() => {
     const windowMs = TF_WINDOW_MS[tf] ?? 0;
     const cutoff = tf === 'MAX' ? 0 : Date.now() - windowMs;
