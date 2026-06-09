@@ -190,6 +190,7 @@ const INITIAL_STATE: AppState = {
   achievements: {},
   predictionWins: 0,
   predictionLosses: 0,
+  activePrediction: null,
   blockedUsers: [],
   activePortfolioId: 'main',
   portfolios: {},
@@ -215,6 +216,7 @@ type Action =
   | { type: 'SET_LEADERBOARD'; competitionId: string; entries: CompetitionEntry[] }
   | { type: 'TOGGLE_WATCHLIST'; symbol: string }
   | { type: 'SET_HANDLE'; handle: string }
+  | { type: 'SET_LEADERBOARD_VISIBLE'; visible: boolean }
   | { type: 'SET_AVATAR_COLOR'; color: string }
   | { type: 'PLACE_LIMIT_ORDER'; symbol: string; side: 'buy' | 'sell'; amount: number; limitPrice: number }
   | { type: 'CANCEL_LIMIT_ORDER'; orderId: string }
@@ -232,11 +234,13 @@ type Action =
   | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } }
   | { type: 'CLAIM_DAILY_REWARD' }
   | { type: 'RECORD_PREDICTION'; outcome: PredictionOutcome }
+  | { type: 'START_PREDICTION'; prediction: NonNullable<AppState['activePrediction']> }
+  | { type: 'SETTLE_PREDICTION'; outcome: PredictionOutcome }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; activePrediction?: AppState['activePrediction'] } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -663,6 +667,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, pendingOrders: state.pendingOrders.filter(o => o.id !== action.orderId) };
     case 'SET_HANDLE':
       return { ...state, user: { ...state.user, handle: action.handle.trim() || state.user.handle } };
+    case 'SET_LEADERBOARD_VISIBLE':
+      return { ...state, user: { ...state.user, leaderboardVisible: action.visible } };
     case 'SET_AVATAR_COLOR':
       return { ...state, user: { ...state.user, avatarColor: action.color } };
     case 'SET_AVATAR_URI':
@@ -709,6 +715,7 @@ function reducer(state: AppState, action: Action): AppState {
         achievements: action.data.achievements ?? state.achievements,
         predictionWins: action.data.predictionWins ?? state.predictionWins,
         predictionLosses: action.data.predictionLosses ?? state.predictionLosses,
+        activePrediction: action.data.activePrediction ?? state.activePrediction,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -734,6 +741,21 @@ function reducer(state: AppState, action: Action): AppState {
         predictionLosses: state.predictionLosses + (won ? 0 : 1),
         user: { ...state.user, xp: state.user.xp + (won ? PREDICTION_XP : 0) },
       };
+    }
+    case 'START_PREDICTION':
+      // One prediction at a time: ignore if a live (unexpired) one already exists.
+      if (state.activePrediction && Date.now() < state.activePrediction.expiresAt) return state;
+      return { ...state, activePrediction: action.prediction };
+    case 'SETTLE_PREDICTION': {
+      // Clear the active round and record the outcome (win/loss + XP), reusing
+      // the same scoring as RECORD_PREDICTION. A push just clears it.
+      const won = action.outcome === 'win';
+      const scored = action.outcome === 'push' ? {} : {
+        predictionWins: state.predictionWins + (won ? 1 : 0),
+        predictionLosses: state.predictionLosses + (won ? 0 : 1),
+        user: { ...state.user, xp: state.user.xp + (won ? PREDICTION_XP : 0) },
+      };
+      return { ...state, activePrediction: null, ...scored };
     }
     case 'CLAIM_DAILY_REWARD': {
       // Daily reward applies only to the main portfolio (contests have their own
@@ -959,10 +981,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const SAVE_ACTIONS = [
     'SEED_STARTER',
     'BUY', 'SELL', 'REBALANCE',
-    'SET_HANDLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
+    'SET_HANDLE', 'SET_LEADERBOARD_VISIBLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
-    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION',
+    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1262,6 +1284,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               achievements: g.achievements && typeof g.achievements === 'object' ? g.achievements : undefined,
               predictionWins: typeof g.predictionWins === 'number' ? g.predictionWins : undefined,
               predictionLosses: typeof g.predictionLosses === 'number' ? g.predictionLosses : undefined,
+              activePrediction: g.activePrediction && typeof g.activePrediction === 'object' ? g.activePrediction : undefined,
             },
           });
         }
@@ -1280,7 +1303,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const empty = state.lastClaimDay === null
       && Object.keys(state.achievements).length === 0
       && state.predictionWins === 0
-      && state.predictionLosses === 0;
+      && state.predictionLosses === 0
+      && !state.activePrediction;
     if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
@@ -1290,9 +1314,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         achievements: state.achievements,
         predictionWins: state.predictionWins,
         predictionLosses: state.predictionLosses,
+        activePrediction: state.activePrediction ?? null,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.activePrediction]);
 
   // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
   // then save on every change. The ref gates the save so the empty initial list

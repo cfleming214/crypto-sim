@@ -133,6 +133,9 @@ export interface AppState {
     avatarUri?: string;   // resolvable URL (signed if from S3, local file:// if just picked)
     avatarKey?: string;   // stable S3 key for cloud persistence (e.g. "profile.jpg")
     createdAt?: number;   // ms epoch — when this UserProfile row was created in DynamoDB
+    // Whether the user appears on the public global leaderboard. Defaults to
+    // true (opt-out). Toggled in Settings; persisted to UserProfile.
+    leaderboardVisible?: boolean;
   };
   bankroll: number;
   cash: number;
@@ -171,6 +174,16 @@ export interface AppState {
   // 'gamification.v1'. predictionWins feeds the "Predictor" achievement.
   predictionWins: number;
   predictionLosses: number;
+  // The one in-flight price prediction (only one at a time). Persisted in the
+  // gamification.v1 blob so it survives navigating away / backgrounding, and
+  // surfaced on the Compete page. null when no round is pending.
+  activePrediction?: {
+    symbol: string;
+    direction: 'up' | 'down';
+    lockedPrice: number;
+    startedAt: number;
+    expiresAt: number;   // ms epoch — when the 60s round resolves
+  } | null;
   // Users this device has blocked. Persisted to AsyncStorage ('blocked.v1')
   // and preserved across sign-out (per-device, not per-account). Every
   // user-content feed filters these out. See BlockedUser.

@@ -74,6 +74,7 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
       avatarKey:   p.avatarKey ?? undefined,
       avatarUri,
       createdAt:   p.createdAt ? new Date(p.createdAt).getTime() : undefined,
+      leaderboardVisible: p.leaderboardVisible ?? true, // null/undefined = opted in
     },
     cash:      p.cash ?? 10000,
     bankroll:  p.bankroll ?? 10000,
@@ -311,6 +312,9 @@ export async function saveProfile(state: AppState): Promise<void> {
       holdingsJson: JSON.stringify(state.holdings),
       avatarKey:    state.user.avatarKey,
       avatarColor:  state.user.avatarColor,
+      // Public-leaderboard opt-in (default true). The tick-global-leaderboard
+      // Lambda excludes users whose flag is false.
+      leaderboardVisible: state.user.leaderboardVisible ?? true,
       // Cross-device gamification blob. seasonStartXp is intentionally NOT
       // written here — it's owned by the settle-season Lambda.
       gamificationJson: JSON.stringify({
@@ -507,6 +511,22 @@ export async function fetchTrader(traderId: string): Promise<PublicTrader | null
     return await publicTraderFromRecord(data);
   } catch (e) {
     console.warn('fetchTrader failed:', e);
+    return null;
+  }
+}
+
+// Resolve a trader by their Cognito owner (sub). The global leaderboard rows
+// carry `owner` (from UserProfile), not the PublicProfile id, so this bridges a
+// leaderboard tap to the copy-trade / trader-detail screen.
+export async function fetchTraderByOwner(owner: string): Promise<PublicTrader | null> {
+  const client = await getClient();
+  if (!client || !owner) return null;
+  try {
+    const { data } = await client.models.PublicProfile.list({ filter: { owner: { eq: owner } } });
+    const row = (data as any[])[0];
+    return row ? await publicTraderFromRecord(row) : null;
+  } catch (e) {
+    console.warn('fetchTraderByOwner failed:', e);
     return null;
   }
 }

@@ -7,6 +7,7 @@ import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
 import { storage } from './storage/resource.js';
 import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
+import { tickGlobalLeaderboard } from './functions/tick-global-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
 import { resetDemo } from './functions/reset-demo/resource.js';
@@ -28,6 +29,7 @@ const backend = defineBackend({
   data,
   storage,
   tickLeaderboard,
+  tickGlobalLeaderboard,
   closeCompetition,
   createCompetition,
   resetDemo,
@@ -56,6 +58,8 @@ const competitionTable  = backend.data.resources.tables['Competition'];
 const entryTable        = backend.data.resources.tables['CompetitionEntry'];
 const stripeAccountTable = backend.data.resources.tables['StripeAccount'];
 const payoutTable        = backend.data.resources.tables['Payout'];
+const tokenTable         = backend.data.resources.tables['Token'];
+const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 
 // --- tickLeaderboard: runs every 5 minutes ---
 const tickFn = backend.tickLeaderboard.resources.lambda;
@@ -67,6 +71,26 @@ tickFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
 new Rule(Stack.of(tickFn), 'TickLeaderboardRule', {
   schedule: Schedule.rate(Duration.minutes(5)),
   targets: [new LambdaFunction(tickFn)],
+});
+
+// --- tickGlobalLeaderboard: runs every 5 minutes ---
+// Values every visible UserProfile at current Token prices and rewrites the
+// bounded top-100 GlobalLeaderboard table that phones read.
+const globalTickFn = backend.tickGlobalLeaderboard.resources.lambda;
+const profileTableForBoard = backend.data.resources.tables['UserProfile'];
+profileTableForBoard.grantReadData(globalTickFn);
+tokenTable.grantReadData(globalTickFn);
+globalBoardTable.grantReadWriteData(globalTickFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+globalTickFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTableForBoard.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+globalTickFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+globalTickFn.addEnvironment('GLOBAL_LEADERBOARD_TABLE_NAME', globalBoardTable.tableName);
+
+new Rule(Stack.of(globalTickFn), 'TickGlobalLeaderboardRule', {
+  schedule: Schedule.rate(Duration.minutes(5)),
+  targets: [new LambdaFunction(globalTickFn)],
 });
 
 // --- closeCompetition: runs every 10 minutes ---

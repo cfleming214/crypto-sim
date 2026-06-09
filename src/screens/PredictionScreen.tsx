@@ -13,10 +13,16 @@ import {
 } from '../services/gamification';
 import { TrendingUp, TrendingDown, Target } from 'lucide-react-native';
 
-type Phase = 'idle' | 'live' | 'done';
-
 function fmtPrice(p: number): string {
   return p >= 1 ? p.toLocaleString('en-US', { maximumFractionDigits: 2 }) : p.toPrecision(4);
+}
+
+interface Settled {
+  symbol: string;
+  direction: PredictionDirection;
+  lockedPrice: number;
+  finalPrice: number;
+  outcome: PredictionOutcome;
 }
 
 export function PredictionScreen() {
@@ -24,65 +30,75 @@ export function PredictionScreen() {
   const { state, dispatch } = useApp();
   const { celebrate } = useToast();
 
+  const active = state.activePrediction ?? null;
   const tradeable = state.coins.filter(c => c.symbol !== 'USDC');
-  const [symbol, setSymbol] = useState(
+
+  // The picker symbol only matters when idle; during a live round we follow the
+  // active prediction's symbol.
+  const [pickerSymbol, setPickerSymbol] = useState(
     state.tradeSymbol !== 'USDC' ? state.tradeSymbol : (tradeable[0]?.symbol ?? 'BTC'),
   );
+  const symbol = active?.symbol ?? pickerSymbol;
   const coin = state.coins.find(c => c.symbol === symbol);
   const price = coin?.price ?? 0;
 
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [direction, setDirection] = useState<PredictionDirection | null>(null);
-  const [lockedPrice, setLockedPrice] = useState(0);
-  const [finalPrice, setFinalPrice] = useState(0);
-  const [outcome, setOutcome] = useState<PredictionOutcome | null>(null);
-  const [remaining, setRemaining] = useState(PREDICTION_SECONDS);
+  // The just-resolved round, kept locally to render the result card (the active
+  // prediction itself is cleared from global state on settle).
+  const [settled, setSettled] = useState<Settled | null>(null);
+  const [remaining, setRemaining] = useState(() =>
+    active ? Math.max(0, Math.ceil((active.expiresAt - Date.now()) / 1000)) : PREDICTION_SECONDS,
+  );
 
-  // Latest price, kept in a ref so the timer's resolution reads it without
-  // depending on stale closure state.
+  // Latest price for the active symbol, in a ref so resolution reads it without
+  // a stale closure.
   const priceRef = useRef(price);
   priceRef.current = price || priceRef.current;
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  useEffect(() => () => clearInterval(timerRef.current), []);
+
+  // Drive the live round: tick the countdown, and settle when it expires — which
+  // also handles "returned after expiry" (resolves immediately against the
+  // latest price). Re-subscribes when a new prediction starts (expiresAt change).
+  useEffect(() => {
+    if (!active) return;
+    let resolved = false;
+    const resolve = () => {
+      if (resolved) return;
+      resolved = true;
+      const fp = priceRef.current;
+      const oc = resolvePrediction(active.direction, active.lockedPrice, fp);
+      setSettled({ symbol: active.symbol, direction: active.direction, lockedPrice: active.lockedPrice, finalPrice: fp, outcome: oc });
+      dispatch({ type: 'SETTLE_PREDICTION', outcome: oc });
+      if (oc === 'win') celebrate();
+    };
+    const tick = () => {
+      const left = Math.ceil((active.expiresAt - Date.now()) / 1000);
+      if (left > 0) setRemaining(left);
+      else resolve();
+    };
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [active?.expiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const start = (dir: PredictionDirection) => {
-    if (!coin) return;
-    const locked = coin.price;
-    setDirection(dir);
-    setLockedPrice(locked);
-    setOutcome(null);
-    setFinalPrice(0);
+    if (!coin || active) return;
+    const now = Date.now();
+    setSettled(null);
     setRemaining(PREDICTION_SECONDS);
-    setPhase('live');
-    const endAt = Date.now() + PREDICTION_SECONDS * 1000;
-    clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      const left = Math.ceil((endAt - Date.now()) / 1000);
-      if (left > 0) { setRemaining(left); return; }
-      clearInterval(timerRef.current);
-      setRemaining(0);
-      const fp = priceRef.current;
-      const oc = resolvePrediction(dir, locked, fp);
-      setFinalPrice(fp);
-      setOutcome(oc);
-      setPhase('done');
-      dispatch({ type: 'RECORD_PREDICTION', outcome: oc });
-      if (oc === 'win') celebrate();
-    }, 250);
+    dispatch({
+      type: 'START_PREDICTION',
+      prediction: { symbol, direction: dir, lockedPrice: coin.price, startedAt: now, expiresAt: now + PREDICTION_SECONDS * 1000 },
+    });
   };
 
-  const reset = () => {
-    clearInterval(timerRef.current);
-    setPhase('idle');
-    setDirection(null);
-    setOutcome(null);
-  };
+  const phase: 'idle' | 'live' | 'done' = active ? 'live' : settled ? 'done' : 'idle';
 
   const total = state.predictionWins + state.predictionLosses;
   const winRate = total > 0 ? Math.round((state.predictionWins / total) * 100) : 0;
 
-  // Live delta vs the locked price during a round / at resolution.
-  const refPrice = phase === 'done' ? finalPrice : price;
+  const lockedPrice = active?.lockedPrice ?? settled?.lockedPrice ?? 0;
+  const direction = active?.direction ?? settled?.direction ?? null;
+  const outcome = settled?.outcome ?? null;
+  const refPrice = phase === 'done' ? (settled?.finalPrice ?? price) : price;
   const delta = lockedPrice > 0 ? refPrice - lockedPrice : 0;
   const deltaPct = lockedPrice > 0 ? (delta / lockedPrice) * 100 : 0;
   const deltaColor = delta > 0 ? colors.up : delta < 0 ? colors.down : colors.ink3;
@@ -95,24 +111,24 @@ export function PredictionScreen() {
       {/* Coin picker (locked during a live round) */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
         {tradeable.map(c => {
-          const active = c.symbol === symbol;
+          const isActive = c.symbol === symbol;
           return (
             <TouchableOpacity
               key={c.symbol}
               disabled={phase === 'live'}
-              onPress={() => { setSymbol(c.symbol); reset(); }}
+              onPress={() => { setPickerSymbol(c.symbol); setSettled(null); }}
               activeOpacity={0.8}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999,
                 borderWidth: 1,
-                borderColor: active ? colors.brand : colors.hairline,
-                backgroundColor: active ? colors.brand : 'transparent',
-                opacity: phase === 'live' && !active ? 0.4 : 1,
+                borderColor: isActive ? colors.brand : colors.hairline,
+                backgroundColor: isActive ? colors.brand : 'transparent',
+                opacity: phase === 'live' && !isActive ? 0.4 : 1,
               }}
             >
               <CoinGlyph symbol={c.symbol} size={18} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: active ? colors.brandOn : colors.ink }}>{c.symbol}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? colors.brandOn : colors.ink }}>{c.symbol}</Text>
             </TouchableOpacity>
           );
         })}
@@ -183,7 +199,7 @@ export function PredictionScreen() {
               {outcome === 'win' && <Text style={{ fontSize: 14, fontWeight: '700', color: colors.up }}>+{PREDICTION_XP} XP</Text>}
             </View>
           </Card>
-          <Button variant="brand" onPress={reset}>Play again</Button>
+          <Button variant="brand" onPress={() => setSettled(null)}>Play again</Button>
         </>
       )}
 

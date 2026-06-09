@@ -424,6 +424,21 @@ export function ProfileScreen() {
           </View>
         </CardSection>
 
+        <CardSection>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Trophy color={colors.ink} size={18} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '600', color: colors.ink }}>Show me on the leaderboard</Text>
+            </View>
+            <Switch
+              testID="profile-leaderboard-toggle"
+              value={state.user.leaderboardVisible ?? true}
+              onValueChange={v => dispatch({ type: 'SET_LEADERBOARD_VISIBLE', visible: v })}
+              trackColor={{ true: colors.brand, false: colors.surface2 }}
+            />
+          </View>
+        </CardSection>
+
         <TouchableOpacity onPress={() => nav.navigate('Activity')}>
           <CardSection last={!PAYOUTS_ENABLED}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

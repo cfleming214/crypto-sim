@@ -7,7 +7,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { fetchTopTraders, subscribeToTopTraders, type PublicTrader } from '../services/portfolioService';
+import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { Filter } from 'lucide-react-native';
 
 const DIVISION_LABELS = ['', 'I', 'II', 'III', 'IV'];
@@ -83,14 +83,15 @@ export function LeagueScreen() {
   const { colors } = useTheme();
   const { state } = useApp();
   const [tab, setTab] = useState('Your division');
-  const [globalTraders, setGlobalTraders] = useState<PublicTrader[]>([]);
+  const [globalTraders, setGlobalTraders] = useState<LeaderboardRow[]>([]);
 
-  // Global tab: live PublicProfile collection ranked by P&L. Same source as
-  // TopTradersScreen — subscribed for real-time updates as traders trade.
+  // Global tab: the precomputed GlobalLeaderboard (server-ranked by live value).
+  // Same source as the Leaderboard screen — a cheap read of a bounded table,
+  // not the per-trade PublicProfile fan-out.
   useEffect(() => {
-    fetchTopTraders(50).then(setGlobalTraders);
+    fetchGlobalLeaderboard().then(setGlobalTraders);
     let unsub: () => void = () => {};
-    subscribeToTopTraders(setGlobalTraders, 50).then(u => { unsub = u; });
+    subscribeToGlobalLeaderboard(setGlobalTraders).then(u => { unsub = u; });
     return () => unsub();
   }, []);
 
@@ -127,7 +128,7 @@ export function LeagueScreen() {
     handle: `@${t.handle}`,
     name: t.handle,
     pnl: `${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%`,
-    xpRaw: Math.round(t.bankroll),
+    xpRaw: Math.round(t.value),
     trend: t.pnlPct >= 0 ? 'up' : 'down',
     tag: t.handle === state.user.handle ? 'you' : null,
   }));

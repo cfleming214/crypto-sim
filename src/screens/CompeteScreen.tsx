@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -43,6 +43,22 @@ export function CompeteScreen() {
   const [duelModalOpen, setDuelModalOpen] = useState(false);
   const [duelCode, setDuelCode] = useState('');
   const [duelBusy, setDuelBusy] = useState(false);
+
+  // Pending price-prediction status for the mini-game card. Tick once a second
+  // while a round is live so the countdown updates.
+  const activePrediction = state.activePrediction ?? null;
+  const [, setPredTick] = useState(0);
+  useEffect(() => {
+    if (!activePrediction) return;
+    const id = setInterval(() => setPredTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [activePrediction?.expiresAt]);
+  const predRemaining = activePrediction
+    ? Math.max(0, Math.ceil((activePrediction.expiresAt - Date.now()) / 1000))
+    : 0;
+  const predLive = !!activePrediction && predRemaining > 0;
+  const predExpired = !!activePrediction && predRemaining <= 0;
+  const predMmss = `${Math.floor(predRemaining / 60)}:${String(predRemaining % 60).padStart(2, '0')}`;
 
   const handleChallenge = async () => {
     if (duelBusy) return;
@@ -253,13 +269,13 @@ export function CompeteScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Discover
+                Global
               </Text>
               <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>
-                Top traders
+                Leaderboard
               </Text>
               <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-                Browse and copy the best performers
+                Live portfolio rankings — see where you stand
               </Text>
             </View>
             <Text style={{ fontSize: 18, color: colors.ink3 }}>›</Text>
@@ -301,14 +317,18 @@ export function CompeteScreen() {
                 <Target color={colors.brand} size={20} strokeWidth={1.9} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Mini-game
+                <Text style={{ fontSize: 11, fontWeight: '600', color: predLive ? colors.brand : colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {predLive ? 'Prediction live' : predExpired ? 'Prediction done' : 'Mini-game'}
                 </Text>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>
                   Price prediction
                 </Text>
-                <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-                  Higher or lower in 60s? Win XP
+                <Text style={{ fontSize: 12, color: predLive ? colors.brand : colors.ink3, marginTop: 2, fontWeight: predLive ? '700' : '400', fontVariant: ['tabular-nums'] }}>
+                  {predLive
+                    ? `${activePrediction!.symbol} ${activePrediction!.direction === 'up' ? '↑ Higher' : '↓ Lower'} · ${predMmss} left`
+                    : predExpired
+                      ? 'Tap to see your result'
+                      : 'Higher or lower in 60s? Win XP'}
                 </Text>
               </View>
             </View>

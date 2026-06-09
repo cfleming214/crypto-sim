@@ -17,6 +17,11 @@ const schema = a.schema({
     // Local gamification blob (daily-claim, achievements, prediction stats) for
     // cross-device sync — written by the client.
     gamificationJson: a.string(),
+    // Whether this user appears on the public global leaderboard. null/undefined
+    // = visible (opt-out default). The tick-global-leaderboard Lambda reads it to
+    // include/exclude the user; toggling it off in Settings just flips this flag
+    // (no row deletion), so there's nothing to spam-delete.
+    leaderboardVisible: a.boolean(),
     // Recorded portfolio-balance history (private, full-fidelity backup of the
     // local equity-snapshot store) so the chart survives reinstall / new device.
     // JSON array of {t,v}; downsampled to hourly+daily before write, flushed on
@@ -170,6 +175,26 @@ const schema = a.schema({
     marketCapRaw:       a.float(),
     volumeRaw:          a.float(),
     lastSeededAt:       a.string(),                // ISO timestamp of the most recent seed
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+  ]),
+
+  // Precomputed global leaderboard — a small, bounded (top ~100) table the
+  // tick-global-leaderboard Lambda rebuilds every few minutes by valuing each
+  // visible user's holdings at current Token prices and ranking them. Phones
+  // just read this (cheap) instead of subscribing to every profile change.
+  // Row id = the rank string ("1".."100"). Lambda writes via the DynamoDB SDK
+  // (bypasses model authz, like Token); clients only read. No holdings exposed.
+  GlobalLeaderboard: a.model({
+    rank:        a.integer().required(),
+    owner:       a.string().required(),  // Cognito sub — self-highlight + block filter
+    handle:      a.string().required(),
+    value:       a.float(),              // live-priced bankroll = cash + Σ holdings×price
+    pnlPct:      a.float(),
+    league:      a.string(),
+    avatarKey:   a.string(),
+    avatarColor: a.string(),
+    updatedAt:   a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
   ]),

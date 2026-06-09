@@ -7,49 +7,62 @@ import { Chip } from '../components/ui/Chip';
 import { Avatar } from '../components/ui/Avatar';
 import { MoreHorizontal } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { fetchTopTraders, subscribeToTopTraders, type PublicTrader } from '../services/portfolioService';
+import { useAuth } from '../store/AuthContext';
+import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
+import { fetchTraderByOwner } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { useModeration } from '../hooks/useModeration';
+
+// Bare sub from an Amplify owner field ("sub" or "sub::username").
+const subOf = (owner: string) => (owner ? owner.split('::')[0] : '');
 
 export function TopTradersScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
+  const { userId } = useAuth();
   const { isBlocked, openMenu } = useModeration();
-  const [traders, setTraders] = useState<PublicTrader[]>([]);
+  const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Blocked traders are removed from the discovery feed instantly.
-  const visible = traders.filter(t => !isBlocked(t.owner));
+  // Blocked users are removed from the leaderboard instantly.
+  const visible = rows.filter(r => !isBlocked(r.owner));
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const list = await fetchTopTraders(50);
-    setTraders(list);
+    setRows(await fetchGlobalLeaderboard());
     setLoading(false);
   }, []);
 
   useEffect(() => {
     refresh();
-    // Live updates: re-rank whenever any trader's PublicProfile row changes.
+    // Cheap live updates: the leaderboard table is tiny and only the Lambda
+    // writes it (~every 5 min), so this is a handful of events per refresh.
     let unsub: () => void = () => {};
-    subscribeToTopTraders(list => {
-      setTraders(list);
+    subscribeToGlobalLeaderboard(list => {
+      setRows(list);
       setLoading(false);
-    }, 50).then(u => { unsub = u; });
+    }).then(u => { unsub = u; });
     return () => unsub();
   }, [refresh]);
 
+  // A leaderboard row carries the owner, not the PublicProfile id — resolve it
+  // to open the trader's copy-trade detail.
+  const openTrader = useCallback(async (owner: string) => {
+    const trader = await fetchTraderByOwner(owner);
+    if (trader) nav.navigate('CopyTrade', { traderId: trader.id });
+  }, [nav]);
+
   return (
-    <ScreenShell title="Top traders" eyebrow="Discover" onRefresh={refresh}>
+    <ScreenShell title="Leaderboard" eyebrow="Global" onRefresh={refresh}>
       {!isAmplifyConfigured && (
         <Card variant="tinted">
           <Text style={{ color: colors.ink3, fontSize: 13 }}>
-            Sign in to a deployed sandbox to discover real traders.
+            Sign in to a deployed sandbox to see the live leaderboard.
           </Text>
         </Card>
       )}
 
-      {loading && traders.length === 0 && (
+      {loading && rows.length === 0 && (
         <View style={{ paddingTop: 40, alignItems: 'center' }}>
           <ActivityIndicator color={colors.brand} />
         </View>
@@ -57,72 +70,75 @@ export function TopTradersScreen() {
 
       {!loading && visible.length === 0 && isAmplifyConfigured && (
         <Card variant="tinted">
-          <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>No traders yet</Text>
+          <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>No rankings yet</Text>
           <Text style={{ color: colors.ink3, fontSize: 13 }}>
-            Make some trades — your public profile shows up here for other users to copy.
+            The leaderboard refreshes every few minutes. Make some trades and you'll show up here.
           </Text>
         </Card>
       )}
 
       {visible.length > 0 && (
         <Card variant="noPad">
-          {visible.map((t, i) => (
-            <TouchableOpacity
-              key={t.id}
-              testID={`top-traders-row-${t.id}`}
-              onPress={() => nav.navigate('CopyTrade', { traderId: t.id })}
-              activeOpacity={0.7}
-            >
-              <CardSection last={i === visible.length - 1}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Text style={{
-                    width: 24, textAlign: 'center',
-                    fontWeight: '700', fontVariant: ['tabular-nums'], fontSize: 13,
-                    color: i < 3 ? colors.up : colors.ink3,
+          {visible.map((r, i) => {
+            const isMe = !!userId && subOf(r.owner) === userId;
+            return (
+              <TouchableOpacity
+                key={r.id}
+                testID={`leaderboard-row-${r.rank}`}
+                onPress={() => openTrader(r.owner)}
+                activeOpacity={0.7}
+              >
+                <CardSection last={i === visible.length - 1}>
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    backgroundColor: isMe ? `${colors.brand}0F` : undefined,
+                    marginHorizontal: isMe ? -16 : 0, paddingHorizontal: isMe ? 16 : 0,
                   }}>
-                    {i + 1}
-                  </Text>
-                  <Avatar
-                    initials={t.handle.slice(0, 2).toUpperCase()}
-                    size="default"
-                    uri={t.avatarUrl}
-                    style={t.avatarColor && !t.avatarUrl ? { backgroundColor: t.avatarColor } : undefined}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontWeight: '700', fontSize: 14, color: colors.ink }}>
-                        @{t.handle}
-                      </Text>
-                      <Chip variant="brand">{t.league}</Chip>
-                    </View>
-                    <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
-                      {t.tradeCount} trades · {t.winRate.toFixed(0)}% win rate
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{
-                      fontWeight: '700',
-                      fontVariant: ['tabular-nums'],
-                      color: t.pnlPct >= 0 ? colors.up : colors.down,
+                      width: 24, textAlign: 'center',
+                      fontWeight: '700', fontVariant: ['tabular-nums'], fontSize: 13,
+                      color: r.rank <= 3 ? colors.up : colors.ink3,
                     }}>
-                      {t.pnlPct >= 0 ? '+' : ''}{t.pnlPct.toFixed(1)}%
+                      {r.rank}
                     </Text>
-                    <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
-                      ${Math.round(t.bankroll).toLocaleString()}
+                    <Avatar
+                      initials={r.handle.slice(0, 2).toUpperCase()}
+                      size="default"
+                      style={r.avatarColor ? { backgroundColor: r.avatarColor } : undefined}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontWeight: '700', fontSize: 14, color: colors.ink }}>
+                          @{r.handle}
+                        </Text>
+                        {isMe && <Chip variant="brand">You</Chip>}
+                        {!!r.league && !isMe && <Chip variant="brand">{r.league}</Chip>}
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+                        ${Math.round(r.value).toLocaleString()}
+                      </Text>
+                    </View>
+                    <Text style={{
+                      fontWeight: '700', fontVariant: ['tabular-nums'],
+                      color: r.pnlPct >= 0 ? colors.up : colors.down,
+                    }}>
+                      {r.pnlPct >= 0 ? '+' : ''}{r.pnlPct.toFixed(1)}%
                     </Text>
+                    {!isMe && (
+                      <TouchableOpacity
+                        testID={`leaderboard-menu-${r.rank}`}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        onPress={() => openMenu({ owner: r.owner, handle: r.handle, context: 'leaderboard' })}
+                        style={{ paddingLeft: 6, paddingVertical: 4 }}
+                      >
+                        <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                  <TouchableOpacity
-                    testID={`top-traders-menu-${t.id}`}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={() => openMenu({ owner: t.owner, handle: t.handle, context: 'trader_profile' })}
-                    style={{ paddingLeft: 6, paddingVertical: 4 }}
-                  >
-                    <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
-                  </TouchableOpacity>
-                </View>
-              </CardSection>
-            </TouchableOpacity>
-          ))}
+                </CardSection>
+              </TouchableOpacity>
+            );
+          })}
         </Card>
       )}
     </ScreenShell>
