@@ -16,7 +16,7 @@ import { ShakeText } from '../components/ui/ShakeText';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { realizedPnl as calcRealizedPnl, sellXp } from '../services/gamification';
-import { Star, MoreHorizontal, Shield, Check, X, ChevronDown, Bell, Share2, ExternalLink } from 'lucide-react-native';
+import { Star, MoreHorizontal, Shield, Check, X, ChevronDown, ChevronLeft, Bell, Share2, ExternalLink } from 'lucide-react-native';
 import { NumPad } from '../components/ui/NumPad';
 
 // A buy of this size or larger gets a confetti celebration (a notable position).
@@ -459,6 +459,16 @@ export function TradeScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
         <ConfettiBurst trigger={confetti} />
+        {/* Back button → portfolio page */}
+        <TouchableOpacity
+          testID="order-filled-back-btn"
+          onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 12, paddingVertical: 10 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ChevronLeft color={colors.ink} size={24} strokeWidth={2} />
+          <Text style={{ color: colors.ink, fontSize: 15, fontWeight: '600' }}>Portfolio</Text>
+        </TouchableOpacity>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
           <View style={{ alignItems: 'center', paddingVertical: 24, gap: 14 }}>
             <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.upSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -518,12 +528,6 @@ export function TradeScreen() {
             <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
             <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}>View portfolio</Button>
           </View>
-          <Button
-            variant="surface"
-            onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Markets' }); }}
-          >
-            Back to Markets
-          </Button>
         </ScrollView>
       </SafeAreaView>
     );
@@ -669,6 +673,14 @@ export function TradeScreen() {
                       </Text>
                     </View>
                   ))}
+                </View>
+
+                {/* Available cash for the active portfolio (main or a contest). */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <Text style={{ fontSize: 13, color: colors.ink3 }}>Available cash to trade</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                    ${state.cash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
                 </View>
 
                 <Card variant="tinted" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>

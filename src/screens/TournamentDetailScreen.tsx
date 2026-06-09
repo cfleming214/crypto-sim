@@ -411,12 +411,12 @@ export function TournamentDetailScreen() {
           variant="brand"
           style={{ flex: 1 }}
           onPress={() => {
-            // Switch into this contest's portfolio so the Trade screen uses its
-            // $10K buying power, not the main portfolio's cash.
+            // Switch into this contest's portfolio so trades use its $10K buying
+            // power, then go to Markets to pick a coin to trade.
             if (joined && state.activePortfolioId !== competitionId) {
               dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: competitionId });
             }
-            nav.navigate('Trade');
+            nav.navigate('MainTabs', { screen: 'Markets' });
           }}
         >
           Trade now
