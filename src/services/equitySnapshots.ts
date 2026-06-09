@@ -90,6 +90,18 @@ async function saveSnapshots(portfolioId: string, points: EquityPoint[]): Promis
   }
 }
 
+// Wipe a portfolio's local equity history. Used when the demo portfolio is
+// reset, so the graph re-anchors at the reset moment instead of showing the
+// stale pre-reset curve.
+export async function clearSnapshots(portfolioId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(KEY(portfolioId));
+  } catch {
+    // Ignore — a failed clear just leaves the old series, which the reset's
+    // fresh seed point will sit alongside until the next successful write.
+  }
+}
+
 // Append one live-balance reading. Coalesces sub-minute repeats (the capture
 // timer fires ~1/min, but a foreground/blur burst could fire sooner) by
 // overwriting the last point when it's <~minute old, so we keep ~1 point/min.

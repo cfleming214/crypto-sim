@@ -8,7 +8,7 @@ import { fetchCompetitions, subscribeToCompetitions } from '../services/competit
 import { fetchTokenCatalog } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
-import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud } from '../services/equitySnapshots';
+import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -885,9 +885,11 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
       // Truly clean: $10K cash, no holdings/trades/orders/joined comps, fresh
-      // XP. Keeps profile identity (handle, avatar) and current coin prices.
+      // XP. Keeps profile identity (handle, avatar, createdAt) and current coin
+      // prices. resetAt re-anchors the equity graph (see the reset effect).
       return {
         ...state,
+        resetAt: Date.now(),
         bankroll: 10000,
         cash: 10000,
         holdings: [],
@@ -1069,6 +1071,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt]);
+
+  // Re-anchor the equity graph on RESET_DEMO. A reset means "fresh $10K
+  // portfolio starting now", so we wipe the old curve and seed a new origin at
+  // the reset moment (the account's createdAt is deliberately left untouched).
+  // Overwriting the cloud backup stops a reload from restoring the pre-reset
+  // history. resetAt is ephemeral (not persisted), so this never re-fires on
+  // app reload.
+  const lastHandledResetRef = useRef(0);
+  useEffect(() => {
+    const resetAt = state.resetAt ?? 0;
+    if (!resetAt || resetAt === lastHandledResetRef.current) return;
+    lastHandledResetRef.current = resetAt;
+    seededOriginRef.current = true; // we seed explicitly here; block the mount-seed
+    (async () => {
+      await clearSnapshots('main');
+      const series = await appendSnapshot('main', { t: resetAt, v: 10000 });
+      flushEquityToCloud(series); // overwrite the cloud backup with the cleared series
+    })();
+  }, [state.resetAt]);
 
   // Flush the equity backup when the app backgrounds, so the latest local
   // points survive even if the throttle window hasn't elapsed. This is the main

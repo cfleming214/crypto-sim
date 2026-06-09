@@ -178,4 +178,8 @@ export interface AppState {
   // External market context, refreshed alongside fetchPrices.
   globalStats?: { totalMarketCap: number; change24h: number };
   fearGreed?:   { value: number; label: string };
+  // Bumped to Date.now() by RESET_DEMO. An effect watches it to wipe + re-seed
+  // the equity graph at the reset moment. Ephemeral (not persisted), so it never
+  // re-fires on app reload.
+  resetAt?: number;
 }
