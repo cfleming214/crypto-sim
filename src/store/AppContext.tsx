@@ -190,6 +190,7 @@ const INITIAL_STATE: AppState = {
   achievements: {},
   predictionWins: 0,
   predictionLosses: 0,
+  claimedContestIds: [],
   activePrediction: null,
   blockedUsers: [],
   activePortfolioId: 'main',
@@ -236,11 +237,12 @@ type Action =
   | { type: 'RECORD_PREDICTION'; outcome: PredictionOutcome }
   | { type: 'START_PREDICTION'; prediction: NonNullable<AppState['activePrediction']> }
   | { type: 'SETTLE_PREDICTION'; outcome: PredictionOutcome }
+  | { type: 'CLAIM_CONTEST_XP'; contestId: string; xp: number }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; activePrediction?: AppState['activePrediction'] } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[] } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -716,6 +718,7 @@ function reducer(state: AppState, action: Action): AppState {
         predictionWins: action.data.predictionWins ?? state.predictionWins,
         predictionLosses: action.data.predictionLosses ?? state.predictionLosses,
         activePrediction: action.data.activePrediction ?? state.activePrediction,
+        claimedContestIds: action.data.claimedContestIds ?? state.claimedContestIds,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -756,6 +759,15 @@ function reducer(state: AppState, action: Action): AppState {
         user: { ...state.user, xp: state.user.xp + (won ? PREDICTION_XP : 0) },
       };
       return { ...state, activePrediction: null, ...scored };
+    }
+    case 'CLAIM_CONTEST_XP': {
+      // Idempotent: a contest's XP prize is awarded once. Guard on the claimed set.
+      if (action.xp <= 0 || state.claimedContestIds.includes(action.contestId)) return state;
+      return {
+        ...state,
+        claimedContestIds: [...state.claimedContestIds, action.contestId],
+        user: { ...state.user, xp: state.user.xp + action.xp },
+      };
     }
     case 'CLAIM_DAILY_REWARD': {
       // Daily reward applies only to the main portfolio (contests have their own
@@ -984,7 +996,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SET_HANDLE', 'SET_LEADERBOARD_VISIBLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
-    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION',
+    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION', 'CLAIM_CONTEST_XP',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1285,6 +1297,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               predictionWins: typeof g.predictionWins === 'number' ? g.predictionWins : undefined,
               predictionLosses: typeof g.predictionLosses === 'number' ? g.predictionLosses : undefined,
               activePrediction: g.activePrediction && typeof g.activePrediction === 'object' ? g.activePrediction : undefined,
+              claimedContestIds: Array.isArray(g.claimedContestIds) ? g.claimedContestIds.filter((x: any) => typeof x === 'string') : undefined,
             },
           });
         }
@@ -1304,7 +1317,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       && Object.keys(state.achievements).length === 0
       && state.predictionWins === 0
       && state.predictionLosses === 0
-      && !state.activePrediction;
+      && !state.activePrediction
+      && state.claimedContestIds.length === 0;
     if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
@@ -1315,9 +1329,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         predictionWins: state.predictionWins,
         predictionLosses: state.predictionLosses,
         activePrediction: state.activePrediction ?? null,
+        claimedContestIds: state.claimedContestIds,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.activePrediction]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.activePrediction, state.claimedContestIds]);
 
   // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
   // then save on every change. The ref gates the save so the empty initial list

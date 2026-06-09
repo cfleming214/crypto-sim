@@ -9,13 +9,17 @@ import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
+import { useToast } from '../components/ui/Toast';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { Bell, MoreHorizontal } from 'lucide-react-native';
+import { CONTEST_CASH_PRIZES } from '../constants/featureFlags';
+import { contestXpForRank } from '../services/gamification';
+import { Bell, MoreHorizontal, Trophy } from 'lucide-react-native';
 
 
 export function TournamentDetailScreen() {
   const { colors } = useTheme();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
+  const { celebrate } = useToast();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const { getById, isJoined, join, leave, timeRemaining, refreshLeaderboard, leaderboard } = useCompetitions();
@@ -68,6 +72,24 @@ export function TournamentDetailScreen() {
   // Determine the user's rank from the live leaderboard.
   const meEntry = entries.find(e => e.handle === state.user.handle);
   const userRank: number | string | null = meEntry?.rank ?? (joined ? '—' : null);
+
+  // XP-prize claim (when cash prizes are off). The winner's final rank comes from
+  // the leaderboard sorted by bankroll; the podium splits prizeXp 100/50/25%.
+  const myFinalRank = [...entries].sort((a, b) => b.bankroll - a.bankroll)
+    .findIndex(e => e.handle === state.user.handle) + 1;
+  const myPrizeXp = contestXpForRank(competition.prizeXp, myFinalRank);
+  const contestXpClaimed = state.claimedContestIds.includes(competition.id);
+  const canClaimXp = !CONTEST_CASH_PRIZES && competition.status === 'finished'
+    && myFinalRank >= 1 && myPrizeXp > 0 && !contestXpClaimed;
+  const claimContestXp = () => {
+    if (!canClaimXp) return;
+    dispatch({ type: 'CLAIM_CONTEST_XP', contestId: competition.id, xp: myPrizeXp });
+    celebrate();
+  };
+  // Podium XP rows shown in the Prizes card (ranks that earn > 0).
+  const xpPodium = [1, 2, 3]
+    .map(rank => ({ rank, xp: contestXpForRank(competition.prizeXp, rank) }))
+    .filter(p => p.xp > 0);
 
   // Derive a real equity-since-start chart from this contest's trade
   // history. Walks trades chronologically, using each trade's price as the
@@ -183,7 +205,8 @@ export function TournamentDetailScreen() {
       {/* Stats row */}
       <Card variant="noPad" style={{ flexDirection: 'row' }}>
         {[
-          ['Prize pool', competition.prizePool],
+          [CONTEST_CASH_PRIZES ? 'Prize pool' : 'Top prize',
+           CONTEST_CASH_PRIZES ? competition.prizePool : `${competition.prizeXp.toLocaleString()} XP`],
           ['Players', playerCount.toLocaleString()],
           ['Your rank', userRank !== null ? `#${userRank}` : '—'],
         ].map(([label, value], i) => (
@@ -246,8 +269,8 @@ export function TournamentDetailScreen() {
         ))}
       </Card>
 
-      {/* Payouts */}
-      {competition.prizes.length > 0 && (
+      {/* Cash payouts (only when cash prizes are enabled) */}
+      {CONTEST_CASH_PRIZES && competition.prizes.length > 0 && (
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontWeight: '700', color: colors.ink }}>Payouts</Text>
@@ -263,6 +286,37 @@ export function TournamentDetailScreen() {
               </Text>
             </View>
           ))}
+        </Card>
+      )}
+
+      {/* XP prizes (when cash prizes are off) */}
+      {!CONTEST_CASH_PRIZES && xpPodium.length > 0 && (
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontWeight: '700', color: colors.ink }}>XP prizes</Text>
+            <Text style={{ fontSize: 11, color: colors.ink3 }}>Winner takes {competition.prizeXp.toLocaleString()} XP</Text>
+          </View>
+          {xpPodium.map((p, i) => (
+            <View key={p.rank} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: i < xpPodium.length - 1 ? 1 : 0, borderBottomColor: colors.hairline }}>
+              <Text style={{ fontSize: 13, color: colors.ink }}>#{p.rank}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Trophy color={colors.up} size={14} strokeWidth={2} />
+                <Text style={{ fontWeight: '700', fontSize: 13, color: colors.up, fontVariant: ['tabular-nums'] }}>
+                  {p.xp.toLocaleString()} XP
+                </Text>
+              </View>
+            </View>
+          ))}
+          {canClaimXp && (
+            <Button variant="brand" style={{ marginTop: 12 }} onPress={claimContestXp}>
+              Claim {myPrizeXp.toLocaleString()} XP
+            </Button>
+          )}
+          {!CONTEST_CASH_PRIZES && competition.status === 'finished' && contestXpClaimed && myPrizeXp > 0 && (
+            <Text style={{ marginTop: 10, textAlign: 'center', fontSize: 13, fontWeight: '700', color: colors.up }}>
+              ✓ Claimed +{myPrizeXp.toLocaleString()} XP
+            </Text>
+          )}
         </Card>
       )}
 
@@ -288,6 +342,7 @@ export function TournamentDetailScreen() {
               const prize = liveRank <= competition.prizes.length
                 ? competition.prizes[liveRank - 1]
                 : 0;
+              const prizeXp = contestXpForRank(competition.prizeXp, liveRank);
               const isMe = e.handle === state.user.handle;
               return (
                 <View
@@ -323,10 +378,12 @@ export function TournamentDetailScreen() {
                   <Text style={{
                     fontWeight: '700',
                     fontSize: 13,
-                    color: prize > 0 ? colors.up : colors.ink3,
+                    color: (CONTEST_CASH_PRIZES ? prize : prizeXp) > 0 ? colors.up : colors.ink3,
                     fontVariant: ['tabular-nums'],
                   }}>
-                    {prize > 0 ? `$${prize.toLocaleString()}` : '—'}
+                    {CONTEST_CASH_PRIZES
+                      ? (prize > 0 ? `$${prize.toLocaleString()}` : '—')
+                      : (prizeXp > 0 ? `${prizeXp.toLocaleString()} XP` : '—')}
                   </Text>
                 </View>
               );

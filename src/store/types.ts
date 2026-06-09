@@ -63,6 +63,7 @@ export interface Competition {
   entryCount: number;
   numberOfPrizes: number;   // count of paid positions
   prizes: number[];         // dollar amount per rank (index 0 = #1)
+  prizeXp: number;          // winner's XP award when cash prizes are off (podium splits it)
   inviteCode?: string;      // 1v1 duels only — shareable join code
   challengerHandle?: string; // 1v1 duels only — who created the duel
 }
@@ -174,6 +175,9 @@ export interface AppState {
   // 'gamification.v1'. predictionWins feeds the "Predictor" achievement.
   predictionWins: number;
   predictionLosses: number;
+  // Contest ids whose XP prize the user has already claimed, so a contest's XP
+  // is never awarded twice. Persisted in the gamification.v1 blob.
+  claimedContestIds: string[];
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

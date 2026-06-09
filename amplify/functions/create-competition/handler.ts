@@ -12,6 +12,9 @@ interface CreateInput {
   stake?: string;
   startAt: string; // ISO
   endAt: string;   // ISO
+  prizeXp?: number;          // XP awarded to the winner (default 5000)
+  numberOfPrizes?: number;   // paid positions (for the cash path)
+  prizesJson?: string;       // JSON dollar amounts (for the cash path)
 }
 
 // Admin utility — create a competition record.
@@ -37,6 +40,9 @@ export const handler = async (event: CreateInput): Promise<{ id: string }> => {
       startAt: event.startAt,
       endAt: event.endAt,
       entryCount: 0,
+      prizeXp: event.prizeXp ?? 5000,
+      numberOfPrizes: event.numberOfPrizes ?? 0,
+      prizesJson: event.prizesJson ?? '[]',
       createdAt: now,
       updatedAt: now,
     }),

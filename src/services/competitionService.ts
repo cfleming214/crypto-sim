@@ -1,5 +1,6 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { Competition, CompetitionEntry } from '../store/types';
+import { DEFAULT_PRIZE_XP } from '../constants/featureFlags';
 
 // No hardcoded seed — the Competition table in DynamoDB is the single source
 // of truth. Contests are inserted via the createCompetition Lambda or
@@ -37,6 +38,7 @@ function mapCompetition(d: any): Competition {
     entryCount: d.entryCount ?? 0,
     numberOfPrizes: d.numberOfPrizes ?? prizes.length,
     prizes,
+    prizeXp: d.prizeXp ?? DEFAULT_PRIZE_XP,
     inviteCode: d.inviteCode ?? undefined,
     challengerHandle: d.challengerHandle ?? undefined,
   };
@@ -147,31 +149,43 @@ function makeInviteCode(): string {
   return s;
 }
 
-const DUEL_DURATION_MS = 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
+// Selectable duel lengths surfaced in the challenge UI.
+export const DUEL_DURATION_OPTIONS = [
+  { label: '1 day', days: 1 },
+  { label: '2 days', days: 2 },
+  { label: '3 days', days: 3 },
+  { label: '7 days', days: 7 },
+] as const;
+const DEFAULT_DUEL_DURATION_MS = DAY_MS;
 
-// Create a duel (the challenger). Returns the Competition (with inviteCode) and
-// the challenger's entry, or null on failure.
+// Create a duel (the challenger). `durationMs` sets the duel length (defaults to
+// 1 day). Returns the Competition (with inviteCode) and the challenger's entry,
+// or null on failure.
 export async function createDuel(
   handle: string,
   bankroll: number,
+  durationMs: number = DEFAULT_DUEL_DURATION_MS,
 ): Promise<{ competition: Competition; entry: CompetitionEntry | null } | null> {
   const client = await getClient();
   if (!client) return null;
   try {
     const now = Date.now();
     const inviteCode = makeInviteCode();
+    const days = Math.max(1, Math.round(durationMs / DAY_MS));
     const { data: comp } = await client.models.Competition.create({
-      name: `Duel · ${handle}`,
+      name: `Duel · ${handle} · ${days}d`,
       type: '1v1',
       status: 'live',
       prizePool: 'Bragging rights',
       maxPlayers: 2,
       stake: 'Free',
       startAt: new Date(now).toISOString(),
-      endAt: new Date(now + DUEL_DURATION_MS).toISOString(),
+      endAt: new Date(now + durationMs).toISOString(),
       entryCount: 1,
       numberOfPrizes: 0,
       prizesJson: '[]',
+      prizeXp: DEFAULT_PRIZE_XP,
       inviteCode,
       challengerHandle: handle,
     });

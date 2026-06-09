@@ -74,6 +74,10 @@ const schema = a.schema({
     createdBy: a.string(),
     numberOfPrizes: a.integer(),    // length of the prizes array
     prizesJson: a.string(),         // JSON array of dollar amounts, e.g. "[100,50,20,10,5]"
+    // Headline XP awarded to the winner when cash prizes are off (the podium
+    // splits it 100/50/25%). Null on legacy rows → client falls back to
+    // DEFAULT_PRIZE_XP (5000).
+    prizeXp: a.integer(),
     // Token symbols this contest restricts trading to. Empty / null = all
     // practice-enabled tokens are allowed (default for legacy rows).
     allowedTokenSymbols: a.string().array(),

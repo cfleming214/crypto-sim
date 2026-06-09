@@ -12,7 +12,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { createDuel, acceptDuel } from '../services/competitionService';
+import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
+import { CONTEST_CASH_PRIZES } from '../constants/featureFlags';
 import { useNavigation } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X } from 'lucide-react-native';
 import type { Competition } from '../store/types';
@@ -60,16 +61,24 @@ export function CompeteScreen() {
   const predExpired = !!activePrediction && predRemaining <= 0;
   const predMmss = `${Math.floor(predRemaining / 60)}:${String(predRemaining % 60).padStart(2, '0')}`;
 
+  // Prize label for a contest card — cash pool text, or the XP prize when cash
+  // prizes are off.
+  const prizeLabel = (c: Competition) =>
+    CONTEST_CASH_PRIZES ? c.prizePool : `${c.prizeXp.toLocaleString()} XP`;
+
+  // Selected duel length (default 1 day).
+  const [duelDays, setDuelDays] = useState(1);
+
   const handleChallenge = async () => {
     if (duelBusy) return;
     setDuelBusy(true);
-    const res = await createDuel(state.user.handle, 10000);
+    const res = await createDuel(state.user.handle, 10000, duelDays * DAY_MS);
     setDuelBusy(false);
     if (!res) { Alert.alert('Could not create duel', 'Please try again in a moment.'); return; }
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: res.competition.id });
     const code = res.competition.inviteCode ?? '';
     try {
-      await Share.share({ message: `I challenge you to a 24h crypto trading duel! Open the app → Compete → 1v1, and enter code ${code}.` });
+      await Share.share({ message: `I challenge you to a ${duelDays}-day crypto trading duel! Open the app → Compete → 1v1, and enter code ${code}.` });
     } catch {}
     nav.navigate('TournamentDetail', { id: res.competition.id });
   };
@@ -112,7 +121,7 @@ export function CompeteScreen() {
     }
     Alert.alert(
       `Join ${comp.name}`,
-      `Stake: ${comp.stake}\nPrize pool: ${comp.prizePool}\n\nYou'll start with a $10,000 simulated bankroll.`,
+      `Stake: ${comp.stake}\n${CONTEST_CASH_PRIZES ? 'Prize pool' : 'Top prize'}: ${prizeLabel(comp)}\n\nYou'll start with a $10,000 simulated bankroll.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -216,7 +225,7 @@ export function CompeteScreen() {
                     ? 'Be the first to join'
                     : `${activeLive.entryCount.toLocaleString()} ${activeLive.entryCount === 1 ? 'player' : 'players'}`}
                 </Text>
-                <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{activeLive.prizePool}</Text>
+                <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(activeLive)}</Text>
               </View>
             </CardSection>
           </Card>
@@ -256,7 +265,7 @@ export function CompeteScreen() {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
                 <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{comp.prizePool}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
               </View>
             </Card>
           </TouchableOpacity>
@@ -294,10 +303,39 @@ export function CompeteScreen() {
             </Text>
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>1v1 Duel</Text>
             <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-              Challenge a friend to 24h, highest P&L wins
+              Challenge a friend — highest P&L over the duel wins
             </Text>
           </View>
         </View>
+
+        {/* Duel length */}
+        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 12 }}>
+          Duel length
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          {DUEL_DURATION_OPTIONS.map(opt => {
+            const active = duelDays === opt.days;
+            return (
+              <TouchableOpacity
+                key={opt.days}
+                testID={`duel-length-${opt.days}`}
+                onPress={() => setDuelDays(opt.days)}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1, paddingVertical: 7, borderRadius: 999, alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: active ? colors.brand : colors.hairline,
+                  backgroundColor: active ? colors.brand : 'transparent',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: active ? colors.brandOn : colors.ink }}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
           <Button testID="duel-challenge-btn" variant="brand" size="sm" style={{ flex: 1 }} loading={duelBusy} onPress={handleChallenge}>
             Challenge a friend

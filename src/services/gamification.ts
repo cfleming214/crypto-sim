@@ -190,6 +190,21 @@ export function resolvePrediction(
 }
 
 // ---------------------------------------------------------------------------
+// Contest prizes (XP). When cash prizes are off (CONTEST_CASH_PRIZES), winning a
+// contest awards XP instead. Each contest carries a headline `prizeXp` (the
+// winner's award, default DEFAULT_PRIZE_XP); the podium splits it 100/50/25%.
+// ---------------------------------------------------------------------------
+
+// XP a given finishing rank earns from a contest's prizeXp. 1st takes it all,
+// 2nd half, 3rd a quarter; everyone else nothing.
+export function contestXpForRank(prizeXp: number, rank: number): number {
+  if (!(prizeXp > 0) || rank < 1) return 0;
+  const split = [1, 0.5, 0.25];
+  const weight = split[rank - 1] ?? 0;
+  return Math.round(prizeXp * weight);
+}
+
+// ---------------------------------------------------------------------------
 // League ladder (Phase 9). A weekly cron settles each player's league/division
 // from the XP they earned during the season. Pure + shared so the client and
 // the settle-season Lambda agree on tiers. Division 1 = top of the band ('I').

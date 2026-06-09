@@ -7,6 +7,8 @@ import { Segmented } from '../components/ui/Segmented';
 import { Button } from '../components/ui/Button';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { CONTEST_CASH_PRIZES } from '../constants/featureFlags';
+import { contestXpForRank } from '../services/gamification';
 import { Trophy, Shield, Flame, Star, ArrowUp, ArrowDown, Bell } from 'lucide-react-native';
 
 type NotifType = 'compete' | 'trade' | 'social';
@@ -149,14 +151,19 @@ export function NotificationsScreen() {
       const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
       const myIdx = sorted.findIndex(e => e.handle === state.user.handle);
       const myRank = myIdx >= 0 ? myIdx + 1 : null;
+      const wonXp = myRank ? contestXpForRank(comp.prizeXp, myRank) : 0;
+      const wonCash = myRank && myRank <= comp.prizes.length ? comp.prizes[myRank - 1] : 0;
+      const won = CONTEST_CASH_PRIZES ? wonCash > 0 : wonXp > 0;
       contestNotifs.push({
         key: `comp-finished-${cid}`,
         Icon: Trophy,
-        color: myRank && myRank <= comp.prizes.length ? 'up' : null,
+        color: won ? 'up' : null,
         title: `${comp.name} finished${myRank ? ` · #${myRank}` : ''}`,
-        sub: myRank && myRank <= comp.prizes.length
-          ? `You won $${comp.prizes[myRank - 1]}`
-          : 'Out of the prize positions',
+        sub: !won
+          ? 'Out of the prize positions'
+          : CONTEST_CASH_PRIZES
+            ? `You won $${wonCash.toLocaleString()}`
+            : `You won ${wonXp.toLocaleString()} XP — tap to claim`,
         time: relTime(comp.endAt),
         unread: true,
         type: 'compete' as NotifType,
