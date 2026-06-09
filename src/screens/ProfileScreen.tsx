@@ -6,6 +6,7 @@ import { ScreenShell } from '../components/ui/ScreenShell';
 import { AuthWall } from '../components/AuthWall';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
+import { LeagueBadge } from '../components/ui/LeagueBadge';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
@@ -362,7 +363,7 @@ export function ProfileScreen() {
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <Chip variant="brand">{state.user.league} {state.user.division > 0 ? `${['', 'I', 'II', 'III', 'IV'][state.user.division]}` : ''}</Chip>
+            <LeagueBadge league={state.user.league} division={state.user.division} />
             <Text style={{ fontSize: 12, color: colors.ink3 }}>
               {state.user.createdAt
                 ? `Joined ${new Date(state.user.createdAt).toLocaleDateString([], { month: 'short', year: '2-digit' })}`

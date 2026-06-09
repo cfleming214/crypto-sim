@@ -260,9 +260,15 @@ export function TournamentDetailScreen() {
           ['Entry fee', competition.stake],
         ].map(([k, v], i, arr) => (
           <View key={k}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, color: colors.ink3 }}>{k}</Text>
-              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>{v}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <Text style={{ fontSize: 13, color: colors.ink3, flexShrink: 0 }}>{k}</Text>
+              <Text
+                style={{ fontWeight: '600', fontSize: 13, color: colors.ink, flex: 1, textAlign: 'right' }}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {v}
+              </Text>
             </View>
             {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: colors.hairline, marginTop: 8, opacity: 0.6 }} />}
           </View>
@@ -404,7 +410,14 @@ export function TournamentDetailScreen() {
         <Button
           variant="brand"
           style={{ flex: 1 }}
-          onPress={() => nav.navigate('Trade')}
+          onPress={() => {
+            // Switch into this contest's portfolio so the Trade screen uses its
+            // $10K buying power, not the main portfolio's cash.
+            if (joined && state.activePortfolioId !== competitionId) {
+              dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: competitionId });
+            }
+            nav.navigate('Trade');
+          }}
         >
           Trade now
         </Button>

@@ -9,13 +9,31 @@ interface SparklineProps {
   height?: number;
   down?: boolean;
   style?: ViewStyle;
+  /** When `data` is absent, seed (e.g. the coin symbol) so each coin's
+   *  placeholder differs instead of every row drawing the same default line. */
+  seed?: string;
 }
 
 const DEFAULT_DATA = [10, 12, 11, 14, 13, 16, 15, 18];
 
-export function Sparkline({ data, width = 56, height = 22, down, style }: SparklineProps) {
+// Deterministic pseudo-random walk derived from a string, so a coin without
+// real history still gets a distinct (but stable) placeholder sparkline.
+function seededSeries(seed: string, n = 16): number[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const out: number[] = [];
+  let v = 50;
+  for (let i = 0; i < n; i++) {
+    h ^= h << 13; h ^= h >>> 17; h ^= h << 5; // xorshift
+    v += ((h >>> 0) % 1000) / 1000 - 0.5;       // ±0.5 step
+    out.push(v);
+  }
+  return out;
+}
+
+export function Sparkline({ data, width = 56, height = 22, down, style, seed }: SparklineProps) {
   const { colors } = useTheme();
-  const pts = data ?? DEFAULT_DATA;
+  const pts = data ?? (seed ? seededSeries(seed) : DEFAULT_DATA);
   const min = Math.min(...pts);
   const max = Math.max(...pts);
   const range = max - min || 1;

@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
+import { LeagueBadge } from '../components/ui/LeagueBadge';
 import { Avatar } from '../components/ui/Avatar';
 import { MoreHorizontal } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
@@ -112,7 +113,7 @@ export function TopTradersScreen() {
                           @{r.handle}
                         </Text>
                         {isMe && <Chip variant="brand">You</Chip>}
-                        {!!r.league && !isMe && <Chip variant="brand">{r.league}</Chip>}
+                        {!!r.league && !isMe && <LeagueBadge league={r.league} />}
                       </View>
                       <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
                         ${Math.round(r.value).toLocaleString()}

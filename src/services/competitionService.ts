@@ -166,6 +166,7 @@ export async function createDuel(
   handle: string,
   bankroll: number,
   durationMs: number = DEFAULT_DUEL_DURATION_MS,
+  duelNumber?: number,
 ): Promise<{ competition: Competition; entry: CompetitionEntry | null } | null> {
   const client = await getClient();
   if (!client) return null;
@@ -173,8 +174,9 @@ export async function createDuel(
     const now = Date.now();
     const inviteCode = makeInviteCode();
     const days = Math.max(1, Math.round(durationMs / DAY_MS));
+    const label = duelNumber ? `Duel #${duelNumber}` : `Duel · ${handle}`;
     const { data: comp } = await client.models.Competition.create({
-      name: `Duel · ${handle} · ${days}d`,
+      name: `${label} · ${days}d`,
       type: '1v1',
       status: 'live',
       prizePool: 'Bragging rights',

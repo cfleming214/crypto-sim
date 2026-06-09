@@ -178,6 +178,9 @@ export interface AppState {
   // Contest ids whose XP prize the user has already claimed, so a contest's XP
   // is never awarded twice. Persisted in the gamification.v1 blob.
   claimedContestIds: string[];
+  // Count of duels this user has created — drives the incrementing "Duel #N"
+  // name. Persisted in the gamification.v1 blob.
+  duelsCreated: number;
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

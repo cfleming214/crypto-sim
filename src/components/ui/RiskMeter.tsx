@@ -12,19 +12,19 @@ export function RiskMeter({ score, style }: RiskMeterProps) {
   // 5 segments, score 0-20 = 1 segment, etc.
   const filled = Math.min(5, Math.ceil(score / 20));
 
+  // `score` is a health score (high = low risk). Color the filled segments by
+  // level to match the Healthy/Caution/High-risk chip: green = low risk,
+  // yellow = medium, red = high risk.
+  const levelColor = score >= 80 ? colors.up : score >= 50 ? colors.warn : colors.down;
+
   return (
     <View style={[{ flexDirection: 'row', gap: 3, height: 8 }, style]}>
-      {[1, 2, 3, 4, 5].map(i => {
-        let bg = colors.surface2;
-        if (i <= filled) {
-          if (i === 5) bg = colors.down;
-          else if (i === 4) bg = colors.warn;
-          else bg = colors.ink;
-        }
-        return (
-          <View key={i} style={{ flex: 1, height: 8, borderRadius: 2, backgroundColor: bg }} />
-        );
-      })}
+      {[1, 2, 3, 4, 5].map(i => (
+        <View
+          key={i}
+          style={{ flex: 1, height: 8, borderRadius: 2, backgroundColor: i <= filled ? levelColor : colors.surface2 }}
+        />
+      ))}
     </View>
   );
 }

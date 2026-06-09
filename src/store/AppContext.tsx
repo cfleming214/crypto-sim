@@ -191,6 +191,7 @@ const INITIAL_STATE: AppState = {
   predictionWins: 0,
   predictionLosses: 0,
   claimedContestIds: [],
+  duelsCreated: 0,
   activePrediction: null,
   blockedUsers: [],
   activePortfolioId: 'main',
@@ -238,11 +239,12 @@ type Action =
   | { type: 'START_PREDICTION'; prediction: NonNullable<AppState['activePrediction']> }
   | { type: 'SETTLE_PREDICTION'; outcome: PredictionOutcome }
   | { type: 'CLAIM_CONTEST_XP'; contestId: string; xp: number }
+  | { type: 'INCREMENT_DUELS_CREATED' }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[] } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -719,6 +721,7 @@ function reducer(state: AppState, action: Action): AppState {
         predictionLosses: action.data.predictionLosses ?? state.predictionLosses,
         activePrediction: action.data.activePrediction ?? state.activePrediction,
         claimedContestIds: action.data.claimedContestIds ?? state.claimedContestIds,
+        duelsCreated: action.data.duelsCreated ?? state.duelsCreated,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -769,6 +772,8 @@ function reducer(state: AppState, action: Action): AppState {
         user: { ...state.user, xp: state.user.xp + action.xp },
       };
     }
+    case 'INCREMENT_DUELS_CREATED':
+      return { ...state, duelsCreated: state.duelsCreated + 1 };
     case 'CLAIM_DAILY_REWARD': {
       // Daily reward applies only to the main portfolio (contests have their own
       // fresh bankroll). The card is gated to main, but guard here too.
@@ -996,7 +1001,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SET_HANDLE', 'SET_LEADERBOARD_VISIBLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
-    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION', 'CLAIM_CONTEST_XP',
+    'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION', 'CLAIM_CONTEST_XP', 'INCREMENT_DUELS_CREATED',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1298,6 +1303,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               predictionLosses: typeof g.predictionLosses === 'number' ? g.predictionLosses : undefined,
               activePrediction: g.activePrediction && typeof g.activePrediction === 'object' ? g.activePrediction : undefined,
               claimedContestIds: Array.isArray(g.claimedContestIds) ? g.claimedContestIds.filter((x: any) => typeof x === 'string') : undefined,
+              duelsCreated: typeof g.duelsCreated === 'number' ? g.duelsCreated : undefined,
             },
           });
         }
@@ -1318,7 +1324,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       && state.predictionWins === 0
       && state.predictionLosses === 0
       && !state.activePrediction
-      && state.claimedContestIds.length === 0;
+      && state.claimedContestIds.length === 0
+      && state.duelsCreated === 0;
     if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
@@ -1330,9 +1337,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         predictionLosses: state.predictionLosses,
         activePrediction: state.activePrediction ?? null,
         claimedContestIds: state.claimedContestIds,
+        duelsCreated: state.duelsCreated,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.activePrediction, state.claimedContestIds]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
 
   // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
   // then save on every change. The ref gates the save so the empty initial list

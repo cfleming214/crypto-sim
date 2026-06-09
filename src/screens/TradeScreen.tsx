@@ -518,6 +518,12 @@ export function TradeScreen() {
             <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
             <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}>View portfolio</Button>
           </View>
+          <Button
+            variant="surface"
+            onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Markets' }); }}
+          >
+            Back to Markets
+          </Button>
         </ScrollView>
       </SafeAreaView>
     );
@@ -681,8 +687,8 @@ export function TradeScreen() {
           })()}
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
-            <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
             <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
+            <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
           </View>
         </View>
       </ScreenShell>

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -20,6 +20,8 @@ import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
 const SEASON_START = new Date('2026-05-01T00:00:00Z').getTime();
+// Width of an open-bracket card in the swipe carousel (next card peeks).
+const BRACKET_CARD_W = Math.round(Dimensions.get('window').width * 0.74);
 
 function computeSeasonDay(): number {
   const elapsed = Date.now() - SEASON_START;
@@ -71,10 +73,25 @@ export function CompeteScreen() {
 
   const handleChallenge = async () => {
     if (duelBusy) return;
+    // Dedupe: if I already have a duel waiting for an opponent (only me joined),
+    // re-share its code instead of creating another contest.
+    const pending = state.competitions.find(
+      c => c.type === '1v1' && c.challengerHandle === state.user.handle && c.entryCount < 2,
+    );
+    if (pending) {
+      const code = pending.inviteCode ?? '';
+      try {
+        await Share.share({ message: `Join my crypto trading duel! Open the app → Compete → 1v1, and enter code ${code}.` });
+      } catch {}
+      nav.navigate('TournamentDetail', { id: pending.id });
+      return;
+    }
     setDuelBusy(true);
-    const res = await createDuel(state.user.handle, 10000, duelDays * DAY_MS);
+    const nextNumber = state.duelsCreated + 1;
+    const res = await createDuel(state.user.handle, 10000, duelDays * DAY_MS, nextNumber);
     setDuelBusy(false);
     if (!res) { Alert.alert('Could not create duel', 'Please try again in a moment.'); return; }
+    dispatch({ type: 'INCREMENT_DUELS_CREATED' });
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: res.competition.id });
     const code = res.competition.inviteCode ?? '';
     try {
@@ -82,6 +99,19 @@ export function CompeteScreen() {
     } catch {}
     nav.navigate('TournamentDetail', { id: res.competition.id });
   };
+
+  // Duel record from finished 1v1 contests I joined (win = I finished #1).
+  const duelRecord = state.joinedTournamentIds.reduce(
+    (acc, id) => {
+      const comp = state.competitions.find(c => c.id === id);
+      if (!comp || comp.type !== '1v1' || comp.status !== 'finished') return acc;
+      const entries = [...(state.leaderboard[id] ?? [])].sort((a, b) => b.bankroll - a.bankroll);
+      const myIdx = entries.findIndex(e => e.handle === state.user.handle);
+      if (myIdx < 0) return acc;
+      return myIdx === 0 ? { ...acc, wins: acc.wins + 1 } : { ...acc, losses: acc.losses + 1 };
+    },
+    { wins: 0, losses: 0 },
+  );
 
   const handleAcceptDuel = async () => {
     if (duelBusy || !duelCode.trim()) return;
@@ -202,7 +232,7 @@ export function CompeteScreen() {
                   size="sm"
                   onPress={() => nav.navigate('TournamentDetail', { id: activeLive.id })}
                 >
-                  {isJoined(activeLive.id) ? 'Resume' : 'View'}
+                  {isJoined(activeLive.id) ? 'Live Details' : 'View'}
                 </Button>
               </View>
 
@@ -240,16 +270,28 @@ export function CompeteScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      {openComps.length === 0 ? (
+        <Card variant="tinted">
+          <Text style={{ color: colors.ink3, fontSize: 13 }}>No open brackets right now — check back soon.</Text>
+        </Card>
+      ) : (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={BRACKET_CARD_W + 10}
+        decelerationRate="fast"
+        style={{ marginHorizontal: -20 }}
+        contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+      >
         {openComps.map(comp => (
           <TouchableOpacity
             key={comp.id}
             testID={`compete-card-${comp.id}`}
-            style={{ width: '47.5%' }}
+            style={{ width: BRACKET_CARD_W }}
             onPress={() => handleJoin(comp)}
             activeOpacity={0.85}
           >
-            <Card variant="compact" style={{ gap: 6, flex: 1 }}>
+            <Card variant="compact" style={{ gap: 6 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   {TYPE_LABEL[comp.type] ?? comp.type}
@@ -270,7 +312,8 @@ export function CompeteScreen() {
             </Card>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
+      )}
 
       {/* Top traders entry point */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
@@ -304,6 +347,14 @@ export function CompeteScreen() {
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>1v1 Duel</Text>
             <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
               Challenge a friend — highest P&L over the duel wins
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Record</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'], marginTop: 2 }}>
+              <Text style={{ color: colors.up }}>{duelRecord.wins}W</Text>
+              {' · '}
+              <Text style={{ color: colors.down }}>{duelRecord.losses}L</Text>
             </Text>
           </View>
         </View>

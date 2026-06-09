@@ -253,6 +253,14 @@ export function MarketsScreen() {
         </View>
       </Card>
 
+      {/* Available cash to trade (active portfolio) */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
+        <Text style={{ fontSize: 12, color: colors.ink3 }}>Available cash to trade</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+          ${state.cash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </Text>
+      </View>
+
       {/* Search */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -301,10 +309,15 @@ export function MarketsScreen() {
                       <CoinGlyph symbol={a.symbol} size={24} />
                       <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
                     </View>
-                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} down={a.change24h < 0} width={96} height={28} />
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                      {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                        ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                        {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                      </Text>
+                    </View>
+                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={96} height={28} />
                   </Card>
                 </TouchableOpacity>
               ))}
@@ -355,7 +368,7 @@ export function MarketsScreen() {
                   </View>
                 </View>
                 <View style={{ gap: 4, alignItems: 'flex-end' }}>
-                  <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} down={a.change24h < 0} width={56} height={22} />
+                  <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={56} height={22} />
                   <TouchableOpacity
                     testID={`markets-watchlist-star-${a.symbol}`}
                     onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol: a.symbol })}

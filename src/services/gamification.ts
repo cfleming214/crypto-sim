@@ -176,7 +176,7 @@ export type PredictionDirection = 'up' | 'down';
 export type PredictionOutcome = 'win' | 'loss' | 'push';
 
 export const PREDICTION_SECONDS = 60;
-export const PREDICTION_XP = 25;   // awarded on a win
+export const PREDICTION_XP = 1000;   // awarded on a win
 
 // Resolve a prediction. An exact tie (no move) is a push (no win/loss recorded).
 export function resolvePrediction(
