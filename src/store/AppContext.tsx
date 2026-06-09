@@ -1100,14 +1100,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!(state.bankroll > 0)) return;
     const portfolioId = state.activePortfolioId;
     const isFreshProfile = !state.trades.some(t => !t.id.startsWith('SEED-'));
-    if (!isFreshProfile) { seededOriginRef.current = true; return; }
     seededOriginRef.current = true;
     (async () => {
       const existing = await loadSnapshots(portfolioId);
-      if (existing.length === 0) {
+      // Fresh profile with no history → anchor an origin point at account creation.
+      if (existing.length === 0 && isFreshProfile) {
         const originT = state.user.createdAt ?? Date.now();
         await appendSnapshot(portfolioId, { t: originT, v: state.bankroll });
       }
+      // Always record a point at app-open. Otherwise a short session (opened for
+      // under 60s, before the capture interval fires) contributes no sub-hour
+      // data and the Live/1H windows never accumulate points.
+      await appendSnapshot(portfolioId, { t: Date.now(), v: state.bankroll });
     })();
   }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt]);
 
@@ -1135,6 +1139,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // cloud write for light sessions (open → glance → background).
   useEffect(() => {
     const sub = RNAppState.addEventListener('change', next => {
+      // On every foreground, record a point so brief sessions (which never let
+      // the 60s capture interval fire) still contribute Live/1H data.
+      if (next === 'active') {
+        const s = stateRef.current;
+        if (s.bankroll > 0) appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
+        return;
+      }
       if (next !== 'background' && next !== 'inactive') return;
       const s = stateRef.current;
       if (s.activePortfolioId !== 'main' || authRef.current !== 'authenticated' || !(s.bankroll > 0)) return;
