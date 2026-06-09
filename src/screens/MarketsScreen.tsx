@@ -309,14 +309,12 @@ export function MarketsScreen() {
                       <CoinGlyph symbol={a.symbol} size={24} />
                       <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                        ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                        {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                      </Text>
-                    </View>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                      ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                      {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                    </Text>
                     <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={96} height={28} />
                   </Card>
                 </TouchableOpacity>
