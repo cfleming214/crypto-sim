@@ -21,8 +21,12 @@ function fmtMoneyDelta(price: number, changePct: number): string {
   const d = Math.abs(price - prev);
   if (d >= 1000) return d.toLocaleString('en-US', { maximumFractionDigits: 0 });
   if (d >= 1) return d.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (d >= 0.01) return d.toFixed(2);
-  return d.toFixed(6);
+  // Sub-$1 move: scale decimals to the coin's PRICE, not the move size, so a ~$1
+  // stablecoin like USDC shows cents (e.g. "0.00") instead of a string of zeros,
+  // while genuinely sub-dollar coins still show meaningful precision.
+  if (price >= 1) return d.toFixed(2);
+  if (d >= 0.01) return d.toFixed(4);
+  return (d.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')) || '0';
 }
 
 type ChangeFilter = 'all' | 'gainers' | 'losers';
@@ -219,20 +223,19 @@ export function MarketsScreen() {
       <Card variant="noPad" style={{ flexDirection: 'row' }}>
         <View style={{ flex: 1, padding: 12, borderRightWidth: 1, borderRightColor: colors.hairline }}>
           <Text style={{ fontSize: 11, color: colors.ink3 }}>Total mkt cap</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>
-              {state.globalStats ? formatLargeNumber(state.globalStats.totalMarketCap) : '—'}
-            </Text>
-            {state.globalStats && (
-              <Text style={{
-                fontSize: 11,
-                color: state.globalStats.change24h >= 0 ? colors.up : colors.down,
-                fontVariant: ['tabular-nums'],
-              }}>
-                {state.globalStats.change24h >= 0 ? '+' : ''}{state.globalStats.change24h.toFixed(1)}%
+          <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'], marginTop: 2 }}>
+            {state.globalStats ? formatLargeNumber(state.globalStats.totalMarketCap) : '—'}
+          </Text>
+          {state.globalStats && (() => {
+            const { totalMarketCap: mc, change24h: pct } = state.globalStats;
+            const delta = mc - mc / (1 + pct / 100);   // 24h $ change
+            const up = pct >= 0;
+            return (
+              <Text style={{ fontSize: 11, color: up ? colors.up : colors.down, fontVariant: ['tabular-nums'], marginTop: 1 }}>
+                {up ? '+' : '−'}{formatLargeNumber(Math.abs(delta))} · {up ? '+' : ''}{pct.toFixed(1)}%
               </Text>
-            )}
-          </View>
+            );
+          })()}
         </View>
         <View style={{ flex: 1, padding: 12 }}>
           <Text style={{ fontSize: 11, color: colors.ink3 }}>Fear & Greed</Text>
@@ -304,20 +307,22 @@ export function MarketsScreen() {
             <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
               {movers.map(a => (
                 <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
-                  <Card variant="compact" style={{ width: 150, gap: 6 }}>
-                    {/* Name + price on one line; amount/percentage move sits under the price */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <CoinGlyph symbol={a.symbol} size={24} />
-                        <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                  <Card variant="compact" style={{ width: 150, gap: 8 }}>
+                    {/* Name + price on one line; the change sits tight underneath the price */}
+                    <View style={{ gap: 2 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <CoinGlyph symbol={a.symbol} size={24} />
+                          <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                          ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
                       </View>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                        ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'], textAlign: 'right' }} numberOfLines={1}>
+                        {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                       </Text>
                     </View>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'], textAlign: 'right' }}>
-                      {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                    </Text>
                     <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={126} height={28} />
                   </Card>
                 </TouchableOpacity>
@@ -351,30 +356,36 @@ export function MarketsScreen() {
           </View>
         ) : sorted.map((a, i) => {
           const held = state.holdings.find(h => h.symbol === a.symbol);
-          const heldText = held && held.units > 0
-            ? ` · ${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol} ($${(held.units * a.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+          const heldLine = held && held.units > 0
+            ? `${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol} · $${(held.units * a.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             : '';
           return (
           <TouchableOpacity key={a.symbol} testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
             <CardSection last={i === sorted.length - 1}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <CoinGlyph symbol={a.symbol} />
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                {/* Ticker + name on one line; holding on its own line; market cap under it */}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-                    <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                      ${a.price < 0.01 ? a.price.toFixed(8) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3, flexShrink: 1 }} numberOfLines={1}>{a.name}</Text>
                   </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name}{heldText} · MC {a.marketCap}</Text>
-                    <Text style={{ fontSize: 12, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                      {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                    </Text>
-                  </View>
+                  {heldLine !== '' && (
+                    <Text style={{ fontSize: 12, color: colors.ink2, marginTop: 2, fontVariant: ['tabular-nums'] }} numberOfLines={1}>{heldLine}</Text>
+                  )}
+                  <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }} numberOfLines={1}>MC {a.marketCap}</Text>
+                </View>
+                {/* Price with the 24h change tucked directly underneath, right-aligned so long numbers can't run off the row */}
+                <View style={{ alignItems: 'flex-end', flexShrink: 1 }}>
+                  <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                    ${a.price < 0.01 ? a.price.toFixed(8) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'], marginTop: 2 }} numberOfLines={1}>
+                    {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                  </Text>
                 </View>
                 <View style={{ gap: 4, alignItems: 'flex-end' }}>
-                  <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={56} height={22} />
+                  <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={44} height={22} />
                   <TouchableOpacity
                     testID={`markets-watchlist-star-${a.symbol}`}
                     onPress={() => dispatch({ type: 'TOGGLE_WATCHLIST', symbol: a.symbol })}

@@ -79,12 +79,16 @@ function CompCard({ comp, isJoined, timeRemaining, onPress }: {
 export function BracketsScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
-  const { competitions, getLive, getOpen, isJoined, timeRemaining } = useCompetitions();
+  const { competitions, finishedCompetitions, getLive, getOpen, isJoined, timeRemaining } = useCompetitions();
   const [tab, setTab] = useState('Open');
 
   const liveComps = getLive();
   const openComps = getOpen();
-  const finishedComps = competitions.filter(c => c.status === 'finished');
+  // Finished contests are archived to their own table; fall back to any still
+  // carrying status 'finished' in the live list (legacy / pre-deploy rows).
+  const finishedComps = finishedCompetitions.length
+    ? finishedCompetitions
+    : competitions.filter(c => c.status === 'finished');
 
   const visibleComps = tab === 'Live' ? liveComps
     : tab === 'Finished' ? finishedComps

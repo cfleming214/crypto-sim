@@ -5,6 +5,7 @@ import {
   leaveCompetition as leaveCloud,
   fetchCompetitionLeaderboard,
   fetchCompetitions,
+  fetchFinishedCompetitions,
 } from '../services/competitionService';
 import type { Competition } from '../store/types';
 
@@ -27,8 +28,9 @@ export function useCompetitions() {
   );
 
   const getById = useCallback(
-    (id: string): Competition | undefined => state.competitions.find(c => c.id === id),
-    [state.competitions],
+    (id: string): Competition | undefined =>
+      state.competitions.find(c => c.id === id) ?? state.finishedCompetitions.find(c => c.id === id),
+    [state.competitions, state.finishedCompetitions],
   );
 
   const join = useCallback(async (competitionId: string) => {
@@ -47,8 +49,9 @@ export function useCompetitions() {
   // returns rows, so a transient network error doesn't wipe the contests already
   // on screen — the user can just pull again to recover.
   const refresh = useCallback(async () => {
-    const list = await fetchCompetitions();
+    const [list, finished] = await Promise.all([fetchCompetitions(), fetchFinishedCompetitions()]);
     if (list.length > 0) dispatch({ type: 'SET_COMPETITIONS', competitions: list });
+    if (finished.length > 0) dispatch({ type: 'SET_FINISHED_COMPETITIONS', competitions: finished });
   }, [dispatch]);
 
   const refreshLeaderboard = useCallback(async (competitionId: string) => {
@@ -66,11 +69,14 @@ export function useCompetitions() {
     const d = Math.floor(h / 24);
     if (d >= 1) return `${d}d left`;
     if (h >= 1) return `${h}h ${m}m left`;
+    // Under a minute → count down in seconds instead of showing "0m left".
+    if (ms < 60000) return `${Math.ceil(ms / 1000)}s left`;
     return `${m}m left`;
   }, []);
 
   return {
     competitions: state.competitions,
+    finishedCompetitions: state.finishedCompetitions,
     joinedTournamentIds: state.joinedTournamentIds,
     leaderboard: state.leaderboard,
     isJoined,

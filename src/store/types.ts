@@ -154,6 +154,9 @@ export interface AppState {
   portfolios: Record<string, PortfolioSlice>;
   activeTournament: Tournament | null;
   competitions: Competition[];
+  // Ended contests, moved server-side into the FinishedCompetition table. Shown
+  // under the "Past" tab on Compete.
+  finishedCompetitions: Competition[];
   joinedTournamentIds: string[];
   leaderboard: Record<string, CompetitionEntry[]>;
   pendingOrders: PendingOrder[];

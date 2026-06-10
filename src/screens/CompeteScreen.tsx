@@ -9,6 +9,8 @@ import { Avatar } from '../components/ui/Avatar';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { AuthWall } from '../components/AuthWall';
 import { useTheme } from '../theme/ThemeContext';
+import { radius } from '../theme/tokens';
+import { leagueColor } from '../components/ui/LeagueBadge';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
@@ -54,6 +56,7 @@ const CONTEST_TABS: { label: string; type: string | null }[] = [
   { label: 'Featured', type: 'featured' },
   { label: '1v1',      type: '1v1' },
   { label: 'Replay',   type: 'replay' },
+  { label: 'Past',     type: null },     // shows finished contests (separate table)
 ];
 
 export function CompeteScreen() {
@@ -97,6 +100,22 @@ export function CompeteScreen() {
     : false;
   const predFlat = predLive && predLivePrice === activePrediction!.lockedPrice;
   const predGlow = predLive && !predFlat ? (predWinning ? colors.up : colors.down) : null;
+
+  // Pulse the prediction card's background the whole time a round is live (even
+  // before the price moves), so it reads as "in play". Opacity loops 0↔1 and the
+  // tint overlay interpolates it to a subtle range.
+  const predPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!predLive) { predPulse.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(predPulse, { toValue: 1, duration: 750, useNativeDriver: true }),
+      Animated.timing(predPulse, { toValue: 0, duration: 750, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [predLive]);
+  // While live but flat (no winning colour yet), pulse a neutral brand tint.
+  const predPulseColor = predGlow ?? (predLive ? colors.brand : null);
 
   // Live-tournament carousel: one card at a time, swipe left/right to cycle with
   // wraparound, with a sliding transition. The card tracks the finger (slideX),
@@ -207,18 +226,35 @@ export function CompeteScreen() {
   // Persisted daily-claim streak (updated by CLAIM_DAILY_REWARD, synced via
   // UserProfile.streak), so it's consistent with the Home reward card.
   const streak = state.user.streak;
+  // The rank banner is tinted with the player's league colour (Bronze → Diamond).
+  const lc = leagueColor(state.user.league);
 
   const liveComps = getLive();
   liveLenRef.current = liveComps.length;
   const safeLiveIdx = liveComps.length ? liveIdx % liveComps.length : 0;
   const currentLive = liveComps[safeLiveIdx];
 
-  // Contest list (live + open, not finished) filtered by the selected pill tab.
+  // Re-render once a second while a contest is in its final minute so the
+  // "Ns left" countdown actually ticks down on screen.
+  const [, setNowTick] = useState(0);
+  const endingSoon = liveComps.some(c => { const ms = c.endAt - Date.now(); return ms > 0 && ms < 90_000; });
+  useEffect(() => {
+    if (!endingSoon) return;
+    const id = setInterval(() => setNowTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [endingSoon]);
+
+  // Contest list filtered by the selected pill tab. The "Past" tab shows the
+  // archived finished contests (their own table); every other tab shows the
+  // live/open contests filtered by type.
+  const isPastTab = contestTab === 'Past';
   const activeTabType = CONTEST_TABS.find(t => t.label === contestTab)?.type ?? null;
-  const listComps = state.competitions
-    .filter(c => c.status !== 'finished')
-    .filter(c => !activeTabType || c.type === activeTabType)
-    .sort((a, b) => a.endAt - b.endAt);
+  const listComps = isPastTab
+    ? state.finishedCompetitions
+    : state.competitions
+        .filter(c => c.status !== 'finished')
+        .filter(c => !activeTabType || c.type === activeTabType)
+        .sort((a, b) => a.endAt - b.endAt);
 
   const finalizeJoin = async (comp: Competition) => {
     await join(comp.id);
@@ -285,24 +321,24 @@ export function CompeteScreen() {
         </TouchableOpacity>
       }
     >
-      {/* Season XP banner */}
-      <View style={{ backgroundColor: colors.brand, borderRadius: 18, padding: 16, gap: 10 }}>
+      {/* Season XP banner — tinted to the player's league */}
+      <View style={{ backgroundColor: lc.bg, borderRadius: 18, padding: 16, gap: 10 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: `${colors.brandOn}99`, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: `${lc.fg}99`, letterSpacing: 0.5, textTransform: 'uppercase' }}>
               {state.user.league} {['', 'I', 'II', 'III'][state.user.division] ?? ''} · Day {seasonDay} of {SEASON_DURATION}
             </Text>
-            <Text style={{ fontSize: 28, fontWeight: '700', color: colors.brandOn, fontVariant: ['tabular-nums'], marginTop: 4 }}>
+            <Text style={{ fontSize: 28, fontWeight: '700', color: lc.fg, fontVariant: ['tabular-nums'], marginTop: 4 }}>
               {xp.toLocaleString()} <Text style={{ fontSize: 13, fontWeight: '400', opacity: 0.6 }}>/ {xpGoal.toLocaleString()} XP</Text>
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, gap: 6, alignItems: 'center' }}>
-            <Flame color={colors.brandOn} size={14} strokeWidth={1.75} />
-            <Text style={{ color: colors.brandOn, fontSize: 12, fontWeight: '600' }}>{streak}d</Text>
+          <View style={{ flexDirection: 'row', backgroundColor: `${lc.fg}22`, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, gap: 6, alignItems: 'center' }}>
+            <Flame color={lc.fg} size={14} strokeWidth={1.75} />
+            <Text style={{ color: lc.fg, fontSize: 12, fontWeight: '600' }}>{streak}d</Text>
           </View>
         </View>
-        <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 999, overflow: 'hidden' }}>
-          <View style={{ height: '100%', width: `${xpPct}%`, backgroundColor: colors.brandOn, borderRadius: 999 }} />
+        <View style={{ height: 6, backgroundColor: `${lc.fg}26`, borderRadius: 999, overflow: 'hidden' }}>
+          <View style={{ height: '100%', width: `${xpPct}%`, backgroundColor: lc.fg, borderRadius: 999 }} />
         </View>
       </View>
 
@@ -425,7 +461,7 @@ export function CompeteScreen() {
             <TouchableOpacity
               key={comp.id}
               testID={`compete-card-${comp.id}`}
-              onPress={() => isJoined(comp.id) ? nav.navigate('TournamentDetail', { id: comp.id }) : handleJoin(comp)}
+              onPress={() => (comp.status === 'finished' || isJoined(comp.id)) ? nav.navigate('TournamentDetail', { id: comp.id }) : handleJoin(comp)}
               activeOpacity={0.85}
             >
               <Card variant="compact" style={{ gap: 6 }}>
@@ -552,7 +588,6 @@ export function CompeteScreen() {
           style={predGlow ? {
             borderWidth: 1.5,
             borderColor: predGlow,
-            backgroundColor: `${predGlow}14`,
             shadowColor: predGlow,
             shadowOpacity: 0.45,
             shadowRadius: 14,
@@ -560,6 +595,18 @@ export function CompeteScreen() {
             elevation: 8,
           } : undefined}
         >
+          {/* Pulsing background while a round is live (green/red winning, brand if flat). */}
+          {predPulseColor && (
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                borderRadius: radius.lg,
+                backgroundColor: predPulseColor,
+                opacity: predPulse.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.25] }),
+              }}
+            />
+          )}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
               <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center' }}>

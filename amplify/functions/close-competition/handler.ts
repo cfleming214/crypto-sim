@@ -1,5 +1,6 @@
 import {
   DynamoDBClient,
+  DeleteItemCommand,
   GetItemCommand,
   PutItemCommand,
   ScanCommand,
@@ -141,23 +142,17 @@ export const handler = async (): Promise<void> => {
     ExpressionAttributeValues: marshall({ ':live': 'live', ':now': now }),
   }));
 
-  for (const raw of Items) {
-    const comp = unmarshall(raw) as { id: string; name?: string; prizesJson?: string; numberOfPrizes?: number };
+  const finishedTable = process.env.FINISHED_COMPETITION_TABLE_NAME;
 
-    // Settle prizes BEFORE flipping status, so a crash mid-settle leaves the
-    // contest 'live' and the next run re-settles (idempotently) what's missing.
+  for (const raw of Items) {
+    const fullComp = unmarshall(raw);
+    const comp = fullComp as { id: string; name?: string; prizesJson?: string; numberOfPrizes?: number };
+
+    // Settle prizes BEFORE archiving, so a crash mid-settle leaves the contest
+    // 'live' and the next run re-settles (idempotently) what's missing.
     await settleCompetition(compTable, entryTable, comp);
 
-    // Mark competition finished
-    await ddb.send(new UpdateItemCommand({
-      TableName: compTable,
-      Key: marshall({ id: comp.id }),
-      UpdateExpression: 'SET #s = :finished',
-      ExpressionAttributeNames: { '#s': 'status' },
-      ExpressionAttributeValues: marshall({ ':finished': 'finished' }),
-    }));
-
-    // Mark all entries inactive
+    // Mark all entries inactive while the contest still exists.
     const { Items: entryItems = [] } = await ddb.send(new ScanCommand({
       TableName: entryTable,
       FilterExpression: 'competitionId = :cid',
@@ -172,5 +167,29 @@ export const handler = async (): Promise<void> => {
         ExpressionAttributeValues: marshall({ ':f': false }),
       }));
     }));
+
+    // Archive: MOVE the finished contest into FinishedCompetition (copy + delete
+    // from Competition) so the live table only ever holds open/live contests and
+    // the app reads this table for its "Past" list. If the archive table env var
+    // isn't set (pre-deploy), fall back to flipping status in place.
+    const nowIso = new Date().toISOString();
+    if (finishedTable) {
+      await ddb.send(new PutItemCommand({
+        TableName: finishedTable,
+        Item: marshall({ ...fullComp, __typename: 'FinishedCompetition', status: 'finished', finishedAt: nowIso, updatedAt: nowIso }, { removeUndefinedValues: true }),
+      }));
+      await ddb.send(new DeleteItemCommand({
+        TableName: compTable,
+        Key: marshall({ id: comp.id }),
+      }));
+    } else {
+      await ddb.send(new UpdateItemCommand({
+        TableName: compTable,
+        Key: marshall({ id: comp.id }),
+        UpdateExpression: 'SET #s = :finished',
+        ExpressionAttributeNames: { '#s': 'status' },
+        ExpressionAttributeValues: marshall({ ':finished': 'finished' }),
+      }));
+    }
   }
 };

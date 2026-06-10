@@ -114,6 +114,19 @@ export async function fetchCompetitions(): Promise<Competition[]> {
   }
 }
 
+// Past contests live in their own table (the closeCompetition Lambda moves them
+// there). Mapped to the same Competition shape (status 'finished'), newest first.
+export async function fetchFinishedCompetitions(): Promise<Competition[]> {
+  const client = await getClient();
+  if (!client?.models?.FinishedCompetition) return [];
+  try {
+    const { data } = await client.models.FinishedCompetition.list();
+    return (data as any[]).filter(Boolean).map(mapCompetition).sort((a, b) => b.endAt - a.endAt);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Subscribe to every Competition row change. Fires when a new contest is
  * created, status flips (open → live → finished), or any field is updated by

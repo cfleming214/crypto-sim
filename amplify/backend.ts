@@ -108,6 +108,11 @@ stripeAccountTable.grantReadData(closeFn);
 closeFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 closeFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.tableName);
+// Archive: finished contests are MOVED out of Competition into FinishedCompetition.
+const finishedTable = backend.data.resources.tables['FinishedCompetition'];
+finishedTable.grantWriteData(closeFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeFn.addEnvironment('FINISHED_COMPETITION_TABLE_NAME', finishedTable.tableName);
 
 new Rule(Stack.of(closeFn), 'CloseCompetitionRule', {
   schedule: Schedule.rate(Duration.minutes(10)),

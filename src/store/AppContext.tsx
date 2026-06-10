@@ -4,9 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
-import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
+import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
-import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
+import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
 import { STARTING_CASH } from '../constants/featureFlags';
@@ -175,6 +175,7 @@ const INITIAL_STATE: AppState = {
   coins: INITIAL_COINS,
   activeTournament: null,
   competitions: [],                  // populated from cloud on auth
+  finishedCompetitions: [],          // past contests (FinishedCompetition table)
   joinedTournamentIds: [],
   leaderboard: {},
   pendingOrders: [],
@@ -211,10 +212,12 @@ type Action =
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
   | { type: 'ADD_XP'; amount: number }
+  | { type: 'PROMOTE_LEAGUE'; league: string; division: number }
   | { type: 'SET_TRADE_SYMBOL'; symbol: string }
   | { type: 'SET_STOP_LOSS'; symbol: string; pct: number }
   | { type: 'REBALANCE' }
   | { type: 'SET_COMPETITIONS'; competitions: Competition[] }
+  | { type: 'SET_FINISHED_COMPETITIONS'; competitions: Competition[] }
   | { type: 'JOIN_TOURNAMENT'; tournamentId: string }
   | { type: 'LEAVE_TOURNAMENT'; tournamentId: string }
   | { type: 'SET_LEADERBOARD'; competitionId: string; entries: CompetitionEntry[] }
@@ -568,6 +571,9 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, hasOnboarded: true };
     case 'ADD_XP':
       return { ...state, user: { ...state.user, xp: state.user.xp + action.amount } };
+    case 'PROMOTE_LEAGUE':
+      // Client-side level-up only — never demotes (see the on-load check).
+      return { ...state, user: { ...state.user, league: action.league, division: action.division } };
     case 'SET_TRADE_SYMBOL':
       return { ...state, tradeSymbol: action.symbol };
     case 'SET_STOP_LOSS': {
@@ -803,6 +809,8 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_COMPETITIONS':
       return { ...state, competitions: action.competitions };
+    case 'SET_FINISHED_COMPETITIONS':
+      return { ...state, finishedCompetitions: action.competitions };
     case 'JOIN_TOURNAMENT': {
       if (state.joinedTournamentIds.includes(action.tournamentId)) return state;
       // Spawn a fresh $100K portfolio for the new contest if one doesn't exist.
@@ -854,6 +862,7 @@ function reducer(state: AppState, action: Action): AppState {
         ...INITIAL_STATE,
         coins:        state.coins,
         competitions: state.competitions,
+        finishedCompetitions: state.finishedCompetitions,
         // Blocked users are per-device, not per-account — a sign-out shouldn't
         // un-hide traders this device chose to block. Preserved across the wipe;
         // only account deletion purges the 'blocked.v1' store.
@@ -1211,6 +1220,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetchCompetitions().then(competitions => {
       dispatch({ type: 'SET_COMPETITIONS', competitions });
     });
+    fetchFinishedCompetitions().then(competitions => {
+      if (competitions.length) dispatch({ type: 'SET_FINISHED_COMPETITIONS', competitions });
+    });
 
     // Restore per-contest portfolios from CompetitionEntry rows
     loadContestPortfolios().then(stash => {
@@ -1351,6 +1363,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }),
     ).catch(() => {});
   }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
+
+  // League auto-promotion. Whenever XP changes (incl. after the cloud profile
+  // loads), promote the player to the league their XP qualifies for. Promotion
+  // ONLY — never demotes (Bronze is the floor; the weekly settle-season cron
+  // owns relegations). Fixes high-XP players being stuck on a stale lower league
+  // between weekly settlements. Persisted via the normal profile save.
+  useEffect(() => {
+    const target = assignLeague(state.user.xp);
+    if (leagueRank(target.league, target.division) > leagueRank(state.user.league, state.user.division)) {
+      dispatch({ type: 'PROMOTE_LEAGUE', league: target.league, division: target.division });
+    }
+  }, [state.user.xp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
   // then save on every change. The ref gates the save so the empty initial list

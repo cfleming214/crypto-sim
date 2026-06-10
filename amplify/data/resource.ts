@@ -94,6 +94,33 @@ const schema = a.schema({
     allow.owner(),
   ]),
 
+  // Archive of contests that have ended. The closeCompetition Lambda MOVES a
+  // finished contest here (copy + delete from Competition) so the live tables
+  // only ever hold open/live contests, and the app reads this table for its
+  // "Past" list. Same shape as Competition plus finishedAt.
+  FinishedCompetition: a.model({
+    name: a.string().required(),
+    type: a.string().required(),
+    status: a.string().required(),   // always 'finished'
+    prizePool: a.string(),
+    maxPlayers: a.integer(),
+    stake: a.string(),
+    startAt: a.string().required(),
+    endAt: a.string().required(),
+    entryCount: a.integer(),
+    createdBy: a.string(),
+    numberOfPrizes: a.integer(),
+    prizesJson: a.string(),
+    prizeXp: a.integer(),
+    allowedTokenSymbols: a.string().array(),
+    inviteCode: a.string(),
+    challengerHandle: a.string(),
+    lockAfterStart: a.boolean(),
+    finishedAt: a.string(),          // ISO timestamp the contest was archived
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+  ]),
+
   CompetitionEntry: a.model({
     competitionId: a.string().required(),
     handle: a.string().required(),
