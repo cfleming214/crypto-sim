@@ -346,7 +346,10 @@ export function MarketsScreen() {
               {query ? `No results for "${query}"` : cat === 'Watchlist' ? 'Your watchlist is empty' : 'No coins in this category'}
             </Text>
           </View>
-        ) : sorted.map((a, i) => (
+        ) : sorted.map((a, i) => {
+          const held = state.holdings.find(h => h.symbol === a.symbol);
+          const heldText = held && held.units > 0 ? ` · ${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol}` : '';
+          return (
           <TouchableOpacity key={a.symbol} testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
             <CardSection last={i === sorted.length - 1}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -359,7 +362,7 @@ export function MarketsScreen() {
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name} · MC {a.marketCap}</Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>{a.name}{heldText} · MC {a.marketCap}</Text>
                     <Text style={{ fontSize: 12, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
                       {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                     </Text>
@@ -383,7 +386,8 @@ export function MarketsScreen() {
               </View>
             </CardSection>
           </TouchableOpacity>
-        ))}
+          );
+        })}
       </Card>
       <FilterSheet
         visible={filterOpen}
