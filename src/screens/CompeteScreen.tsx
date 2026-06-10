@@ -20,8 +20,6 @@ import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
 const SEASON_START = new Date('2026-05-01T00:00:00Z').getTime();
-// Width of an open-bracket card in the swipe carousel (next card peeks).
-const BRACKET_CARD_W = Math.round(Dimensions.get('window').width * 0.74);
 // Width of a live-tournament card in its swipe carousel (small peek of the next).
 const LIVE_CARD_W = Math.round(Dimensions.get('window').width * 0.86);
 
@@ -37,11 +35,20 @@ const TYPE_LABEL: Record<string, string> = {
   '1v1': '1v1',
 };
 
+// Pill-tab filters for the contest list. `type: null` = all types.
+const CONTEST_TABS: { label: string; type: string | null }[] = [
+  { label: 'All',      type: null },
+  { label: 'Daily',    type: 'daily' },
+  { label: 'Featured', type: 'featured' },
+  { label: '1v1',      type: '1v1' },
+  { label: 'Replay',   type: 'replay' },
+];
+
 export function CompeteScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
-  const { getLive, getOpen, isJoined, join, timeRemaining, refresh } = useCompetitions();
+  const { getLive, isJoined, join, timeRemaining, refresh } = useCompetitions();
   const { emailVerified, status } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
@@ -72,6 +79,8 @@ export function CompeteScreen() {
 
   // Selected duel length (default 1 day).
   const [duelDays, setDuelDays] = useState(1);
+  // Selected contest-list pill tab.
+  const [contestTab, setContestTab] = useState('All');
 
   const handleChallenge = async () => {
     if (duelBusy) return;
@@ -136,7 +145,13 @@ export function CompeteScreen() {
   const streak = state.user.streak;
 
   const liveComps = getLive();
-  const openComps = getOpen();
+
+  // Contest list (live + open, not finished) filtered by the selected pill tab.
+  const activeTabType = CONTEST_TABS.find(t => t.label === contestTab)?.type ?? null;
+  const listComps = state.competitions
+    .filter(c => c.status !== 'finished')
+    .filter(c => !activeTabType || c.type === activeTabType)
+    .sort((a, b) => a.endAt - b.endAt);
 
   const finalizeJoin = async (comp: Competition) => {
     await join(comp.id);
@@ -281,57 +296,85 @@ export function CompeteScreen() {
         </ScrollView>
       )}
 
-      {/* Open brackets */}
+      {/* Contests — pill-tab filtered list */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Open brackets</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Contests</Text>
         <TouchableOpacity onPress={() => nav.navigate('Brackets')}>
           <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3 }}>See all →</Text>
         </TouchableOpacity>
       </View>
 
-      {openComps.length === 0 ? (
-        <Card variant="tinted">
-          <Text style={{ color: colors.ink3, fontSize: 13 }}>No open brackets right now — check back soon.</Text>
-        </Card>
-      ) : (
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        snapToInterval={BRACKET_CARD_W + 10}
-        decelerationRate="fast"
         style={{ marginHorizontal: -20 }}
-        contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+        contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
       >
-        {openComps.map(comp => (
-          <TouchableOpacity
-            key={comp.id}
-            testID={`compete-card-${comp.id}`}
-            style={{ width: BRACKET_CARD_W }}
-            onPress={() => handleJoin(comp)}
-            activeOpacity={0.85}
-          >
-            <Card variant="compact" style={{ gap: 6 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {TYPE_LABEL[comp.type] ?? comp.type}
-                </Text>
-                {isJoined(comp.id) && (
-                  <Chip variant="brand" style={{ paddingVertical: 1, paddingHorizontal: 5 }}>Joined</Chip>
-                )}
-              </View>
-              <Text style={{ fontWeight: '600', color: colors.ink }}>{comp.name}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
-                <Text style={{ fontSize: 11, color: colors.ink3 }}>{timeRemaining(comp)}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
-                <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
-              </View>
-            </Card>
-          </TouchableOpacity>
-        ))}
+        {CONTEST_TABS.map(t => {
+          const active = contestTab === t.label;
+          return (
+            <TouchableOpacity
+              key={t.label}
+              testID={`contest-tab-${t.label}`}
+              onPress={() => setContestTab(t.label)}
+              activeOpacity={0.8}
+              style={{
+                paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1,
+                borderColor: active ? colors.brand : colors.hairline,
+                backgroundColor: active ? colors.brand : 'transparent',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: active ? colors.brandOn : colors.ink }}>{t.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
+
+      {listComps.length === 0 ? (
+        <Card variant="tinted">
+          <Text style={{ color: colors.ink3, fontSize: 13 }}>
+            No {contestTab === 'All' ? '' : `${contestTab.toLowerCase()} `}contests right now — check back soon.
+          </Text>
+        </Card>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {listComps.map(comp => (
+            <TouchableOpacity
+              key={comp.id}
+              testID={`compete-card-${comp.id}`}
+              onPress={() => isJoined(comp.id) ? nav.navigate('TournamentDetail', { id: comp.id }) : handleJoin(comp)}
+              activeOpacity={0.85}
+            >
+              <Card variant="compact" style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {TYPE_LABEL[comp.type] ?? comp.type}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {comp.status === 'live' && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.down }} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>Live</Text>
+                      </View>
+                    )}
+                    {isJoined(comp.id) && (
+                      <Chip variant="brand" style={{ paddingVertical: 1, paddingHorizontal: 5 }}>Joined</Chip>
+                    )}
+                  </View>
+                </View>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{comp.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>{timeRemaining(comp)}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
 
       {/* Top traders entry point */}
