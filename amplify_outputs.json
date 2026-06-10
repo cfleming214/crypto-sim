@@ -554,6 +554,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "lockAfterStart": {
+              "name": "lockAfterStart",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,

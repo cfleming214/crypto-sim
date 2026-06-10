@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder, Animated, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -20,6 +20,9 @@ import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
 const SEASON_START = new Date('2026-05-01T00:00:00Z').getTime();
+// Slide distance for the live-contest carousel transition (full screen width so
+// the outgoing card clears the frame before the next one slides in).
+const SCREEN_W = Dimensions.get('window').width;
 
 function computeSeasonDay(): number {
   const elapsed = Date.now() - SEASON_START;
@@ -96,18 +99,39 @@ export function CompeteScreen() {
   const predGlow = predLive && !predFlat ? (predWinning ? colors.up : colors.down) : null;
 
   // Live-tournament carousel: one card at a time, swipe left/right to cycle with
-  // wraparound. liveLenRef holds the current count so the once-created
-  // PanResponder always wraps against the latest length.
+  // wraparound, with a sliding transition. The card tracks the finger (slideX),
+  // then on release either snaps back or slides fully out while the next card
+  // slides in from the opposite edge. liveLenRef holds the current count so the
+  // once-created PanResponder always wraps against the latest length. animatingRef
+  // blocks a new swipe mid-transition.
   const [liveIdx, setLiveIdx] = useState(0);
   const liveLenRef = useRef(0);
+  const slideX = useRef(new Animated.Value(0)).current;
+  const animatingRef = useRef(false);
   const livePan = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onMoveShouldSetPanResponder: (_, g) => !animatingRef.current && Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => {
+        if (!animatingRef.current) slideX.setValue(g.dx);
+      },
       onPanResponderRelease: (_, g) => {
         const n = liveLenRef.current;
-        if (n < 2) return;
-        if (g.dx <= -40) setLiveIdx(i => (i + 1) % n);
-        else if (g.dx >= 40) setLiveIdx(i => (i - 1 + n) % n);
+        const dir = g.dx <= -40 ? 1 : g.dx >= 40 ? -1 : 0;   // +1 = next, -1 = prev
+        if (n < 2 || dir === 0) {
+          Animated.spring(slideX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+          return;
+        }
+        animatingRef.current = true;
+        // Slide the current card off in the swipe direction…
+        Animated.timing(slideX, { toValue: -dir * SCREEN_W, duration: 160, useNativeDriver: true }).start(() => {
+          // …swap to the neighbour, drop the incoming card just off the opposite
+          // edge, then slide it into place.
+          setLiveIdx(i => (i + dir + n) % n);
+          slideX.setValue(dir * SCREEN_W);
+          Animated.timing(slideX, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+            animatingRef.current = false;
+          });
+        });
       },
     }),
   ).current;
@@ -285,6 +309,8 @@ export function CompeteScreen() {
       {/* Live tournaments — one at a time; swipe left/right to cycle (wraps). */}
       {currentLive && (
         <View {...livePan.panHandlers}>
+          <View style={{ overflow: 'hidden' }}>
+          <Animated.View style={{ transform: [{ translateX: slideX }] }}>
           <TouchableOpacity
             key={currentLive.id}
             testID={`compete-live-${currentLive.id}`}
@@ -333,6 +359,8 @@ export function CompeteScreen() {
               </CardSection>
             </Card>
           </TouchableOpacity>
+          </Animated.View>
+          </View>
 
           {/* Page dots — only when there's more than one live contest. */}
           {liveComps.length > 1 && (
