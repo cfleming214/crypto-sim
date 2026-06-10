@@ -348,7 +348,9 @@ export function MarketsScreen() {
           </View>
         ) : sorted.map((a, i) => {
           const held = state.holdings.find(h => h.symbol === a.symbol);
-          const heldText = held && held.units > 0 ? ` · ${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol}` : '';
+          const heldText = held && held.units > 0
+            ? ` · ${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol} ($${(held.units * a.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+            : '';
           return (
           <TouchableOpacity key={a.symbol} testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
             <CardSection last={i === sorted.length - 1}>
