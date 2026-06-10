@@ -33,15 +33,25 @@ export interface LeaderboardRow {
 function mapRow(d: any): LeaderboardRow {
   return {
     id: d.id,
-    rank: d.rank ?? 999,
+    rank: typeof d.rank === 'number' ? d.rank : 999,
     owner: d.owner ?? '',
     handle: d.handle ?? '',
-    value: d.value ?? 0,
-    pnlPct: d.pnlPct ?? 0,
+    value: typeof d.value === 'number' ? d.value : 0,
+    pnlPct: typeof d.pnlPct === 'number' ? d.pnlPct : 0,
     league: d.league ?? undefined,
     avatarKey: d.avatarKey ?? undefined,
     avatarColor: d.avatarColor ?? undefined,
   };
+}
+
+// Drop null/partial items (observeQuery can surface them mid-sync) and any row
+// missing an id, then map. Keeps a stray null from throwing inside the
+// subscription callback and red-screening the app.
+function mapRows(items: any[]): LeaderboardRow[] {
+  return (items ?? [])
+    .filter(d => d && d.id)
+    .map(mapRow)
+    .sort((a, b) => a.rank - b.rank);
 }
 
 export async function fetchGlobalLeaderboard(): Promise<LeaderboardRow[]> {
@@ -49,7 +59,7 @@ export async function fetchGlobalLeaderboard(): Promise<LeaderboardRow[]> {
   if (!client) return [];
   try {
     const { data } = await client.models.GlobalLeaderboard.list();
-    return (data as any[]).map(mapRow).sort((a, b) => a.rank - b.rank);
+    return mapRows(data as any[]);
   } catch (e) {
     console.warn('fetchGlobalLeaderboard failed:', e);
     return [];
@@ -67,7 +77,11 @@ export async function subscribeToGlobalLeaderboard(
   try {
     const sub = client.models.GlobalLeaderboard.observeQuery().subscribe({
       next: ({ items }: { items: any[] }) => {
-        onUpdate((items ?? []).map(mapRow).sort((a, b) => a.rank - b.rank));
+        try {
+          onUpdate(mapRows(items));
+        } catch (err) {
+          console.warn('GlobalLeaderboard map failed:', err);
+        }
       },
       error: (err: unknown) => console.warn('GlobalLeaderboard subscription error:', err),
     });

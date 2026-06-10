@@ -15,6 +15,7 @@ interface CreateInput {
   prizeXp?: number;          // XP awarded to the winner (default 5000)
   numberOfPrizes?: number;   // paid positions (for the cash path)
   prizesJson?: string;       // JSON dollar amounts (for the cash path)
+  lockAfterStart?: boolean;  // true => no new entries once the contest starts
 }
 
 // Admin utility — create a competition record.
@@ -43,6 +44,7 @@ export const handler = async (event: CreateInput): Promise<{ id: string }> => {
       prizeXp: event.prizeXp ?? 5000,
       numberOfPrizes: event.numberOfPrizes ?? 0,
       prizesJson: event.prizesJson ?? '[]',
+      lockAfterStart: event.lockAfterStart ?? false,
       createdAt: now,
       updatedAt: now,
     }),

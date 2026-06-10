@@ -69,6 +69,7 @@ function mapCompetition(d: any): Competition {
     prizeXp: d.prizeXp ?? DEFAULT_PRIZE_XP,
     inviteCode: d.inviteCode ?? undefined,
     challengerHandle: d.challengerHandle ?? undefined,
+    lockAfterStart: d.lockAfterStart ?? false,
   };
 }
 

@@ -66,6 +66,9 @@ export interface Competition {
   prizeXp: number;          // winner's XP award when cash prizes are off (podium splits it)
   inviteCode?: string;      // 1v1 duels only — shareable join code
   challengerHandle?: string; // 1v1 duels only — who created the duel
+  // When true, no new entries are accepted once the contest has started
+  // (now >= startAt). Default false = players can still join live.
+  lockAfterStart?: boolean;
 }
 
 export interface CompetitionEntry {

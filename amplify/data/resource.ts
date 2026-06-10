@@ -85,6 +85,10 @@ const schema = a.schema({
     // join, and the challenger's handle for display. Null on normal contests.
     inviteCode: a.string(),
     challengerHandle: a.string(),
+    // When true, the contest stops accepting new entries once it has started
+    // (now >= startAt). Null/false (default, legacy rows) = players can still
+    // join live after the start.
+    lockAfterStart: a.boolean(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),

@@ -208,9 +208,11 @@ export function CompeteScreen() {
       nav.navigate('TournamentDetail', { id: comp.id });
       return;
     }
-    // Upcoming brackets can't be joined until they open.
-    if (comp.startAt > Date.now()) {
-      Alert.alert(`${comp.name} hasn't started yet`, `This contest opens ${startsInLabel(comp.startAt)}. Come back then to join.`);
+    // Locked contests stop accepting players once they've started. (Other
+    // contests can be joined live, and any contest can be pre-joined before it
+    // opens.)
+    if (comp.lockAfterStart && Date.now() >= comp.startAt) {
+      Alert.alert(`${comp.name} is locked`, 'This contest already started and isn’t accepting new players.');
       return;
     }
     Alert.alert(
@@ -420,6 +422,7 @@ export function CompeteScreen() {
                   <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>
                     {comp.startAt > Date.now() ? `Starts ${startsInLabel(comp.startAt)}` : timeRemaining(comp)}
+                    {comp.lockAfterStart ? (comp.startAt > Date.now() ? ' · 🔒 locks at start' : ' · 🔒 locked') : ''}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>

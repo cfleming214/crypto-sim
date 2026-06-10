@@ -66,7 +66,8 @@
     "test:e2e:smoke": "maestro test .maestro --include-tags=smoke",
     "test:e2e:multi-user": "node scripts/run-multi-user-e2e.mjs --users 5 --cleanup",
     "test:e2e:cleanup": "node scripts/cleanup-test-data.mjs",
-    "test:e2e:lint": "node scripts/lint-e2e.mjs"
+    "test:e2e:lint": "node scripts/lint-e2e.mjs",
+    "seed:contests": "node scripts/seed-live-contest.mjs"
   },
   "private": true
 }
