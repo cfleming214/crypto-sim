@@ -26,6 +26,10 @@
  * Usage:
  *   node scripts/seed-live-contest.mjs
  *   node scripts/seed-live-contest.mjs --dry-run    # show what it would do
+ *   node scripts/seed-live-contest.mjs --append     # ADD a fresh batch, keep
+ *                                                   # everything already seeded
+ *                                                   # (load-test the AWS stack
+ *                                                   # by piling contests up)
  */
 import {
   CognitoIdentityProviderClient,
@@ -45,6 +49,10 @@ import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 const DRY = process.argv.includes('--dry-run');
+// --append keeps every prior seed batch and adds a fresh one on top, so contests
+// accumulate run-over-run for load-testing the AWS stack. Without it, each run
+// wipes the previous seed batch first (the default "stay clean" behaviour).
+const APPEND = process.argv.includes('--append');
 
 const outputs = JSON.parse(readFileSync('./amplify_outputs.json', 'utf8'));
 const REGION    = outputs.auth?.aws_region ?? 'us-east-1';
@@ -283,15 +291,23 @@ async function main() {
   const coins = await loadCoins(tables.Token);
   console.log(`  ${coins.length} coins available`);
 
-  console.log('\nClearing prior seed data…');
-  await clearPriorSeed(tables);
+  if (APPEND) {
+    console.log('\n(--append) keeping all prior seed data — adding a fresh batch on top.');
+  } else {
+    console.log('\nClearing prior seed data…');
+    await clearPriorSeed(tables);
+  }
 
-  // Build the three contests.
+  // Build the three contests. When appending, tag each name with a short run id
+  // so accumulated batches are distinguishable on screen (and don't look like
+  // duplicates). All batches stay tagged createdBy=seed-script, so a later
+  // default (non-append) run still cleans every one of them up.
   const now = Date.now();
+  const tag = APPEND ? ` #${new Date(now).toISOString().slice(11, 19)}` : '';
   const contests = [
-    { item: competitionItem({ id: randomUUID(), name: '🔥 10-Minute Sprint', startAt: now, endAt: now + 10 * MINUTE, maxPlayers: 15, lockAfterStart: false }), joinAll: true },
-    { item: competitionItem({ id: randomUUID(), name: '📈 3-Day Showdown',   startAt: now, endAt: now + 3 * DAY,    maxPlayers: 20, lockAfterStart: false }), joinAll: true },
-    { item: competitionItem({ id: randomUUID(), name: "⏳ Tomorrow's Lockout", startAt: now + 24 * HOUR, endAt: now + 24 * HOUR + 2 * DAY, maxPlayers: 50, lockAfterStart: true }), joinAll: false },
+    { item: competitionItem({ id: randomUUID(), name: `🔥 10-Minute Sprint${tag}`, startAt: now, endAt: now + 10 * MINUTE, maxPlayers: 15, lockAfterStart: false }), joinAll: true },
+    { item: competitionItem({ id: randomUUID(), name: `📈 3-Day Showdown${tag}`,   startAt: now, endAt: now + 3 * DAY,    maxPlayers: 20, lockAfterStart: false }), joinAll: true },
+    { item: competitionItem({ id: randomUUID(), name: `⏳ Tomorrow's Lockout${tag}`, startAt: now + 24 * HOUR, endAt: now + 24 * HOUR + 2 * DAY, maxPlayers: 50, lockAfterStart: true }), joinAll: false },
   ];
 
   console.log('\nCreating contests + entries…');
@@ -334,7 +350,7 @@ async function main() {
         handle: bot.handle,
         xp: randi(500, 8000),
         league: bot.league,
-        division: randi(1, 3),
+        division: randi(1, 2),
         streak: randi(0, 12),
         cash: Number(pf.cash.toFixed(2)),
         bankroll: Number(pf.bankroll.toFixed(2)),

@@ -11,6 +11,7 @@ import { AuthWall } from '../components/AuthWall';
 import { useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/tokens';
 import { leagueColor } from '../components/ui/LeagueBadge';
+import { levelForXp } from '../services/gamification';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
@@ -219,9 +220,12 @@ export function CompeteScreen() {
     nav.navigate('TournamentDetail', { id: comp.id });
   };
 
-  const xp = state.user.xp;
-  const xpGoal = 6000;
-  const xpPct = Math.min(100, (xp / xpGoal) * 100);
+  // Level-based XP bar: progress is measured against the current level only, so
+  // it visibly resets on each level-up and shows the carried-over overflow.
+  const lvl = levelForXp(state.user.xp);
+  const xpInto = Math.round(lvl.xpIntoLevel);
+  const xpForLevel = lvl.isMax ? xpInto : lvl.xpForLevel;
+  const xpPct = lvl.fraction * 100;
   const seasonDay = computeSeasonDay();
   // Persisted daily-claim streak (updated by CLAIM_DAILY_REWARD, synced via
   // UserProfile.streak), so it's consistent with the Home reward card.
@@ -266,6 +270,11 @@ export function CompeteScreen() {
   const handleJoin = async (comp: Competition) => {
     if (isJoined(comp.id)) {
       nav.navigate('TournamentDetail', { id: comp.id });
+      return;
+    }
+    // Can't join a contest that's already over.
+    if (comp.status === 'finished' || Date.now() >= comp.endAt) {
+      Alert.alert(`${comp.name} has ended`, 'This contest is over — you can no longer join it.');
       return;
     }
     // Locked contests stop accepting players once they've started. (Other
@@ -326,10 +335,10 @@ export function CompeteScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View>
             <Text style={{ fontSize: 11, fontWeight: '600', color: `${lc.fg}99`, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-              {state.user.league} {['', 'I', 'II', 'III'][state.user.division] ?? ''} · Day {seasonDay} of {SEASON_DURATION}
+              {state.user.league} {state.user.division} · Day {seasonDay} of {SEASON_DURATION}
             </Text>
             <Text style={{ fontSize: 28, fontWeight: '700', color: lc.fg, fontVariant: ['tabular-nums'], marginTop: 4 }}>
-              {xp.toLocaleString()} <Text style={{ fontSize: 13, fontWeight: '400', opacity: 0.6 }}>/ {xpGoal.toLocaleString()} XP</Text>
+              {xpInto.toLocaleString()} <Text style={{ fontSize: 13, fontWeight: '400', opacity: 0.6 }}>{lvl.isMax ? '/ MAX XP' : `/ ${xpForLevel.toLocaleString()} XP`}</Text>
             </Text>
           </View>
           <View style={{ flexDirection: 'row', backgroundColor: `${lc.fg}22`, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, gap: 6, alignItems: 'center' }}>

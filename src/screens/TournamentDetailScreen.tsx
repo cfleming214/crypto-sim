@@ -156,6 +156,8 @@ export function TournamentDetailScreen() {
           { text: 'Leave', style: 'destructive', onPress: () => leave(competitionId) },
         ],
       );
+    } else if (competition.status === 'finished' || Date.now() >= competition.endAt) {
+      Alert.alert('Contest ended', 'This contest is over — you can no longer join it.');
     } else if (competition.lockAfterStart && Date.now() >= competition.startAt) {
       Alert.alert('Contest locked', 'This contest already started and isn’t accepting new players.');
     } else {

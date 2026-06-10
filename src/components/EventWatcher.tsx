@@ -5,8 +5,6 @@ import { configureNotifications, requestNotificationPermission, notifyNow } from
 import { leagueRank } from '../services/gamification';
 import { Bell, Clock, Award } from 'lucide-react-native';
 
-const DIV_ROMAN = ['', 'I', 'II', 'III'];
-
 // Surfaces background events that previously happened silently in TICK_PRICES:
 // limit-order fills (Trade ids prefixed 'LMT-') and triggered price alerts. Each
 // new one pops a toast. Manual trades already show their own success screen, and
@@ -45,7 +43,7 @@ export function EventWatcher() {
     const promoted = leagueRank(cur.league, cur.division) > leagueRank(prev.league, prev.division);
     show({
       title: promoted ? 'Promoted!' : 'League updated',
-      subtitle: `${cur.league} ${DIV_ROMAN[cur.division] ?? ''}`.trim(),
+      subtitle: `${cur.league} ${cur.division}`.trim(),
       icon: Award,
       variant: promoted ? 'up' : 'warn',
     });

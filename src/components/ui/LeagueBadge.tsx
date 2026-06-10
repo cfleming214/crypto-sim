@@ -11,15 +11,14 @@ const LEAGUE_COLORS: Record<string, { bg: string; fg: string }> = {
   Diamond:  { bg: '#6EA8FE', fg: '#0A2A6E' },
 };
 
-const DIVISION_NUMERALS = ['', 'I', 'II', 'III', 'IV'];
-
 export function leagueColor(league: string): { bg: string; fg: string } {
   return LEAGUE_COLORS[league] ?? { bg: '#CD7F32', fg: '#FFFFFF' };
 }
 
 export function LeagueBadge({ league, division, style }: { league: string; division?: number; style?: ViewStyle }) {
   const { bg, fg } = leagueColor(league);
-  const numeral = division && division > 0 ? ` ${DIVISION_NUMERALS[division] ?? ''}`.trimEnd() : '';
+  // division = level within the tier (1 or 2), shown as a plain number: "Bronze 2".
+  const numeral = division && division > 0 ? ` ${division}` : '';
   return (
     <View style={[{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: bg, alignSelf: 'flex-start' }, style]}>
       <Text style={{ fontSize: 11, fontWeight: '700', color: fg }}>

@@ -11,8 +11,6 @@ import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { Filter } from 'lucide-react-native';
 
-const DIVISION_LABELS = ['', 'I', 'II', 'III', 'IV'];
-
 const DIVISION_PLAYERS = [
   { rank: 1,  handle: '@orca',      name: 'Diana K.',    pnl: '+71.4%', xpRaw: 12840, trend: 'up',   tag: 'promo' },
   { rank: 2,  handle: '@vega',      name: 'Marcus L.',   pnl: '+64.2%', xpRaw: 11210, trend: 'up',   tag: 'promo' },
@@ -98,7 +96,7 @@ export function LeagueScreen() {
 
   const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
   const league = state.user.league;
-  const div = DIVISION_LABELS[state.user.division] ?? '';
+  const div = state.user.division > 0 ? String(state.user.division) : '';
   const divisionLabel = `${league} ${div}`.trim();
 
   // "Your division" pulls live entries from the most recently joined

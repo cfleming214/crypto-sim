@@ -1364,14 +1364,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ).catch(() => {});
   }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
 
-  // League auto-promotion. Whenever XP changes (incl. after the cloud profile
-  // loads), promote the player to the league their XP qualifies for. Promotion
-  // ONLY — never demotes (Bronze is the floor; the weekly settle-season cron
-  // owns relegations). Fixes high-XP players being stuck on a stale lower league
-  // between weekly settlements. Persisted via the normal profile save.
+  // Tier sync. Lifetime XP maps directly onto a fixed 10-level ladder (see
+  // assignLeague), so whenever XP changes — or the stored tier/division is stale
+  // (e.g. a "division 3" left over from the old 3-division scheme) — snap the
+  // player to the level their XP qualifies for. XP only ever grows, so in
+  // practice this only climbs; the correction also self-heals any out-of-range
+  // division. Persisted via the normal profile save.
   useEffect(() => {
     const target = assignLeague(state.user.xp);
-    if (leagueRank(target.league, target.division) > leagueRank(state.user.league, state.user.division)) {
+    if (target.league !== state.user.league || target.division !== state.user.division) {
       dispatch({ type: 'PROMOTE_LEAGUE', league: target.league, division: target.division });
     }
   }, [state.user.xp]); // eslint-disable-line react-hooks/exhaustive-deps

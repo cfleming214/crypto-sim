@@ -209,35 +209,89 @@ export function contestXpForRank(prizeXp: number, rank: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// League ladder (Phase 9). A weekly cron settles each player's league/division
-// from the XP they earned during the season. Pure + shared so the client and
-// the settle-season Lambda agree on tiers. Division 1 = top of the band ('I').
+// Tier ladder (Phase 9). Players climb 10 levels across 5 tiers, 2 levels each:
+// Bronze 1, Bronze 2, Silver 1, … Platinum 2. XP is spent per level — clearing a
+// level resets the bar and any leftover XP carries into the next level (this is
+// implicit: progress is always measured against the *current* level's band, so
+// crossing a threshold zeroes the visible bar and the overflow shows up as the
+// next level's starting fill). The cost to clear a level grows 1.5× per level
+// within a tier and 2× when crossing into a new tier. Pure + shared so the
+// client and the settle-season Lambda agree. `division` = level-within-tier
+// (1 = entry of the tier, 2 = top); higher is always better.
 // ---------------------------------------------------------------------------
 
-export const LEAGUES = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'] as const;
+export const LEAGUES = ['Bronze', 'Silver', 'Gold', 'Diamond', 'Platinum'] as const;
 export type League = typeof LEAGUES[number];
 
-// Minimum season-XP for each league index (parallel to LEAGUES).
-export const LEAGUE_THRESHOLDS = [0, 500, 1500, 3500, 7000];
+export const LEVELS_PER_TIER = 2;
+export const MAX_LEVEL = LEAGUES.length * LEVELS_PER_TIER; // 10 named levels (index 0..9)
 
-export function assignLeague(seasonXp: number): { league: League; division: number } {
-  let idx = 0;
-  for (let i = LEAGUES.length - 1; i >= 0; i--) {
-    if (seasonXp >= LEAGUE_THRESHOLDS[i]) { idx = i; break; }
+// XP to clear the very first level (Bronze 1 → Bronze 2). Every later level
+// scales off this.
+const BASE_LEVEL_XP = 500;
+
+// Cost to clear each level (index 0 = Bronze 1). LEVEL_COSTS[i] is the XP that
+// must be earned while *at* level i to advance to level i+1. Within a tier each
+// step is 1.5× the previous; the step that crosses into a new tier is 2×. The
+// final level (Platinum 2) is the cap and has no cost. Length = MAX_LEVEL - 1.
+export const LEVEL_COSTS: number[] = (() => {
+  const costs = [BASE_LEVEL_XP];
+  for (let i = 1; i < MAX_LEVEL - 1; i++) {
+    const crossesTier = (i + 1) % LEVELS_PER_TIER === 0; // level i → i+1 enters a new tier
+    costs.push(Math.round(costs[i - 1] * (crossesTier ? 2 : 1.5)));
   }
-  const bandStart = LEAGUE_THRESHOLDS[idx];
-  const bandEnd = idx < LEAGUES.length - 1 ? LEAGUE_THRESHOLDS[idx + 1] : bandStart + 7000;
-  const frac = bandEnd > bandStart ? (seasonXp - bandStart) / (bandEnd - bandStart) : 1;
-  const division = Math.min(3, Math.max(1, 3 - Math.floor(frac * 3))); // 1 (I, top) .. 3 (III)
-  return { league: LEAGUES[idx], division };
+  return costs;
+})();
+
+// Cumulative lifetime XP needed to *reach* the bottom of each level.
+// LEVEL_THRESHOLDS[k] = total XP at which a player sits at the start of level k.
+// Length = MAX_LEVEL.
+export const LEVEL_THRESHOLDS: number[] = (() => {
+  const t = [0];
+  for (let i = 0; i < LEVEL_COSTS.length; i++) t.push(t[i] + LEVEL_COSTS[i]);
+  return t;
+})();
+
+export interface LevelProgress {
+  index: number;        // 0-based level index (0 = Bronze 1 … MAX_LEVEL-1 = Platinum 2)
+  league: League;       // tier name
+  division: number;     // level within the tier (1 = entry, 2 = top)
+  label: string;        // e.g. "Bronze 1"
+  xpIntoLevel: number;  // XP earned toward the current level (resets each level-up)
+  xpForLevel: number;   // XP needed to clear the current level (Infinity at the cap)
+  fraction: number;     // xpIntoLevel / xpForLevel in [0,1] (1 at the cap)
+  isMax: boolean;       // true once at Platinum 2
 }
 
-// Higher = better, for comparing two league/division pairs (promotion vs
-// relegation). League weight dominates; lower division number is better.
+// Resolve total lifetime XP into a level + in-level progress.
+export function levelForXp(totalXp: number): LevelProgress {
+  const xp = Math.max(0, totalXp);
+  let index = 0;
+  for (let i = MAX_LEVEL - 1; i >= 0; i--) {
+    if (xp >= LEVEL_THRESHOLDS[i]) { index = i; break; }
+  }
+  const league = LEAGUES[Math.floor(index / LEVELS_PER_TIER)];
+  const division = (index % LEVELS_PER_TIER) + 1;
+  const isMax = index >= MAX_LEVEL - 1;
+  const xpIntoLevel = xp - LEVEL_THRESHOLDS[index];
+  const xpForLevel = isMax ? Infinity : LEVEL_COSTS[index];
+  const fraction = isMax ? 1 : Math.min(1, Math.max(0, xpIntoLevel / xpForLevel));
+  return { index, league, division, label: `${league} ${division}`, xpIntoLevel, xpForLevel, fraction, isMax };
+}
+
+// Back-compat shim: callers that only need the tier/level pair (the promotion
+// sync, the settle-season Lambda). Tier = league, level-within-tier = division.
+export function assignLeague(totalXp: number): { league: League; division: number } {
+  const p = levelForXp(totalXp);
+  return { league: p.league, division: p.division };
+}
+
+// Higher = better, for comparing two tier/level pairs. Mirrors the flat level
+// index: tier dominates, and within a tier the higher level wins.
 export function leagueRank(league: string, division: number): number {
   const li = LEAGUES.indexOf(league as League);
   const idx = li >= 0 ? li : 0;
-  return idx * 10 + (3 - division); // e.g. Gold I = 2*10 + 2 = 22
+  return idx * LEVELS_PER_TIER + (division - 1); // e.g. Gold 2 = 2*2 + 1 = 5
 }
 
 export function applyDailyClaim(prev: DailyClaimState, now: number): DailyClaimResult {

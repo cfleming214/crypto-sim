@@ -34,11 +34,16 @@ export function useCompetitions() {
   );
 
   const join = useCallback(async (competitionId: string) => {
+    // Defensive backstop: never enroll into an ended contest, even if a stale
+    // screen slipped past the UI guards (e.g. it ended between render and tap).
+    const comp = state.competitions.find(c => c.id === competitionId)
+      ?? state.finishedCompetitions.find(c => c.id === competitionId);
+    if (comp && (comp.status === 'finished' || Date.now() >= comp.endAt)) return;
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: competitionId });
     dispatch({ type: 'ADD_XP', amount: 10 });
     // Persist to cloud if configured (no-op in offline mode)
     await joinCloud(competitionId, state.user.handle, state.bankroll);
-  }, [state.user.handle, state.bankroll, dispatch]);
+  }, [state.competitions, state.finishedCompetitions, state.user.handle, state.bankroll, dispatch]);
 
   const leave = useCallback(async (competitionId: string, entryId?: string) => {
     dispatch({ type: 'LEAVE_TOURNAMENT', tournamentId: competitionId });
