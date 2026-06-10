@@ -1,10 +1,38 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { Competition, CompetitionEntry } from '../store/types';
-import { DEFAULT_PRIZE_XP } from '../constants/featureFlags';
+import { DEFAULT_PRIZE_XP, STARTING_CASH } from '../constants/featureFlags';
 
-// No hardcoded seed — the Competition table in DynamoDB is the single source
-// of truth. Contests are inserted via the createCompetition Lambda or
-// directly via AWS CLI / console.
+// Cloud Competition rows (DynamoDB) are the source of truth for real contests,
+// but we always surface one locally-seeded upcoming bracket so there's a
+// contest that opens a week out even before/without the cloud list. It's merged
+// into every fetch/subscribe result. startAt is stamped once at module load so
+// the countdown ticks down within a session instead of resetting each fetch.
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const SEED_START = Date.now() + WEEK_MS;
+const SEED_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // runs 3 days once it opens
+
+export const SEED_COMPETITIONS: Competition[] = [{
+  id: 'seed-weekly-kickoff',
+  name: 'Weekly Kickoff',
+  type: 'featured',
+  status: 'open',
+  prizePool: 'Bragging rights',
+  maxPlayers: 1000,
+  stake: 'Free',
+  startAt: SEED_START,
+  endAt: SEED_START + SEED_DURATION_MS,
+  entryCount: 0,
+  numberOfPrizes: 3,
+  prizes: [],
+  prizeXp: DEFAULT_PRIZE_XP,
+}];
+
+// Merge the local seed in front of cloud rows, de-duped by id (a real cloud row
+// with the same id wins).
+function withSeeds(comps: Competition[]): Competition[] {
+  const cloudIds = new Set(comps.map(c => c.id));
+  return [...SEED_COMPETITIONS.filter(s => !cloudIds.has(s.id)), ...comps];
+}
 
 let clientPromise: Promise<any> | null = null;
 
@@ -49,7 +77,7 @@ function mapEntry(d: any): CompetitionEntry {
     id: d.id,
     competitionId: d.competitionId,
     handle: d.handle,
-    bankroll: d.bankroll ?? 10000,
+    bankroll: d.bankroll ?? STARTING_CASH,
     pnlPct: d.pnlPct ?? 0,
     rank: d.rank ?? 999,
     joinedAt: new Date(d.joinedAt).getTime(),
@@ -75,13 +103,13 @@ async function layerEntryCounts(client: any, comps: Competition[]): Promise<Comp
 
 export async function fetchCompetitions(): Promise<Competition[]> {
   const client = await getClient();
-  if (!client) return [];
+  if (!client) return withSeeds([]);
   try {
     const { data } = await client.models.Competition.list();
     const remote = (data as any[]).map(mapCompetition);
-    return await layerEntryCounts(client, remote);
+    return withSeeds(await layerEntryCounts(client, remote));
   } catch {
-    return [];
+    return withSeeds([]);
   }
 }
 
@@ -101,7 +129,7 @@ export async function subscribeToCompetitions(
       next: async ({ items }: { items: any[] }) => {
         const comps = (items ?? []).map(mapCompetition);
         const layered = await layerEntryCounts(client, comps);
-        onUpdate(layered);
+        onUpdate(withSeeds(layered));
       },
       error: (err: unknown) => console.warn('Competition subscription error:', err),
     });

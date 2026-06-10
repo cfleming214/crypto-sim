@@ -14,6 +14,7 @@ import { DonutChart } from '../components/charts/DonutChart';
 import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchPrices } from '../services/priceService';
 import { loadSnapshots, backfillGap, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
@@ -262,7 +263,7 @@ export function PortfolioScreen() {
   }, []);
 
   const totalEquity = state.bankroll;
-  const startEquity = 10000;
+  const startEquity = STARTING_CASH;
   const pnl = totalEquity - startEquity;
   const pnlPct = (pnl / startEquity) * 100;
   const pnlPositive = pnl >= 0;
@@ -384,7 +385,7 @@ export function PortfolioScreen() {
   const handleResetPortfolio = () => {
     Alert.alert(
       'Reset portfolio?',
-      'This clears your holdings and trade history and starts you over with $10,000 cash and 0.01 BTC.',
+      `This clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => dispatch({ type: 'RESET_DEMO' }) },

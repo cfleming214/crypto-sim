@@ -8,7 +8,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/ui/Toast';
 import {
-  resolvePrediction, PREDICTION_SECONDS, PREDICTION_XP,
+  resolvePrediction, PREDICTION_SECONDS, PREDICTION_XP, PREDICTION_STREAK_XP,
   type PredictionDirection, type PredictionOutcome,
 } from '../services/gamification';
 import { TrendingUp, TrendingDown, Target } from 'lucide-react-native';
@@ -94,6 +94,11 @@ export function PredictionScreen() {
 
   const total = state.predictionWins + state.predictionLosses;
   const winRate = total > 0 ? Math.round((state.predictionWins / total) * 100) : 0;
+  // After a settle, predictionStreak holds the just-resolved streak, so on a win
+  // it reflects the awarded bonus (base + 500 × streak).
+  const streakCount = state.predictionStreak;
+  const awardedXp = PREDICTION_XP + PREDICTION_STREAK_XP * streakCount;          // what a just-won round paid
+  const nextWinXp = PREDICTION_XP + PREDICTION_STREAK_XP * (streakCount + 1);    // what the next win would pay
 
   const lockedPrice = active?.lockedPrice ?? settled?.lockedPrice ?? 0;
   const direction = active?.direction ?? settled?.direction ?? null;
@@ -161,7 +166,8 @@ export function PredictionScreen() {
             <Button variant="down" style={{ flex: 1 }} onPress={() => start('down')}>↓ Lower</Button>
           </View>
           <Text style={{ fontSize: 12, color: colors.ink3, textAlign: 'center' }}>
-            Win to earn +{PREDICTION_XP} XP. No stake, just bragging rights.
+            Win to earn +{PREDICTION_XP.toLocaleString()} XP, plus a +{PREDICTION_STREAK_XP} streak bonus for each call in a row.
+            {streakCount > 0 ? ` 🔥 ${streakCount} in a row — a win now is +${nextWinXp.toLocaleString()} XP.` : ''}
           </Text>
         </>
       )}
@@ -196,7 +202,16 @@ export function PredictionScreen() {
               <Text style={{ fontSize: 13, color: colors.ink3 }}>
                 {symbol} moved {delta >= 0 ? 'up' : 'down'} {Math.abs(deltaPct).toFixed(2)}% — you picked {direction === 'up' ? 'Higher' : 'Lower'}
               </Text>
-              {outcome === 'win' && <Text style={{ fontSize: 14, fontWeight: '700', color: colors.up }}>+{PREDICTION_XP} XP</Text>}
+              {outcome === 'win' && (
+                <>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.up }}>+{awardedXp.toLocaleString()} XP</Text>
+                  {streakCount > 1 && (
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.up }}>
+                      🔥 {streakCount} in a row · +{(PREDICTION_STREAK_XP * streakCount).toLocaleString()} streak bonus
+                    </Text>
+                  )}
+                </>
+              )}
             </View>
           </Card>
           <Button variant="brand" onPress={() => setSettled(null)}>Play again</Button>
@@ -209,8 +224,9 @@ export function PredictionScreen() {
           ['Wins', String(state.predictionWins)],
           ['Losses', String(state.predictionLosses)],
           ['Win rate', `${winRate}%`],
-        ].map(([k, v], i) => (
-          <View key={k} style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}>
+          ['Streak', streakCount > 0 ? `🔥${streakCount}` : '0'],
+        ].map(([k, v], i, arr) => (
+          <View key={k} style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < arr.length - 1 ? 1 : 0, borderRightColor: colors.hairline }}>
             <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>
             <Text style={{ fontWeight: '700', fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'], marginTop: 2 }}>{v}</Text>
           </View>

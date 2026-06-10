@@ -1,6 +1,7 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { AppState, Trade, CompetitionEntry, PortfolioSlice } from '../store/types';
 import type { EquityPoint } from './equitySnapshots';
+import { STARTING_CASH } from '../constants/featureFlags';
 
 // Lazily initialised so it doesn't blow up before Amplify.configure() is called
 let clientPromise: Promise<any> | null = null;
@@ -76,8 +77,8 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
       createdAt:   p.createdAt ? new Date(p.createdAt).getTime() : undefined,
       leaderboardVisible: p.leaderboardVisible ?? true, // null/undefined = opted in
     },
-    cash:      p.cash ?? 10000,
-    bankroll:  p.bankroll ?? 10000,
+    cash:      p.cash ?? STARTING_CASH,
+    bankroll:  p.bankroll ?? STARTING_CASH,
     riskScore: p.riskScore ?? 0,
     holdings:  p.holdingsJson ? JSON.parse(p.holdingsJson) : [],
     ...(gami ? {
@@ -85,6 +86,7 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
       achievements:     gami.achievements && typeof gami.achievements === 'object' ? gami.achievements : {},
       predictionWins:   typeof gami.predictionWins === 'number' ? gami.predictionWins : 0,
       predictionLosses: typeof gami.predictionLosses === 'number' ? gami.predictionLosses : 0,
+      predictionStreak: typeof gami.predictionStreak === 'number' ? gami.predictionStreak : 0,
     } : {}),
   };
 }
@@ -175,7 +177,7 @@ export async function loadContestPortfolios(): Promise<Record<string, PortfolioS
       if (e.isActive === false) continue;
       if (!ownedByMe(e, ownerId)) continue;
       out[e.competitionId] = {
-        cash:     typeof e.cash === 'number' ? e.cash : 10000,
+        cash:     typeof e.cash === 'number' ? e.cash : STARTING_CASH,
         holdings: e.holdingsJson ? JSON.parse(e.holdingsJson) : [],
         trades:   e.tradesJson   ? JSON.parse(e.tradesJson)   : [],
       };
@@ -242,9 +244,9 @@ export async function loadProfileIfExists(): Promise<ProfileLoadResult> {
   }
 }
 
-// Create a fresh $10K / Bronze I starter row for a brand-new account that has
-// nothing worth keeping. The 0.01 BTC starter position is seeded client-side
-// (SEED_STARTER) once live prices arrive, then persisted on the next save.
+// Create a fresh $100K / Bronze I starter row for a brand-new account that has
+// nothing worth keeping. The portfolio opens with cash only — no starter coin
+// position.
 export async function createStarterProfile(): Promise<Partial<AppState> | null> {
   const client = await getClient();
   if (!client) return null;
@@ -266,8 +268,8 @@ export async function createStarterProfile(): Promise<Partial<AppState> | null> 
       league:       'Bronze',
       division:     1,
       streak:       0,
-      cash:         10000,
-      bankroll:     10000,
+      cash:         STARTING_CASH,
+      bankroll:     STARTING_CASH,
       riskScore:    100,
       holdingsJson: '[]',
       avatarColor:  '#6366F1',
@@ -322,6 +324,7 @@ export async function saveProfile(state: AppState): Promise<void> {
         achievements:     state.achievements,
         predictionWins:   state.predictionWins,
         predictionLosses: state.predictionLosses,
+        predictionStreak: state.predictionStreak,
       }),
     };
     const { data: existing } = await client.models.UserProfile.list();
@@ -339,7 +342,7 @@ export async function saveProfile(state: AppState): Promise<void> {
       return h ? t.price > h.avgCost : false;
     }).length;
     const winRate    = sellTrades.length > 0 ? (winningSells / sellTrades.length) * 100 : 0;
-    const pnlPct     = ((state.bankroll - 10000) / 10000) * 100;
+    const pnlPct     = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
     const { data: existingPublic } = await client.models.PublicProfile.list();
     // Build the rolling equity history. Append a new {t, v} point if we
     // haven't recorded one in the last hour, capped at the last 168 entries
@@ -451,7 +454,7 @@ async function publicTraderFromRecord(d: any): Promise<PublicTrader> {
     owner:       d.owner,
     handle:      d.handle ?? 'trader',
     league:      d.league ?? 'Bronze',
-    bankroll:    d.bankroll ?? 10000,
+    bankroll:    d.bankroll ?? STARTING_CASH,
     pnlPct:      d.pnlPct ?? 0,
     winRate:     d.winRate ?? 0,
     tradeCount:  d.tradeCount ?? 0,

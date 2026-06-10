@@ -43,7 +43,7 @@ export function W1Screen({ navigation }: Props) {
         </Text>
 
         <Text style={{ fontSize: 15, color: `${colors.brandOn}CC`, marginTop: 12, marginBottom: 28, lineHeight: 22 }}>
-          Practice with $10,000 simulated. Compete in daily tournaments. Real cash payouts for top finishers.
+          Practice with $100,000 simulated. Compete in daily tournaments. Real cash payouts for top finishers.
         </Text>
 
         {/* CTAs */}
@@ -54,7 +54,7 @@ export function W1Screen({ navigation }: Props) {
             textStyle={{ color: colors.brand }}
             onPress={() => navigation.navigate('W2')}
           >
-            Get my $10,000 bankroll
+            Get my $100,000 bankroll
           </Button>
           <Button
             variant="ghost"

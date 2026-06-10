@@ -304,18 +304,21 @@ export function MarketsScreen() {
             <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
               {movers.map(a => (
                 <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
-                  <Card variant="compact" style={{ width: 120, gap: 6 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <CoinGlyph symbol={a.symbol} size={24} />
-                      <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                  <Card variant="compact" style={{ width: 150, gap: 6 }}>
+                    {/* Name + price on one line; amount/percentage move sits under the price */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <CoinGlyph symbol={a.symbol} size={24} />
+                        <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                        ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
                     </View>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                      ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'], textAlign: 'right' }}>
                       {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                     </Text>
-                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={96} height={28} />
+                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={126} height={28} />
                   </Card>
                 </TouchableOpacity>
               ))}

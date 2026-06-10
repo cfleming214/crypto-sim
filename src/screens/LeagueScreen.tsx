@@ -7,6 +7,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { Filter } from 'lucide-react-native';
 
@@ -95,7 +96,7 @@ export function LeagueScreen() {
     return () => unsub();
   }, []);
 
-  const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+  const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
   const league = state.user.league;
   const div = DIVISION_LABELS[state.user.division] ?? '';
   const divisionLabel = `${league} ${div}`.trim();

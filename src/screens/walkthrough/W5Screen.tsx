@@ -70,7 +70,7 @@ export function W5Screen({ navigation }: Props) {
             You spend <Text style={{ fontWeight: '700' }}>dollars</Text> and receive <Text style={{ fontWeight: '700' }}>BTC</Text>. The conversion uses the current market price.
           </Text>
           <Text style={{ fontSize: 12, color: colors.ink3 }}>
-            For your first trade we've set it to $100 of your $10,000 bankroll.
+            For your first trade we've set it to $100 of your $100,000 bankroll.
           </Text>
         </View>
 

@@ -6,9 +6,10 @@ import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNu
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { fetchCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
-import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
+import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, type PredictionOutcome } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
+import { STARTING_CASH } from '../constants/featureFlags';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -167,8 +168,8 @@ function healHoldings<H extends { symbol: string; units: number }>(
 
 const INITIAL_STATE: AppState = {
   user: { handle: 'you', xp: 0, league: 'Bronze', division: 1, streak: 0, avatarColor: '#6366F1' },
-  bankroll: 10000,
-  cash: 10000,
+  bankroll: STARTING_CASH,
+  cash: STARTING_CASH,
   holdings: INITIAL_HOLDINGS,
   trades: [],
   coins: INITIAL_COINS,
@@ -190,6 +191,7 @@ const INITIAL_STATE: AppState = {
   achievements: {},
   predictionWins: 0,
   predictionLosses: 0,
+  predictionStreak: 0,
   claimedContestIds: [],
   duelsCreated: 0,
   activePrediction: null,
@@ -244,7 +246,7 @@ type Action =
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -480,26 +482,11 @@ function reducer(state: AppState, action: Action): AppState {
         bankroll:   cash + holdingsValue,
       };
     }
-    case 'SEED_STARTER': {
-      // Brand-new portfolio → drop a small starter position (0.01 BTC) in so the
-      // Holdings list opens with a real, tappable holding instead of being empty.
-      // We ALSO record a $0 "seed" trade so the trade ledger is self-describing:
-      // the portfolio-value history (src/services/portfolioHistory.ts) replays
-      // trades, and a holding with no trade behind it would otherwise be opaque
-      // to it. amount:0 keeps cash intact on replay — the starter is a free
-      // grant, not a purchase — so bankroll stays cash + the BTC value.
-      // No-op once there's any holding or trade history, so it never re-seeds.
-      if (state.holdings.length > 0 || state.trades.length > 0) return state;
-      const btc = state.coins.find(c => c.symbol === 'BTC');
-      if (!btc || !(btc.price > 0)) return state;
-      const holdings = [{ symbol: 'BTC', units: 0.01, avgCost: btc.price }];
-      const seedTrade: Trade = {
-        id: `SEED-${Date.now()}`,
-        symbol: 'BTC', side: 'buy', amount: 0, units: 0.01,
-        price: btc.price, timestamp: Date.now(), xpEarned: 0, slippage: 0,
-      };
-      return { ...state, holdings, trades: [seedTrade], bankroll: state.cash + 0.01 * btc.price };
-    }
+    case 'SEED_STARTER':
+      // Starter-position seeding removed: fresh portfolios now open with cash
+      // only (no 0.01 BTC grant), so a new account starts flat at STARTING_CASH.
+      // Kept as a no-op so the action wiring/allowlist stays valid.
+      return state;
     case 'BUY': {
       // USDC is the cash anchor — "buying" it would just move spendable cash
       // into a holding that can't be spent or tapped. Reject it outright.
@@ -719,6 +706,7 @@ function reducer(state: AppState, action: Action): AppState {
         achievements: action.data.achievements ?? state.achievements,
         predictionWins: action.data.predictionWins ?? state.predictionWins,
         predictionLosses: action.data.predictionLosses ?? state.predictionLosses,
+        predictionStreak: action.data.predictionStreak ?? state.predictionStreak,
         activePrediction: action.data.activePrediction ?? state.activePrediction,
         claimedContestIds: action.data.claimedContestIds ?? state.claimedContestIds,
         duelsCreated: action.data.duelsCreated ?? state.duelsCreated,
@@ -739,13 +727,18 @@ function reducer(state: AppState, action: Action): AppState {
     case 'HYDRATE_BLOCKED':
       return { ...state, blockedUsers: action.blockedUsers };
     case 'RECORD_PREDICTION': {
-      if (action.outcome === 'push') return state;  // tie → no win/loss, no XP
+      if (action.outcome === 'push') return state;  // tie → no win/loss, no XP, streak unchanged
       const won = action.outcome === 'win';
+      // Each consecutive correct call stacks a +500 XP streak bonus on top of the
+      // base win XP: 1st in a row +500, 2nd +1000, 3rd +1500… A loss resets it.
+      const nextStreak = won ? state.predictionStreak + 1 : 0;
+      const gained = won ? PREDICTION_XP + nextStreak * PREDICTION_STREAK_XP : 0;
       return {
         ...state,
         predictionWins: state.predictionWins + (won ? 1 : 0),
         predictionLosses: state.predictionLosses + (won ? 0 : 1),
-        user: { ...state.user, xp: state.user.xp + (won ? PREDICTION_XP : 0) },
+        predictionStreak: nextStreak,
+        user: { ...state.user, xp: state.user.xp + gained },
       };
     }
     case 'START_PREDICTION':
@@ -754,12 +747,16 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, activePrediction: action.prediction };
     case 'SETTLE_PREDICTION': {
       // Clear the active round and record the outcome (win/loss + XP), reusing
-      // the same scoring as RECORD_PREDICTION. A push just clears it.
+      // the same streak-bonus scoring as RECORD_PREDICTION. A push just clears it
+      // and leaves the streak intact.
       const won = action.outcome === 'win';
+      const nextStreak = won ? state.predictionStreak + 1 : 0;
+      const gained = won ? PREDICTION_XP + nextStreak * PREDICTION_STREAK_XP : 0;
       const scored = action.outcome === 'push' ? {} : {
         predictionWins: state.predictionWins + (won ? 1 : 0),
         predictionLosses: state.predictionLosses + (won ? 0 : 1),
-        user: { ...state.user, xp: state.user.xp + (won ? PREDICTION_XP : 0) },
+        predictionStreak: nextStreak,
+        user: { ...state.user, xp: state.user.xp + gained },
       };
       return { ...state, activePrediction: null, ...scored };
     }
@@ -808,10 +805,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, competitions: action.competitions };
     case 'JOIN_TOURNAMENT': {
       if (state.joinedTournamentIds.includes(action.tournamentId)) return state;
-      // Spawn a fresh $10K portfolio for the new contest if one doesn't exist.
+      // Spawn a fresh $100K portfolio for the new contest if one doesn't exist.
       const newPortfolios = state.portfolios[action.tournamentId]
         ? state.portfolios
-        : { ...state.portfolios, [action.tournamentId]: { cash: 10000, holdings: [], trades: [] } };
+        : { ...state.portfolios, [action.tournamentId]: { cash: STARTING_CASH, holdings: [], trades: [] } };
       return {
         ...state,
         joinedTournamentIds: [...state.joinedTournamentIds, action.tournamentId],
@@ -825,7 +822,7 @@ function reducer(state: AppState, action: Action): AppState {
       let nextCash = state.cash, nextHoldings = state.holdings, nextTrades = state.trades;
       if (state.activePortfolioId === action.tournamentId) {
         nextActive = 'main';
-        const main = remainingPortfolios['main'] ?? { cash: 10000, holdings: [], trades: [] };
+        const main = remainingPortfolios['main'] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
         nextCash = main.cash;
         nextHoldings = main.holdings;
         nextTrades = main.trades;
@@ -842,7 +839,7 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'INIT_CONTEST_PORTFOLIO': {
       // Used when restoring a contest portfolio from cloud on login.
-      const slice = action.slice ?? { cash: 10000, holdings: [], trades: [] };
+      const slice = action.slice ?? { cash: STARTING_CASH, holdings: [], trades: [] };
       return {
         ...state,
         portfolios: { ...state.portfolios, [action.competitionId]: slice },
@@ -867,7 +864,7 @@ function reducer(state: AppState, action: Action): AppState {
       if (action.portfolioId === state.activePortfolioId) return state;
       // Stash current portfolio's live cash/holdings/trades back into the map,
       // then load the target. If the target doesn't exist yet, initialize it
-      // with $10K cash. activeTournament stays null — it was UI-only legacy.
+      // with $100K cash. activeTournament stays null — it was UI-only legacy.
       const stashed = {
         ...state.portfolios,
         [state.activePortfolioId]: {
@@ -877,7 +874,7 @@ function reducer(state: AppState, action: Action): AppState {
         },
       };
       const rawTarget = stashed[action.portfolioId]
-        ?? { cash: 10000, holdings: [], trades: [] };
+        ?? { cash: STARTING_CASH, holdings: [], trades: [] };
       // Heal the portfolio we're switching to (fold stranded USDC + blocked
       // coins back into cash, same as LOAD_PROFILE).
       const { holdings: targetHoldings, cash: targetCash } = healHoldings(rawTarget.holdings, rawTarget.cash, state.coins);
@@ -923,14 +920,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'DISMISS_NUDGE':
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
-      // Truly clean: $10K cash, no holdings/trades/orders/joined comps, fresh
+      // Truly clean: $100K cash, no holdings/trades/orders/joined comps, fresh
       // XP. Keeps profile identity (handle, avatar, createdAt) and current coin
       // prices. resetAt re-anchors the equity graph (see the reset effect).
       return {
         ...state,
         resetAt: Date.now(),
-        bankroll: 10000,
-        cash: 10000,
+        bankroll: STARTING_CASH,
+        cash: STARTING_CASH,
         holdings: [],
         trades: [],
         pendingOrders: [],
@@ -1010,7 +1007,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (state.activePortfolioId === 'main') {
         saveProfile(state);
       } else {
-        const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+        const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
         saveContestPortfolio(
           state.activePortfolioId,
           { cash: state.cash, holdings: state.holdings, trades: state.trades },
@@ -1115,7 +1112,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt]);
 
-  // Re-anchor the equity graph on RESET_DEMO. A reset means "fresh $10K
+  // Re-anchor the equity graph on RESET_DEMO. A reset means "fresh $100K
   // portfolio starting now", so we wipe the old curve and seed a new origin at
   // the reset moment (the account's createdAt is deliberately left untouched).
   // Overwriting the cloud backup stops a reload from restoring the pre-reset
@@ -1129,7 +1126,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     seededOriginRef.current = true; // we seed explicitly here; block the mount-seed
     (async () => {
       await clearSnapshots('main');
-      const series = await appendSnapshot('main', { t: resetAt, v: 10000 });
+      const series = await appendSnapshot('main', { t: resetAt, v: STARTING_CASH });
       flushEquityToCloud(series); // overwrite the cloud backup with the cleared series
     })();
   }, [state.resetAt]);
@@ -1312,6 +1309,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               achievements: g.achievements && typeof g.achievements === 'object' ? g.achievements : undefined,
               predictionWins: typeof g.predictionWins === 'number' ? g.predictionWins : undefined,
               predictionLosses: typeof g.predictionLosses === 'number' ? g.predictionLosses : undefined,
+              predictionStreak: typeof g.predictionStreak === 'number' ? g.predictionStreak : undefined,
               activePrediction: g.activePrediction && typeof g.activePrediction === 'object' ? g.activePrediction : undefined,
               claimedContestIds: Array.isArray(g.claimedContestIds) ? g.claimedContestIds.filter((x: any) => typeof x === 'string') : undefined,
               duelsCreated: typeof g.duelsCreated === 'number' ? g.duelsCreated : undefined,
@@ -1346,12 +1344,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         achievements: state.achievements,
         predictionWins: state.predictionWins,
         predictionLosses: state.predictionLosses,
+        predictionStreak: state.predictionStreak,
         activePrediction: state.activePrediction ?? null,
         claimedContestIds: state.claimedContestIds,
         duelsCreated: state.duelsCreated,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
 
   // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
   // then save on every change. The ref gates the save so the empty initial list
@@ -1380,25 +1379,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!blockedHydratedRef.current) return;
     AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify(state.blockedUsers)).catch(() => {});
   }, [state.blockedUsers]);
-
-  // Seed the starter position once a brand-new portfolio (no holdings, no
-  // trades) has live prices available. Runs for guests and new cloud accounts
-  // alike; the reducer no-ops once there's any activity, and wrappedDispatch
-  // persists it for signed-in users so it doesn't re-seed every load.
-  //
-  // CRITICAL: for signed-in users, wait until the cloud profile has loaded
-  // (profileLoaded). At mount the state is briefly the empty INITIAL_STATE, and
-  // seeding then would (a) write a DUPLICATE starter-seed trade to the cloud on
-  // every login and (b) corrupt the reconstructed equity curve — each extra
-  // 0.01-BTC seed over-subtracts the reverse-replay baseline, dragging the early
-  // line negative. Guests don't reload from the cloud, so they seed immediately.
-  useEffect(() => {
-    if (authStatus === 'authenticated' && !profileLoaded) return;
-    const btc = state.coins.find(c => c.symbol === 'BTC');
-    if (btc && btc.price > 0 && state.holdings.length === 0 && state.trades.length === 0) {
-      wrappedDispatch({ type: 'SEED_STARTER' });
-    }
-  }, [authStatus, profileLoaded, state.coins, state.holdings.length, state.trades.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auth-gated leaderboard subscriptions, one per joined competition.
   // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.
@@ -1431,7 +1411,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         saveTrade(state.trades[0]);
       }
     } else {
-      const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+      const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
       saveContestPortfolio(
         state.activePortfolioId,
         { cash: state.cash, holdings: state.holdings, trades: state.trades },

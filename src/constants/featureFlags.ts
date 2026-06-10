@@ -20,3 +20,8 @@ export const CONTEST_CASH_PRIZES = false;
 // backend field is redeployed). The podium splits this 100/50/25% (see
 // contestXpForRank in services/gamification.ts).
 export const DEFAULT_PRIZE_XP = 5000;
+
+// Simulated starting bankroll for every fresh portfolio — the main practice
+// account and each contest you join. Also the baseline all P&L percentages are
+// measured against, so changing it here keeps returns consistent everywhere.
+export const STARTING_CASH = 100_000;

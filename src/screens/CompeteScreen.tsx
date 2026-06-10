@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -13,19 +13,28 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
-import { CONTEST_CASH_PRIZES } from '../constants/featureFlags';
+import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { useNavigation } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
 const SEASON_START = new Date('2026-05-01T00:00:00Z').getTime();
-// Width of a live-tournament card in its swipe carousel (small peek of the next).
-const LIVE_CARD_W = Math.round(Dimensions.get('window').width * 0.86);
 
 function computeSeasonDay(): number {
   const elapsed = Date.now() - SEASON_START;
   return Math.min(SEASON_DURATION, Math.max(1, Math.ceil(elapsed / 86400000)));
+}
+
+// "in 7d" / "in 5h" / "in 12m" until an upcoming contest's startAt.
+function startsInLabel(startAt: number): string {
+  const ms = startAt - Date.now();
+  if (ms <= 0) return 'now';
+  const d = Math.floor(ms / 86400000);
+  if (d >= 1) return `in ${d}d`;
+  const h = Math.floor(ms / 3600000);
+  if (h >= 1) return `in ${h}h`;
+  return `in ${Math.max(1, Math.floor(ms / 60000))}m`;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -72,6 +81,37 @@ export function CompeteScreen() {
   const predExpired = !!activePrediction && predRemaining <= 0;
   const predMmss = `${Math.floor(predRemaining / 60)}:${String(predRemaining % 60).padStart(2, '0')}`;
 
+  // While a round is live, glow the card green/red by whether the pick is
+  // currently winning. Recomputed every render — the 1s tick above keeps this
+  // refreshing against the latest price. Flat (no move yet) → no glow.
+  const predLivePrice = predLive
+    ? (state.coins.find(c => c.symbol === activePrediction!.symbol)?.price ?? 0)
+    : 0;
+  const predWinning = predLive && predLivePrice > 0
+    ? (activePrediction!.direction === 'up'
+        ? predLivePrice > activePrediction!.lockedPrice
+        : predLivePrice < activePrediction!.lockedPrice)
+    : false;
+  const predFlat = predLive && predLivePrice === activePrediction!.lockedPrice;
+  const predGlow = predLive && !predFlat ? (predWinning ? colors.up : colors.down) : null;
+
+  // Live-tournament carousel: one card at a time, swipe left/right to cycle with
+  // wraparound. liveLenRef holds the current count so the once-created
+  // PanResponder always wraps against the latest length.
+  const [liveIdx, setLiveIdx] = useState(0);
+  const liveLenRef = useRef(0);
+  const livePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderRelease: (_, g) => {
+        const n = liveLenRef.current;
+        if (n < 2) return;
+        if (g.dx <= -40) setLiveIdx(i => (i + 1) % n);
+        else if (g.dx >= 40) setLiveIdx(i => (i - 1 + n) % n);
+      },
+    }),
+  ).current;
+
   // Prize label for a contest card — cash pool text, or the XP prize when cash
   // prizes are off.
   const prizeLabel = (c: Competition) =>
@@ -99,7 +139,7 @@ export function CompeteScreen() {
     }
     setDuelBusy(true);
     const nextNumber = state.duelsCreated + 1;
-    const res = await createDuel(state.user.handle, 10000, duelDays * DAY_MS, nextNumber);
+    const res = await createDuel(state.user.handle, STARTING_CASH, duelDays * DAY_MS, nextNumber);
     setDuelBusy(false);
     if (!res) { Alert.alert('Could not create duel', 'Please try again in a moment.'); return; }
     dispatch({ type: 'INCREMENT_DUELS_CREATED' });
@@ -127,7 +167,7 @@ export function CompeteScreen() {
   const handleAcceptDuel = async () => {
     if (duelBusy || !duelCode.trim()) return;
     setDuelBusy(true);
-    const comp = await acceptDuel(duelCode, state.user.handle, 10000);
+    const comp = await acceptDuel(duelCode, state.user.handle, STARTING_CASH);
     setDuelBusy(false);
     if (!comp) { Alert.alert('Invalid code', 'That duel code wasn’t found, or the duel is already full.'); return; }
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: comp.id });
@@ -145,6 +185,9 @@ export function CompeteScreen() {
   const streak = state.user.streak;
 
   const liveComps = getLive();
+  liveLenRef.current = liveComps.length;
+  const safeLiveIdx = liveComps.length ? liveIdx % liveComps.length : 0;
+  const currentLive = liveComps[safeLiveIdx];
 
   // Contest list (live + open, not finished) filtered by the selected pill tab.
   const activeTabType = CONTEST_TABS.find(t => t.label === contestTab)?.type ?? null;
@@ -165,9 +208,14 @@ export function CompeteScreen() {
       nav.navigate('TournamentDetail', { id: comp.id });
       return;
     }
+    // Upcoming brackets can't be joined until they open.
+    if (comp.startAt > Date.now()) {
+      Alert.alert(`${comp.name} hasn't started yet`, `This contest opens ${startsInLabel(comp.startAt)}. Come back then to join.`);
+      return;
+    }
     Alert.alert(
       `Join ${comp.name}`,
-      `Stake: ${comp.stake}\n${CONTEST_CASH_PRIZES ? 'Prize pool' : 'Top prize'}: ${prizeLabel(comp)}\n\nYou'll start with a $10,000 simulated bankroll.`,
+      `Stake: ${comp.stake}\n${CONTEST_CASH_PRIZES ? 'Prize pool' : 'Top prize'}: ${prizeLabel(comp)}\n\nYou'll start with a $${STARTING_CASH.toLocaleString()} simulated bankroll.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -232,68 +280,73 @@ export function CompeteScreen() {
         </View>
       </View>
 
-      {/* Live tournaments — swipe horizontally to cycle through them */}
-      {liveComps.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={liveComps.length > 1 ? LIVE_CARD_W + 10 : undefined}
-          decelerationRate="fast"
-          style={{ marginHorizontal: -20 }}
-          contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
-        >
-          {liveComps.map(live => (
-            <TouchableOpacity
-              key={live.id}
-              testID={`compete-live-${live.id}`}
-              style={{ width: liveComps.length > 1 ? LIVE_CARD_W : Dimensions.get('window').width - 40 }}
-              onPress={() => nav.navigate('TournamentDetail', { id: live.id })}
-              activeOpacity={0.85}
-            >
-              <Card variant="noPad">
-                <CardSection>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.down }} />
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Live · {timeRemaining(live)}
-                      </Text>
-                    </View>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onPress={() => nav.navigate('TournamentDetail', { id: live.id })}
-                    >
-                      {isJoined(live.id) ? 'Live Details' : 'View'}
-                    </Button>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{live.name}</Text>
-                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>$10K bankroll · No leverage</Text>
-                    </View>
-                    {isJoined(live.id) && state.activeTournament && (
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your rank</Text>
-                        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>#{state.activeTournament.userRank}</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                    <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                      {live.entryCount === 0
-                        ? 'Be the first to join'
-                        : `${live.entryCount.toLocaleString()} ${live.entryCount === 1 ? 'player' : 'players'}`}
+      {/* Live tournaments — one at a time; swipe left/right to cycle (wraps). */}
+      {currentLive && (
+        <View {...livePan.panHandlers}>
+          <TouchableOpacity
+            key={currentLive.id}
+            testID={`compete-live-${currentLive.id}`}
+            onPress={() => nav.navigate('TournamentDetail', { id: currentLive.id })}
+            activeOpacity={0.85}
+          >
+            <Card variant="noPad">
+              <CardSection>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.down }} />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Live · {timeRemaining(currentLive)}
                     </Text>
-                    <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(live)}</Text>
                   </View>
-                </CardSection>
-              </Card>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => nav.navigate('TournamentDetail', { id: currentLive.id })}
+                  >
+                    {isJoined(currentLive.id) ? 'Live Details' : 'View'}
+                  </Button>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{currentLive.name}</Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>${(STARTING_CASH / 1000).toFixed(0)}K bankroll · No leverage</Text>
+                  </View>
+                  {isJoined(currentLive.id) && state.activeTournament && (
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your rank</Text>
+                      <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>#{state.activeTournament.userRank}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                  <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                    {currentLive.entryCount === 0
+                      ? 'Be the first to join'
+                      : `${currentLive.entryCount.toLocaleString()} ${currentLive.entryCount === 1 ? 'player' : 'players'}`}
+                  </Text>
+                  <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(currentLive)}</Text>
+                </View>
+              </CardSection>
+            </Card>
+          </TouchableOpacity>
+
+          {/* Page dots — only when there's more than one live contest. */}
+          {liveComps.length > 1 && (
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}>
+              {liveComps.map((c, i) => (
+                <View
+                  key={c.id}
+                  style={{
+                    width: i === safeLiveIdx ? 18 : 6, height: 6, borderRadius: 3,
+                    backgroundColor: i === safeLiveIdx ? colors.brand : colors.hairline,
+                  }}
+                />
+              ))}
+            </View>
+          )}
+        </View>
       )}
 
       {/* Contests — pill-tab filtered list */}
@@ -365,7 +418,9 @@ export function CompeteScreen() {
                 <Text style={{ fontWeight: '600', color: colors.ink }}>{comp.name}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
-                  <Text style={{ fontSize: 11, color: colors.ink3 }}>{timeRemaining(comp)}</Text>
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                    {comp.startAt > Date.now() ? `Starts ${startsInLabel(comp.startAt)}` : timeRemaining(comp)}
+                  </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
@@ -461,7 +516,19 @@ export function CompeteScreen() {
 
       {/* Price-prediction mini-game */}
       <TouchableOpacity testID="compete-prediction-link" onPress={() => nav.navigate('Predict')} activeOpacity={0.85}>
-        <Card variant="tinted">
+        <Card
+          variant="tinted"
+          style={predGlow ? {
+            borderWidth: 1.5,
+            borderColor: predGlow,
+            backgroundColor: `${predGlow}14`,
+            shadowColor: predGlow,
+            shadowOpacity: 0.45,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 8,
+          } : undefined}
+        >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
               <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center' }}>

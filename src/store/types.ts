@@ -116,7 +116,7 @@ export interface BlockedUser {
 
 // A trading portfolio — either the main offline portfolio (id: 'main') or a
 // per-contest portfolio (id: competitionId). Each is independent: separate
-// $10K starting cash, separate holdings, separate trades.
+// $100K starting cash, separate holdings, separate trades.
 export interface PortfolioSlice {
   cash: number;
   holdings: Holding[];
@@ -175,6 +175,10 @@ export interface AppState {
   // 'gamification.v1'. predictionWins feeds the "Predictor" achievement.
   predictionWins: number;
   predictionLosses: number;
+  // Current consecutive-correct prediction streak. Drives the +500/step streak
+  // bonus (see PREDICTION_STREAK_XP). Resets to 0 on a loss. Persisted in the
+  // gamification.v1 blob.
+  predictionStreak: number;
   // Contest ids whose XP prize the user has already claimed, so a contest's XP
   // is never awarded twice. Persisted in the gamification.v1 blob.
   claimedContestIds: string[];

@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
-import { PAYOUTS_ENABLED } from '../constants/featureFlags';
+import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -245,7 +245,7 @@ export function ProfileScreen() {
     );
   };
 
-  const pnl = state.bankroll - 10000;
+  const pnl = state.bankroll - STARTING_CASH;
   const sellTrades = state.trades.filter(t => t.side === 'sell');
   // Prefer the realized P&L recorded at sell time (exact); fall back to the old
   // current-holding heuristic for legacy rows without realizedPnl.
@@ -276,12 +276,12 @@ export function ProfileScreen() {
       const portfolio = state.portfolios[id];
       const slice = state.activePortfolioId === id
         ? { cash: state.cash, holdings: state.holdings }
-        : (portfolio ?? { cash: 10000, holdings: [] });
+        : (portfolio ?? { cash: STARTING_CASH, holdings: [] });
       const bankroll = slice.cash + slice.holdings.reduce((s, h) => {
         const c = state.coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
-      const contestPnl = bankroll - 10000;
+      const contestPnl = bankroll - STARTING_CASH;
       const entries = state.leaderboard[id] ?? [];
       const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
       const myIdx = sorted.findIndex(e => e.handle === state.user.handle);
@@ -336,10 +336,10 @@ export function ProfileScreen() {
             { text: 'Cancel', style: 'cancel' },
             { text: 'Share profile', onPress: handleShareProfile },
             {
-              text: 'Reset demo ($10K)',
+              text: `Reset demo ($${(STARTING_CASH / 1000).toFixed(0)}K)`,
               onPress: () => Alert.alert(
                 'Reset demo?',
-                'Your bankroll and trades will be reset to $10,000. Profile settings are kept.',
+                `Your bankroll and trades will be reset to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`,
                 [
                   { text: 'Cancel', style: 'cancel' },
                   { text: 'Reset', style: 'destructive', onPress: () => dispatch({ type: 'RESET_DEMO' }) },

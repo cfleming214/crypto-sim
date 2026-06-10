@@ -11,7 +11,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { CONTEST_CASH_PRIZES } from '../constants/featureFlags';
+import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
 import { Bell, MoreHorizontal, Trophy } from 'lucide-react-native';
 
@@ -50,16 +50,16 @@ export function TournamentDetailScreen() {
     .filter(e => !state.blockedUsers.some(b => b.handle === e.handle));
 
   // Pull the contest portfolio: active state if currently selected, else
-  // the stashed slice from state.portfolios. Falls back to a fresh $10K
+  // the stashed slice from state.portfolios. Falls back to a fresh $100K
   // shape for not-yet-joined contests so the chart still renders something.
   const contestPortfolio = state.activePortfolioId === competitionId
     ? { cash: state.cash, holdings: state.holdings, trades: state.trades }
-    : (state.portfolios[competitionId] ?? { cash: 10000, holdings: [], trades: [] });
+    : (state.portfolios[competitionId] ?? { cash: STARTING_CASH, holdings: [], trades: [] });
   const contestBankroll = contestPortfolio.cash + contestPortfolio.holdings.reduce((s, h) => {
     const c = state.coins.find(x => x.symbol === h.symbol);
     return s + (c ? c.price * h.units : 0);
   }, 0);
-  const pnlPct = ((contestBankroll - 10000) / 10000) * 100;
+  const pnlPct = ((contestBankroll - STARTING_CASH) / STARTING_CASH) * 100;
 
   // Live player count derives from the subscribed leaderboard rather than the
   // cached competition.entryCount (which was snapshotted at fetch time).
@@ -96,12 +96,12 @@ export function TournamentDetailScreen() {
   // last-known price for that symbol; snapshots bankroll at each trade.
   const { chartData, chartTimestamps } = React.useMemo(() => {
     const sorted = [...contestPortfolio.trades].sort((a, b) => a.timestamp - b.timestamp);
-    let cash = 10000;
+    let cash = STARTING_CASH;
     const holdings = new Map<string, { units: number; avgCost: number }>();
     const lastPrice = new Map<string, number>();
     // Anchor the series at the contest start (or first trade) and walk forward.
     const startTs = sorted[0]?.timestamp ?? competition.startAt;
-    const snaps: number[]  = [10000];
+    const snaps: number[]  = [STARTING_CASH];
     const stamps: number[] = [startTs];
     for (const tr of sorted) {
       lastPrice.set(tr.symbol, tr.price);
@@ -135,7 +135,7 @@ export function TournamentDetailScreen() {
     stamps.push(Date.now());
     if (snaps.length < 2) {
       return {
-        chartData:       [10000, contestBankroll],
+        chartData:       [STARTING_CASH, contestBankroll],
         chartTimestamps: [competition.startAt, Date.now()],
       };
     }
@@ -253,7 +253,7 @@ export function TournamentDetailScreen() {
       <Card style={{ gap: 8 }}>
         <Text style={{ fontWeight: '700', color: colors.ink }}>Rules</Text>
         {[
-          ['Starting bankroll', '$10,000'],
+          ['Starting bankroll', `$${STARTING_CASH.toLocaleString()}`],
           ['Leverage', 'Off'],
           ['Eligible markets', state.coins.filter(c => c.symbol !== 'USDC').map(c => c.symbol).join(', ')],
           ['Final standing', 'Highest equity wins'],
@@ -411,7 +411,7 @@ export function TournamentDetailScreen() {
           variant="brand"
           style={{ flex: 1 }}
           onPress={() => {
-            // Switch into this contest's portfolio so trades use its $10K buying
+            // Switch into this contest's portfolio so trades use its $100K buying
             // power, then go to Markets to pick a coin to trade.
             if (joined && state.activePortfolioId !== competitionId) {
               dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: competitionId });

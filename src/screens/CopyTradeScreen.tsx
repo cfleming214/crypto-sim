@@ -11,6 +11,7 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchTrader, subscribeToTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
 import { useModeration } from '../hooks/useModeration';
 import { MoreHorizontal, Pause, X } from 'lucide-react-native';
@@ -105,7 +106,7 @@ export function CopyTradeScreen() {
     return () => unsub();
   }, [traderId]);
 
-  const pnlPct = ((state.bankroll - 10000) / 10000) * 100;
+  const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
   const traderHandle = trader ? `@${trader.handle}` : '@trader';
   const traderName   = trader?.handle ?? '—';
 

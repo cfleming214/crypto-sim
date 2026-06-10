@@ -176,7 +176,11 @@ export type PredictionDirection = 'up' | 'down';
 export type PredictionOutcome = 'win' | 'loss' | 'push';
 
 export const PREDICTION_SECONDS = 60;
-export const PREDICTION_XP = 1000;   // awarded on a win
+export const PREDICTION_XP = 1000;   // base XP awarded on a win
+// Per-step streak bonus: each consecutive correct call adds this × the streak
+// length on top of PREDICTION_XP (1st in a row +500, 2nd +1000, 3rd +1500…).
+// A loss resets the streak to 0.
+export const PREDICTION_STREAK_XP = 500;
 
 // Resolve a prediction. An exact tie (no move) is a push (no win/loss recorded).
 export function resolvePrediction(
