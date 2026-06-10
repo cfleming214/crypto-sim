@@ -440,7 +440,14 @@ export function CompeteScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={{ fontSize: 18, color: colors.ink3 }}>›</Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Record</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'], marginTop: 2 }}>
+                <Text style={{ color: colors.up }}>{state.predictionWins}W</Text>
+                <Text style={{ color: colors.ink3 }}>{' · '}</Text>
+                <Text style={{ color: colors.down }}>{state.predictionLosses}L</Text>
+              </Text>
+            </View>
           </View>
         </Card>
       </TouchableOpacity>
