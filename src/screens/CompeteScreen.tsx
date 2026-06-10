@@ -22,6 +22,8 @@ const SEASON_DURATION = 30;
 const SEASON_START = new Date('2026-05-01T00:00:00Z').getTime();
 // Width of an open-bracket card in the swipe carousel (next card peeks).
 const BRACKET_CARD_W = Math.round(Dimensions.get('window').width * 0.74);
+// Width of a live-tournament card in its swipe carousel (small peek of the next).
+const LIVE_CARD_W = Math.round(Dimensions.get('window').width * 0.86);
 
 function computeSeasonDay(): number {
   const elapsed = Date.now() - SEASON_START;
@@ -135,7 +137,6 @@ export function CompeteScreen() {
 
   const liveComps = getLive();
   const openComps = getOpen();
-  const activeLive = liveComps[0];
 
   const finalizeJoin = async (comp: Competition) => {
     await join(comp.id);
@@ -216,51 +217,68 @@ export function CompeteScreen() {
         </View>
       </View>
 
-      {/* Live tournament */}
-      {activeLive && (
-        <TouchableOpacity onPress={() => nav.navigate('TournamentDetail', { id: activeLive.id })} activeOpacity={0.85}>
-          <Card variant="noPad">
-            <CardSection>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.down }} />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Live · {timeRemaining(activeLive)}
-                  </Text>
-                </View>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => nav.navigate('TournamentDetail', { id: activeLive.id })}
-                >
-                  {isJoined(activeLive.id) ? 'Live Details' : 'View'}
-                </Button>
-              </View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
-                <View>
-                  <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>{activeLive.name}</Text>
-                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>$10K bankroll · No leverage</Text>
-                </View>
-                {isJoined(activeLive.id) && state.activeTournament && (
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your rank</Text>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>#{state.activeTournament.userRank}</Text>
+      {/* Live tournaments — swipe horizontally to cycle through them */}
+      {liveComps.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={liveComps.length > 1 ? LIVE_CARD_W + 10 : undefined}
+          decelerationRate="fast"
+          style={{ marginHorizontal: -20 }}
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+        >
+          {liveComps.map(live => (
+            <TouchableOpacity
+              key={live.id}
+              testID={`compete-live-${live.id}`}
+              style={{ width: liveComps.length > 1 ? LIVE_CARD_W : Dimensions.get('window').width - 40 }}
+              onPress={() => nav.navigate('TournamentDetail', { id: live.id })}
+              activeOpacity={0.85}
+            >
+              <Card variant="noPad">
+                <CardSection>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.down }} />
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Live · {timeRemaining(live)}
+                      </Text>
+                    </View>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => nav.navigate('TournamentDetail', { id: live.id })}
+                    >
+                      {isJoined(live.id) ? 'Live Details' : 'View'}
+                    </Button>
                   </View>
-                )}
-              </View>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                  {activeLive.entryCount === 0
-                    ? 'Be the first to join'
-                    : `${activeLive.entryCount.toLocaleString()} ${activeLive.entryCount === 1 ? 'player' : 'players'}`}
-                </Text>
-                <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(activeLive)}</Text>
-              </View>
-            </CardSection>
-          </Card>
-        </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{live.name}</Text>
+                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>$10K bankroll · No leverage</Text>
+                    </View>
+                    {isJoined(live.id) && state.activeTournament && (
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your rank</Text>
+                        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>#{state.activeTournament.userRank}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                      {live.entryCount === 0
+                        ? 'Be the first to join'
+                        : `${live.entryCount.toLocaleString()} ${live.entryCount === 1 ? 'player' : 'players'}`}
+                    </Text>
+                    <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(live)}</Text>
+                  </View>
+                </CardSection>
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
 
       {/* Open brackets */}
