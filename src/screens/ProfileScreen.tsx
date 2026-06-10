@@ -296,7 +296,7 @@ export function ProfileScreen() {
     const pnlStr = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`;
     const divLabel = state.user.division > 0 ? ['', 'I', 'II', 'III', 'IV'][state.user.division] : '';
     const message =
-      `@${state.user.handle} on Crypto Sim — ${pnlStr} all-time · ${state.user.league} ${divLabel}`.trim() +
+      `@${state.user.handle} on CryptoComp — ${pnlStr} all-time · ${state.user.league} ${divLabel}`.trim() +
       `\n${winRate}% win rate · ${state.user.xp.toLocaleString()} XP · ${state.user.streak}-day streak`;
     try {
       await Share.share({ message });

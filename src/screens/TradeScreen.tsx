@@ -282,7 +282,7 @@ function MoreSheet({ visible, symbol, currentPrice, onClose, onSetAlert }: {
         onClose();
         try {
           await Share.share({
-            message: `${symbol} at $${currentPrice.toLocaleString('en-US', { maximumFractionDigits: currentPrice < 0.01 ? 8 : 2 })} — watching this one on Crypto Sim`,
+            message: `${symbol} at $${currentPrice.toLocaleString('en-US', { maximumFractionDigits: currentPrice < 0.01 ? 8 : 2 })} — watching this one on CryptoComp`,
           });
         } catch {
           // User cancelled — silent
