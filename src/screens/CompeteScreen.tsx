@@ -39,7 +39,7 @@ export function CompeteScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
-  const { getLive, getOpen, isJoined, join, timeRemaining } = useCompetitions();
+  const { getLive, getOpen, isJoined, join, timeRemaining, refresh } = useCompetitions();
   const { emailVerified, status } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
@@ -185,6 +185,7 @@ export function CompeteScreen() {
     <ScreenShell
       eyebrow="Contests"
       title="Compete"
+      onRefresh={refresh}
       rightActions={
         <TouchableOpacity style={{ padding: 8 }} onPress={() => nav.navigate('Notifications')}>
           <View style={{ position: 'relative' }}>

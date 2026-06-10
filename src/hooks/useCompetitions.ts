@@ -4,6 +4,7 @@ import {
   joinCompetition as joinCloud,
   leaveCompetition as leaveCloud,
   fetchCompetitionLeaderboard,
+  fetchCompetitions,
 } from '../services/competitionService';
 import type { Competition } from '../store/types';
 
@@ -42,6 +43,14 @@ export function useCompetitions() {
     if (entryId) await leaveCloud(entryId);
   }, [dispatch]);
 
+  // Manual re-fetch for pull-to-refresh. Only replaces the list when the fetch
+  // returns rows, so a transient network error doesn't wipe the contests already
+  // on screen — the user can just pull again to recover.
+  const refresh = useCallback(async () => {
+    const list = await fetchCompetitions();
+    if (list.length > 0) dispatch({ type: 'SET_COMPETITIONS', competitions: list });
+  }, [dispatch]);
+
   const refreshLeaderboard = useCallback(async (competitionId: string) => {
     const entries = await fetchCompetitionLeaderboard(competitionId);
     if (entries.length > 0) {
@@ -70,6 +79,7 @@ export function useCompetitions() {
     getById,
     join,
     leave,
+    refresh,
     refreshLeaderboard,
     timeRemaining,
   };
