@@ -49,11 +49,28 @@ function mapRow(d: any): LeaderboardRow {
 // Drop null/partial items (observeQuery can surface them mid-sync) and any row
 // missing an id, then map. Keeps a stray null from throwing inside the
 // subscription callback and red-screening the app.
+//
+// Also dedupe by owner (falling back to handle): the same account can end up
+// with more than one row — e.g. seeded bots that accrued multiple UserProfile
+// rows across seed runs — surfacing as duplicate entries with different XP. We
+// keep the best-ranked (highest-XP) row per account. Distinct real users have
+// distinct owners, so this never collapses two different people.
 function mapRows(items: any[]): LeaderboardRow[] {
-  return (items ?? [])
+  const sorted = (items ?? [])
     .filter(d => d && d.id)
     .map(mapRow)
     .sort((a, b) => a.rank - b.rank);
+  const seen = new Set<string>();
+  const out: LeaderboardRow[] = [];
+  for (const r of sorted) {
+    const key = r.owner || r.handle;
+    if (key) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    out.push(r);
+  }
+  return out;
 }
 
 export async function fetchGlobalLeaderboard(): Promise<LeaderboardRow[]> {

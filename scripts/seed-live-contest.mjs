@@ -399,13 +399,43 @@ async function main() {
   }
 
   // Give each bot a UserProfile so they appear on the global leaderboard too.
+  // Upsert by owner: reuse an existing row's id (updating it in place) and
+  // delete any extras, so reseeding never leaves a bot with multiple profiles —
+  // which would surface as duplicate leaderboard entries with different XP.
   console.log('\nWriting bot UserProfiles (for the global leaderboard)…');
   if (tables.UserProfile) {
+    const profileIdsByOwner = new Map();
+    if (!DRY) {
+      let s;
+      do {
+        const res = await ddb.send(new ScanCommand({
+          TableName: tables.UserProfile, ExclusiveStartKey: s,
+          ProjectionExpression: '#id, #o',
+          ExpressionAttributeNames: { '#id': 'id', '#o': 'owner' },
+        }));
+        for (const it of res.Items ?? []) {
+          const o = it.owner?.S;
+          if (!o) continue;
+          const arr = profileIdsByOwner.get(o) ?? [];
+          arr.push(it.id.S);
+          profileIdsByOwner.set(o, arr);
+        }
+        s = res.LastEvaluatedKey;
+      } while (s);
+    }
+    let dupsRemoved = 0;
     for (const bot of bots) {
       const pf = randomPortfolio(coins);
+      const existing = profileIdsByOwner.get(bot.owner) ?? [];
+      const reuseId = existing[0] ?? randomUUID();
+      // Delete any duplicate profiles this bot picked up on earlier runs.
+      for (const dupId of existing.slice(1)) {
+        if (!DRY) await ddb.send(new DeleteItemCommand({ TableName: tables.UserProfile, Key: marshall({ id: dupId }) }));
+        dupsRemoved++;
+      }
       await put(tables.UserProfile, {
         __typename: 'UserProfile',
-        id: randomUUID(),
+        id: reuseId,
         handle: bot.handle,
         xp: randi(500, 8000),
         league: bot.league,
@@ -423,7 +453,7 @@ async function main() {
         updatedAt: new Date(now).toISOString(),
       });
     }
-    console.log(`  wrote ${bots.length} profiles`);
+    console.log(`  wrote ${bots.length} profiles${dupsRemoved ? `, removed ${dupsRemoved} duplicate(s)` : ''}`);
   }
 
   const joined = (cap) => Math.min(BOT_COUNT, cap);

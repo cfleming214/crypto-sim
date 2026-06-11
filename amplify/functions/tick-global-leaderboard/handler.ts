@@ -59,9 +59,20 @@ export const handler = async (): Promise<void> => {
     });
   }
 
+  // Collapse duplicate profiles for the same owner — an account (e.g. a seeded
+  // bot reseeded across runs) can have more than one UserProfile row, which
+  // otherwise shows up as duplicate leaderboard entries with different XP. Keep
+  // the highest-XP row per owner (tie-break on live value).
+  const byOwner = new Map<string, Ranked>();
+  for (const r of ranked) {
+    const prev = byOwner.get(r.owner);
+    if (!prev || r.xp > prev.xp || (r.xp === prev.xp && r.value > prev.value)) byOwner.set(r.owner, r);
+  }
+  const deduped = [...byOwner.values()];
+
   // Rank by lifetime XP (tie-break on live value).
-  ranked.sort((a, b) => b.xp - a.xp || b.value - a.value);
-  const top = ranked.slice(0, TOP_N);
+  deduped.sort((a, b) => b.xp - a.xp || b.value - a.value);
+  const top = deduped.slice(0, TOP_N);
   const now = new Date().toISOString();
 
   // 3. Write rows 1..N (id = rank string), overwriting in place.
