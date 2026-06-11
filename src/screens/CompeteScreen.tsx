@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder, Animated, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder, Animated, Dimensions, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -146,19 +146,23 @@ export function CompeteScreen() {
       },
       onPanResponderRelease: (_, g) => {
         const n = liveLenRef.current;
-        const dir = g.dx <= -40 ? 1 : g.dx >= 40 ? -1 : 0;   // +1 = next, -1 = prev
+        // Commit on distance OR a quick flick (velocity), so a fast short swipe
+        // still pages — a deliberate slow drag needs the 40px travel. vx is in
+        // px/ms, same units as the web velocity threshold.
+        const dir = (g.dx <= -40 || g.vx < -0.3) ? 1 : (g.dx >= 40 || g.vx > 0.3) ? -1 : 0;   // +1 = next, -1 = prev
         if (n < 2 || dir === 0) {
           Animated.spring(slideX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
           return;
         }
         animatingRef.current = true;
-        // Slide the current card off in the swipe direction…
-        Animated.timing(slideX, { toValue: -dir * SCREEN_W, duration: 160, useNativeDriver: true }).start(() => {
+        // Slide the current card off in the swipe direction… strong ease-out
+        // (cubic-bezier(0.23,1,0.32,1)) so the motion reads as responsive.
+        Animated.timing(slideX, { toValue: -dir * SCREEN_W, duration: 160, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true }).start(() => {
           // …swap to the neighbour, drop the incoming card just off the opposite
           // edge, then slide it into place.
           setLiveIdx(i => (i + dir + n) % n);
           slideX.setValue(dir * SCREEN_W);
-          Animated.timing(slideX, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+          Animated.timing(slideX, { toValue: 0, duration: 200, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true }).start(() => {
             animatingRef.current = false;
           });
         });
