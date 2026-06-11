@@ -23,7 +23,7 @@ const GAMIFICATION_KEY = 'gamification.v1';
 // USDC stays here as the stability anchor — the tick simulator and risk math
 // assume USDC is always present in state.coins.
 // USDC stays at index 0 (SET_COINS + the tick simulator reference it as the
-// cash anchor). The rest are the top-10 tradeable coins with seed prices so a
+// cash anchor). The rest are the top-25 tradeable coins with seed prices so a
 // first-time / offline open already has a populated Markets tab; live prices
 // from the catalog merge over these via SET_COINS once online.
 const INITIAL_COINS: Coin[] = [
@@ -38,6 +38,21 @@ const INITIAL_COINS: Coin[] = [
   { symbol: 'AVAX', name: 'Avalanche',  price: 35,     change24h: 2.7,   marketCap: '$14B',  volume: '$500M', history: [34.0,34.3,34.2,34.6,34.4,34.8,34.7,35] },
   { symbol: 'LINK', name: 'Chainlink',  price: 18,     change24h: 1.5,   marketCap: '$11B',  volume: '$450M', history: [17.6,17.7,17.65,17.8,17.75,17.9,17.85,18] },
   { symbol: 'DOT',  name: 'Polkadot',   price: 7,      change24h: -0.6,  marketCap: '$10B',  volume: '$300M', history: [7.05,7.04,7.06,7.0,6.98,7.02,7.01,7] },
+  { symbol: 'TRX',  name: 'TRON',       price: 0.27,   change24h: 0.8,   marketCap: '$24B',  volume: '$700M', history: [0.262,0.264,0.263,0.266,0.265,0.268,0.269,0.27] },
+  { symbol: 'TON',  name: 'Toncoin',    price: 7.5,    change24h: 2.4,   marketCap: '$19B',  volume: '$400M', history: [7.38,7.42,7.40,7.46,7.44,7.48,7.49,7.5] },
+  { symbol: 'SHIB', name: 'Shiba Inu',  price: 0.000025, change24h: 5.1, marketCap: '$15B',  volume: '$500M', history: [0.0000244,0.0000246,0.0000245,0.0000248,0.0000247,0.0000249,0.0000249,0.000025] },
+  { symbol: 'LTC',  name: 'Litecoin',   price: 95,     change24h: -0.9,  marketCap: '$7B',   volume: '$350M', history: [93.2,93.8,93.5,94.3,94.0,94.6,94.8,95] },
+  { symbol: 'BCH',  name: 'Bitcoin Cash', price: 480,  change24h: 1.3,   marketCap: '$9B',   volume: '$300M', history: [471,474,473,477,475,478,479,480] },
+  { symbol: 'UNI',  name: 'Uniswap',    price: 12,     change24h: 2.0,   marketCap: '$9B',   volume: '$250M', history: [11.7,11.8,11.75,11.9,11.85,11.95,11.98,12] },
+  { symbol: 'ATOM', name: 'Cosmos',     price: 9.5,    change24h: -1.4,  marketCap: '$4B',   volume: '$180M', history: [9.32,9.38,9.35,9.43,9.4,9.46,9.48,9.5] },
+  { symbol: 'XLM',  name: 'Stellar',    price: 0.13,   change24h: 0.7,   marketCap: '$4B',   volume: '$150M', history: [0.1275,0.1285,0.128,0.129,0.1288,0.1295,0.1298,0.13] },
+  { symbol: 'NEAR', name: 'NEAR Protocol', price: 6.0, change24h: 3.1,   marketCap: '$7B',   volume: '$300M', history: [5.88,5.92,5.9,5.95,5.93,5.97,5.99,6.0] },
+  { symbol: 'APT',  name: 'Aptos',      price: 11,     change24h: 2.5,   marketCap: '$6B',   volume: '$250M', history: [10.7,10.8,10.75,10.9,10.85,10.95,10.98,11] },
+  { symbol: 'ARB',  name: 'Arbitrum',   price: 1.10,   change24h: -2.2,  marketCap: '$4B',   volume: '$200M', history: [1.075,1.085,1.08,1.09,1.088,1.095,1.098,1.10] },
+  { symbol: 'OP',   name: 'Optimism',   price: 2.20,   change24h: 1.9,   marketCap: '$3B',   volume: '$180M', history: [2.15,2.17,2.16,2.18,2.175,2.19,2.195,2.20] },
+  { symbol: 'FIL',  name: 'Filecoin',   price: 6.0,    change24h: -0.5,  marketCap: '$4B',   volume: '$160M', history: [5.88,5.92,5.9,5.95,5.93,5.97,5.99,6.0] },
+  { symbol: 'ICP',  name: 'Internet Computer', price: 13, change24h: 1.2, marketCap: '$6B',  volume: '$140M', history: [12.7,12.8,12.75,12.9,12.85,12.95,12.98,13] },
+  { symbol: 'AAVE', name: 'Aave',       price: 110,    change24h: 2.8,   marketCap: '$2B',   volume: '$200M', history: [107.5,108.4,108.0,109.0,108.6,109.5,109.8,110] },
 ];
 
 const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [];

@@ -48,6 +48,21 @@ const DEFAULT_COINGECKO_IDS: Record<string, string> = {
   AVAX: 'avalanche-2',
   LINK: 'chainlink',
   DOT:  'polkadot',
+  TRX:  'tron',
+  TON:  'the-open-network',
+  SHIB: 'shiba-inu',
+  LTC:  'litecoin',
+  BCH:  'bitcoin-cash',
+  UNI:  'uniswap',
+  ATOM: 'cosmos',
+  XLM:  'stellar',
+  NEAR: 'near',
+  APT:  'aptos',
+  ARB:  'arbitrum',
+  OP:   'optimism',
+  FIL:  'filecoin',
+  ICP:  'internet-computer',
+  AAVE: 'aave',
 };
 
 let COINGECKO_IDS: Record<string, string> = { ...DEFAULT_COINGECKO_IDS };
