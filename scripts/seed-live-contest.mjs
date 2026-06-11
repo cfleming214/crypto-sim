@@ -441,6 +441,7 @@ async function main() {
         league: bot.league,
         division: randi(1, 2),
         streak: randi(0, 12),
+        contestsWon: randi(0, 25),
         cash: Number(pf.cash.toFixed(2)),
         bankroll: Number(pf.bankroll.toFixed(2)),
         riskScore: randi(20, 100),

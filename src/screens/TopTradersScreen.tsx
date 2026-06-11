@@ -95,13 +95,21 @@ export function TopTradersScreen() {
                     backgroundColor: isMe ? `${colors.brand}0F` : undefined,
                     marginHorizontal: isMe ? -16 : 0, paddingHorizontal: isMe ? 16 : 0,
                   }}>
-                    <Text style={{
-                      width: 24, textAlign: 'center',
-                      fontWeight: '700', fontVariant: ['tabular-nums'], fontSize: 13,
-                      color: r.rank <= 3 ? colors.up : colors.ink3,
-                    }}>
-                      {r.rank}
-                    </Text>
+                    {/* Two ranks side by side: XP rank and contests-won rank. */}
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ width: 24, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 8, fontWeight: '700', color: colors.ink3, letterSpacing: 0.3 }}>XP</Text>
+                        <Text style={{ fontWeight: '700', fontVariant: ['tabular-nums'], fontSize: 13, color: r.rank <= 3 ? colors.up : colors.ink3 }}>
+                          {r.rank}
+                        </Text>
+                      </View>
+                      <View style={{ width: 24, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 8, fontWeight: '700', color: colors.ink3, letterSpacing: 0.3 }}>WINS</Text>
+                        <Text style={{ fontWeight: '700', fontVariant: ['tabular-nums'], fontSize: 13, color: r.winsRank <= 3 ? colors.warn : colors.ink3 }}>
+                          {r.winsRank}
+                        </Text>
+                      </View>
+                    </View>
                     <Avatar
                       initials={r.handle.slice(0, 2).toUpperCase()}
                       size="default"
@@ -116,14 +124,14 @@ export function TopTradersScreen() {
                         {!!r.league && !isMe && <LeagueBadge league={r.league} />}
                       </View>
                       <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                        {r.pnlPct >= 0 ? '+' : ''}{r.pnlPct.toFixed(1)}% · ${Math.round(r.value).toLocaleString()}
+                        {r.xp.toLocaleString()} XP · {r.contestsWon} {r.contestsWon === 1 ? 'win' : 'wins'}
                       </Text>
                     </View>
                     <Text style={{
-                      fontWeight: '700', fontVariant: ['tabular-nums'],
-                      color: colors.ink,
+                      fontWeight: '700', fontVariant: ['tabular-nums'], fontSize: 12,
+                      color: colors.ink3,
                     }}>
-                      {r.xp.toLocaleString()} XP
+                      {r.pnlPct >= 0 ? '+' : ''}{r.pnlPct.toFixed(1)}%
                     </Text>
                     {!isMe && (
                       <TouchableOpacity

@@ -85,12 +85,16 @@ const profileTableForBoard = backend.data.resources.tables['UserProfile'];
 profileTableForBoard.grantReadData(globalTickFn);
 tokenTable.grantReadData(globalTickFn);
 globalBoardTable.grantReadWriteData(globalTickFn);
+// Reads finished CompetitionEntry rows to count contests won per user.
+entryTable.grantReadData(globalTickFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 globalTickFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTableForBoard.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 globalTickFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 globalTickFn.addEnvironment('GLOBAL_LEADERBOARD_TABLE_NAME', globalBoardTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+globalTickFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
 
 new Rule(Stack.of(globalTickFn), 'TickGlobalLeaderboardRule', {
   schedule: Schedule.rate(Duration.minutes(5)),

@@ -8,6 +8,11 @@ const schema = a.schema({
     league: a.string(),
     division: a.integer(),
     streak: a.integer(),
+    // Lifetime count of contests finished in 1st place — the secondary
+    // leaderboard ranking (alongside XP). Seeded for bots; for real users the
+    // tick-global-leaderboard Lambda also derives it from won CompetitionEntry
+    // rows and takes the max, so it stays correct even if this is left 0.
+    contestsWon: a.integer(),
     cash: a.float(),
     bankroll: a.float(),
     riskScore: a.integer(),
@@ -221,10 +226,12 @@ const schema = a.schema({
   // Row id = the rank string ("1".."100"). Lambda writes via the DynamoDB SDK
   // (bypasses model authz, like Token); clients only read. No holdings exposed.
   GlobalLeaderboard: a.model({
-    rank:        a.integer().required(),
+    rank:        a.integer().required(), // XP rank (primary board order)
     owner:       a.string().required(),  // Cognito sub — self-highlight + block filter
     handle:      a.string().required(),
     xp:          a.integer(),            // lifetime XP — the primary ranking metric
+    contestsWon: a.integer(),            // lifetime contests won (secondary metric)
+    winsRank:    a.integer(),            // rank by contestsWon across all users
     value:       a.float(),              // live-priced bankroll = cash + Σ holdings×price (secondary stat)
     pnlPct:      a.float(),
     league:      a.string(),

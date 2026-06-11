@@ -23,6 +23,7 @@ export const handler = async (): Promise<void> => {
   const profileTable = process.env.USER_PROFILE_TABLE_NAME;
   const tokenTable = process.env.TOKEN_TABLE_NAME;
   const boardTable = process.env.GLOBAL_LEADERBOARD_TABLE_NAME;
+  const entryTable = process.env.COMPETITION_ENTRY_TABLE_NAME;
   if (!profileTable || !tokenTable || !boardTable) throw new Error('Table env vars not set');
 
   // 1. Price map { SYMBOL -> lastPrice } from the Token catalog (no external calls).
@@ -32,15 +33,30 @@ export const handler = async (): Promise<void> => {
     if (t.symbol && typeof t.lastPrice === 'number') priceMap[t.symbol] = t.lastPrice;
   }
 
-  // 2. Value every visible profile and read its lifetime XP.
+  // 1b. Contests won per owner, derived from finished entries: an entry that
+  // ended in 1st place (rank === 1, isActive === false). close-competition sets
+  // every entry inactive when a contest ends, so this counts real wins as they
+  // happen. Merged with the stored UserProfile.contestsWon (which the seed sets
+  // for bots) via max(), so both demo bots and real winners show counts.
+  const winsByOwner: Record<string, number> = {};
+  if (entryTable) {
+    for await (const row of scanAll(entryTable)) {
+      const e = unmarshall(row) as { owner?: string; rank?: number; isActive?: boolean };
+      if (e.owner && e.rank === 1 && e.isActive === false) {
+        winsByOwner[e.owner] = (winsByOwner[e.owner] ?? 0) + 1;
+      }
+    }
+  }
+
+  // 2. Value every visible profile and read its lifetime XP + contests won.
   type Ranked = {
-    owner: string; handle: string; xp: number; value: number; pnlPct: number;
+    owner: string; handle: string; xp: number; contestsWon: number; value: number; pnlPct: number;
     league?: string; avatarKey?: string; avatarColor?: string;
   };
   const ranked: Ranked[] = [];
   for await (const row of scanAll(profileTable)) {
     const p = unmarshall(row) as {
-      owner?: string; handle?: string; xp?: number; cash?: number; holdingsJson?: string;
+      owner?: string; handle?: string; xp?: number; contestsWon?: number; cash?: number; holdingsJson?: string;
       league?: string; avatarKey?: string; avatarColor?: string; leaderboardVisible?: boolean;
     };
     if (p.leaderboardVisible === false) continue; // opted out (null/undefined = visible)
@@ -53,8 +69,9 @@ export const handler = async (): Promise<void> => {
     );
     const value = (p.cash ?? 0) + holdingsValue;
     const pnlPct = ((value - STARTING_BANKROLL) / STARTING_BANKROLL) * 100;
+    const contestsWon = Math.max(winsByOwner[p.owner] ?? 0, p.contestsWon ?? 0);
     ranked.push({
-      owner: p.owner, handle: p.handle, xp: p.xp ?? 0, value, pnlPct,
+      owner: p.owner, handle: p.handle, xp: p.xp ?? 0, contestsWon, value, pnlPct,
       league: p.league, avatarKey: p.avatarKey, avatarColor: p.avatarColor,
     });
   }
@@ -70,7 +87,14 @@ export const handler = async (): Promise<void> => {
   }
   const deduped = [...byOwner.values()];
 
-  // Rank by lifetime XP (tie-break on live value).
+  // Wins rank: position by contests won across ALL users (ties keep insertion
+  // order). Computed over the full population so a user's wins rank is global,
+  // even though the board itself only shows the top-N by XP.
+  const winsRankByOwner: Record<string, number> = {};
+  [...deduped].sort((a, b) => b.contestsWon - a.contestsWon)
+    .forEach((r, i) => { winsRankByOwner[r.owner] = i + 1; });
+
+  // Rank by lifetime XP (tie-break on live value) — the board's primary order.
   deduped.sort((a, b) => b.xp - a.xp || b.value - a.value);
   const top = deduped.slice(0, TOP_N);
   const now = new Date().toISOString();
@@ -86,6 +110,8 @@ export const handler = async (): Promise<void> => {
         owner: r.owner,
         handle: r.handle,
         xp: r.xp,
+        contestsWon: r.contestsWon,
+        winsRank: winsRankByOwner[r.owner] ?? (i + 1),
         value: r.value,
         pnlPct: r.pnlPct,
         league: r.league ?? null,
