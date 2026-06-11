@@ -30,6 +30,9 @@
  *                                                   # everything already seeded
  *                                                   # (load-test the AWS stack
  *                                                   # by piling contests up)
+ *   node scripts/seed-live-contest.mjs --players 50 # grow the "1-Hour Dash"
+ *                                                   # player cap to 50 (any
+ *                                                   # number > 20; else stays 20)
  */
 import {
   CognitoIdentityProviderClient,
@@ -53,6 +56,16 @@ const DRY = process.argv.includes('--dry-run');
 // accumulate run-over-run for load-testing the AWS stack. Without it, each run
 // wipes the previous seed batch first (the default "stay clean" behaviour).
 const APPEND = process.argv.includes('--append');
+
+// --players <n> sets how many players the "⚡ 1-Hour Dash" contest holds. If you
+// ask for more than 20, the cap grows to match the number you input; otherwise
+// it stays at the default 20.
+const playersIdx = process.argv.indexOf('--players');
+const playersArg = playersIdx >= 0 ? parseInt(process.argv[playersIdx + 1] ?? '', 10) : NaN;
+let DASH_CAP = 20;
+if (Number.isFinite(playersArg) && playersArg > 20) {
+  DASH_CAP = playersArg;
+}
 
 const outputs = JSON.parse(readFileSync('./amplify_outputs.json', 'utf8'));
 const REGION    = outputs.auth?.aws_region ?? 'us-east-1';
@@ -307,9 +320,9 @@ async function main() {
   const contests = [
     { item: competitionItem({ id: randomUUID(), name: `🔥 10-Minute Sprint${tag}`, startAt: now, endAt: now + 10 * MINUTE, maxPlayers: 15, lockAfterStart: false }), joinAll: true },
     { item: competitionItem({ id: randomUUID(), name: `📈 3-Day Showdown${tag}`,   startAt: now, endAt: now + 3 * DAY,    maxPlayers: 20, lockAfterStart: false }), joinAll: true },
-    // 1-hour, 20-player cap, 5,000 XP, $100K starting portfolio (the default).
-    // All 10 bots join → 10 spots left for real players.
-    { item: competitionItem({ id: randomUUID(), name: `⚡ 1-Hour Dash${tag}`, startAt: now, endAt: now + HOUR, maxPlayers: 20, lockAfterStart: false }), joinAll: true },
+    // 1-hour, 5,000 XP, $100K starting portfolio (the default). Cap defaults to
+    // 20 but grows to --players <n> when n > 20. All 10 bots join.
+    { item: competitionItem({ id: randomUUID(), name: `⚡ 1-Hour Dash${tag}`, startAt: now, endAt: now + HOUR, maxPlayers: DASH_CAP, lockAfterStart: false }), joinAll: true },
     { item: competitionItem({ id: randomUUID(), name: `⏳ Tomorrow's Lockout${tag}`, startAt: now + 24 * HOUR, endAt: now + 24 * HOUR + 2 * DAY, maxPlayers: 50, lockAfterStart: true }), joinAll: false },
   ];
 
@@ -373,7 +386,7 @@ async function main() {
   console.log('\n✅ Done.');
   console.log('   • Open the app → Compete. Join "🔥 10-Minute Sprint" (5 spots left) to play against the bots.');
   console.log('   • "📈 3-Day Showdown" has all 10 bots already in it.');
-  console.log('   • "⚡ 1-Hour Dash" — 1h, 20-player cap, 5,000 XP, all 10 bots in (10 spots left).');
+  console.log(`   • "⚡ 1-Hour Dash" — 1h, ${DASH_CAP}-player cap, 5,000 XP, all 10 bots in (${DASH_CAP - 10} spots left).`);
   console.log("   • \"⏳ Tomorrow's Lockout\" starts in 24h and locks at start (try joining before vs after).");
   console.log('   • Global leaderboard fills in within ~5 min (after tick-global-leaderboard runs).');
   if (DRY) console.log('\n(With --dry-run nothing was written.)');
