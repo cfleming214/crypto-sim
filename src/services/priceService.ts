@@ -96,12 +96,14 @@ export function setCoingeckoIds(map: Record<string, string>) {
 //   days=1   -> 5-minute close prices  (~288 points)
 //   days<=90 -> hourly close prices
 //   days>90  -> daily close prices
-const TIMEFRAME_DAYS: Record<string, number> = {
+//   days=max -> daily close prices back to the coin's listing date
+const TIMEFRAME_DAYS: Record<string, number | string> = {
   '24H': 1,
   '7D':  7,
   '30D': 30,
   '90D': 90,
   '1Y':  365,
+  'MAX': 'max',
 };
 
 // 5-min cache so flipping timeframes / coming back to a coin doesn't burn

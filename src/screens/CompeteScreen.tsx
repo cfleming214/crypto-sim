@@ -66,7 +66,7 @@ export function CompeteScreen() {
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const { getLive, isJoined, join, timeRemaining, refresh } = useCompetitions();
-  const { emailVerified, status } = useAuth();
+  const { emailVerified, status, userId } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
   const [duelModalOpen, setDuelModalOpen] = useState(false);
@@ -119,14 +119,18 @@ export function CompeteScreen() {
   // While live but flat (no winning colour yet), pulse a neutral brand tint.
   const predPulseColor = predGlow ?? (predLive ? colors.brand : null);
 
-  // Top 3 of the global leaderboard, previewed on the Leaderboard card below.
-  const [topTraders, setTopTraders] = useState<LeaderboardRow[]>([]);
+  // Global leaderboard, previewed on the Leaderboard card below (your standing
+  // + the top 3). Kept whole so we can find the player's own rank.
+  const [board, setBoard] = useState<LeaderboardRow[]>([]);
   useEffect(() => {
-    fetchGlobalLeaderboard().then(rows => setTopTraders(rows.slice(0, 3)));
+    fetchGlobalLeaderboard().then(setBoard);
     let unsub: () => void = () => {};
-    subscribeToGlobalLeaderboard(rows => setTopTraders(rows.slice(0, 3))).then(u => { unsub = u; });
+    subscribeToGlobalLeaderboard(setBoard).then(u => { unsub = u; });
     return () => unsub();
   }, []);
+  const top3 = board.slice(0, 3);
+  const myBoardIdx = board.findIndex(r => !!userId && (r.owner ? r.owner.split('::')[0] : '') === userId);
+  const myBoardRow = myBoardIdx >= 0 ? board[myBoardIdx] : null;
 
   // Live-tournament carousel: one card at a time, swipe left/right to cycle with
   // wraparound, with a sliding transition. The card tracks the finger (slideX),
@@ -598,11 +602,25 @@ export function CompeteScreen() {
             <Text style={{ fontSize: 18, color: colors.ink3 }}>›</Text>
           </View>
 
-          {topTraders.length > 0 ? (
+          {board.length > 0 ? (
             <View style={{ marginTop: 12, gap: 10 }}>
-              {topTraders.map((r, i) => (
+              {/* Your position */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={{ width: 26, textAlign: 'center', fontWeight: '800', fontSize: 13, color: colors.brand, fontVariant: ['tabular-nums'] }}>
+                  {myBoardIdx >= 0 ? `#${myBoardIdx + 1}` : '—'}
+                </Text>
+                <Text style={{ flex: 1, fontWeight: '700', fontSize: 13, color: colors.ink }} numberOfLines={1}>
+                  You · @{state.user.handle}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                  {(myBoardRow?.xp ?? state.user.xp).toLocaleString()} XP · {myBoardRow?.contestsWon ?? 0}W
+                </Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: colors.hairline }} />
+              {/* Top 3 */}
+              {top3.map((r, i) => (
                 <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={{ width: 16, textAlign: 'center', fontWeight: '800', fontSize: 13, fontVariant: ['tabular-nums'], color: i === 0 ? colors.up : colors.ink3 }}>
+                  <Text style={{ width: 26, textAlign: 'center', fontWeight: '800', fontSize: 13, fontVariant: ['tabular-nums'], color: i === 0 ? colors.up : colors.ink3 }}>
                     {i + 1}
                   </Text>
                   <Avatar

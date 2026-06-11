@@ -602,7 +602,7 @@ export function TradeScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Segmented options={['24H', '7D', '30D', '90D', '1Y']} value={tf} onChange={setTf} />
+            <Segmented options={['24H', '7D', '30D', '90D', '1Y', 'MAX']} value={tf} onChange={setTf} />
             <Button
               variant={indicatorsOpen ? 'brand' : 'ghost'}
               size="sm"
