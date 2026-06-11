@@ -21,7 +21,7 @@
  */
 import {
   CognitoIdentityProviderClient,
-  AdminGetUserCommand,
+  ListUsersCommand,
   AdminDeleteUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import {
@@ -46,11 +46,10 @@ const ddb = new DynamoDBClient({ region: REGION });
 
 const CREATED_BY = 'seed-script'; // must match seed-live-contest.mjs
 
-// The 50 fixed bot emails (seedbot01–50) — must match seed-live-contest.mjs.
-// We always scan for all 50 so teardown catches whatever a given run created,
-// regardless of how many --players it used. botSubs() skips any not in the pool.
-const BOT_EMAILS = Array.from({ length: 50 }, (_, i) =>
-  `seedbot${String(i + 1).padStart(2, '0')}@cryptocomp.app`);
+// seed-live-contest.mjs names every bot seedbotNN@cryptocomp.app (NN = 1…1000).
+// We find them by email prefix so teardown catches whatever a run created at any
+// pool size, without probing 1000 individual emails.
+const BOT_EMAIL_RE = /^seedbot\d+@cryptocomp\.app$/i;
 
 async function findTables() {
   const want = ['Competition', 'CompetitionEntry', 'UserProfile'];
@@ -68,18 +67,26 @@ async function findTables() {
   return out;
 }
 
-// Look up the sub for each existing bot (skips ones that aren't in the pool).
+// List every seedbot* account in the pool (paginated email-prefix scan), with
+// its username + sub. Scales to any pool size — no per-email probing.
 async function botSubs() {
   const subs = [];
-  for (const email of BOT_EMAILS) {
-    try {
-      const got = await cog.send(new AdminGetUserCommand({ UserPoolId: USER_POOL, Username: email }));
-      const sub = got.UserAttributes?.find(a => a.Name === 'sub')?.Value;
-      if (sub) subs.push({ email, sub });
-    } catch (e) {
-      if (e.name !== 'UserNotFoundException') throw e;
+  let token;
+  do {
+    const res = await cog.send(new ListUsersCommand({
+      UserPoolId: USER_POOL,
+      Filter: 'email ^= "seedbot"',
+      Limit: 60,
+      PaginationToken: token,
+    }));
+    for (const u of res.Users ?? []) {
+      const email = u.Attributes?.find(a => a.Name === 'email')?.Value ?? u.Username;
+      const sub = u.Attributes?.find(a => a.Name === 'sub')?.Value;
+      // Guard against any non-seed user the prefix filter happens to match.
+      if (sub && BOT_EMAIL_RE.test(email)) subs.push({ email, username: u.Username, sub });
     }
-  }
+    token = res.PaginationToken;
+  } while (token);
   return subs;
 }
 
@@ -120,7 +127,7 @@ async function main() {
 
   const bots = await botSubs();
   const subs = bots.map(b => b.sub);
-  console.log(`\nFound ${bots.length}/${BOT_EMAILS.length} bot account(s) in the pool.`);
+  console.log(`\nFound ${bots.length} seedbot account(s) in the pool.`);
 
   // 1. seed contests + their entries
   console.log('\nSeed contests:');
@@ -151,7 +158,7 @@ async function main() {
     console.log('\nBot accounts:');
     for (const b of bots) {
       console.log(`  ${DRY ? 'would delete' : 'delete'} ${b.email}`);
-      if (!DRY) await cog.send(new AdminDeleteUserCommand({ UserPoolId: USER_POOL, Username: b.email }));
+      if (!DRY) await cog.send(new AdminDeleteUserCommand({ UserPoolId: USER_POOL, Username: b.username }));
     }
   } else if (KEEP_USERS) {
     console.log('\nBot accounts: kept (--keep-users)');

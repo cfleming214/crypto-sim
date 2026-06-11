@@ -81,11 +81,12 @@ const SEED_PASSWORD = 'SeedBot!2026';    // fixed password for every bot account
 const CREATED_BY    = 'seed-script';     // marker so reruns can find + replace
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 
-// 50 fixed bots. Emails never change → accounts are reused across runs. The
-// first 10 are hand-named; the rest (seedbot11–50) are generated so the pool can
-// fill larger contests when you pass --players. ensureUser() only creates the
-// ones a given run actually uses (the first BOT_COUNT), so unused accounts are
-// never provisioned. Keep the email list in sync with seed-contests-clean.mjs.
+// 1000 fixed bots. Emails never change → accounts are reused across runs. The
+// first 10 are hand-named; the rest (seedbot11–1000) are generated so the pool
+// can fill big load-test contests when you pass --players. ensureUser() only
+// creates the ones a given run actually uses (the first BOT_COUNT), so unused
+// accounts are never provisioned — running --players 20 never touches bot 21+.
+// seed-contests-clean.mjs tears down every seedbot* account by email prefix.
 const NAMED_BOTS = [
   { email: 'seedbot01@cryptocomp.app', handle: 'AvaWhale',    color: '#6366F1', league: 'Gold' },
   { email: 'seedbot02@cryptocomp.app', handle: 'MaxLeverage', color: '#EC4899', league: 'Silver' },
@@ -102,8 +103,8 @@ const NAMED_BOTS = [
 const BOT_PALETTE = ['#6366F1', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#8B5CF6', '#EF4444', '#14B8A6', '#F97316', '#0EA5E9'];
 const BOT_LEAGUES = ['Bronze', 'Silver', 'Gold', 'Diamond', 'Platinum'];
 
-// 40 generated bots → seedbot11 … seedbot50, for 50 total.
-const EXTRA_BOTS = Array.from({ length: 40 }, (_, i) => {
+// 990 generated bots → seedbot11 … seedbot1000, for 1000 total.
+const EXTRA_BOTS = Array.from({ length: 990 }, (_, i) => {
   const n = i + 11;
   return {
     email: `seedbot${String(n).padStart(2, '0')}@cryptocomp.app`,
@@ -116,7 +117,7 @@ const EXTRA_BOTS = Array.from({ length: 40 }, (_, i) => {
 const BOTS = [...NAMED_BOTS, ...EXTRA_BOTS];
 
 // How many bots this run spins up + joins. Defaults to 10; --players <n> scales
-// it to match your input (clamped to the 50 available accounts).
+// it to match your input (clamped to the 1000 available accounts).
 const DEFAULT_BOTS = 10;
 let BOT_COUNT = DEFAULT_BOTS;
 if (Number.isFinite(playersArg) && playersArg > 0) {
