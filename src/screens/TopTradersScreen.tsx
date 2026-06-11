@@ -10,6 +10,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { MoreHorizontal } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../store/AuthContext';
+import { useApp } from '../store/AppContext';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { fetchTraderByOwner } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
@@ -22,6 +23,7 @@ export function TopTradersScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
   const { userId } = useAuth();
+  const { state } = useApp();
   const { isBlocked, openMenu } = useModeration();
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,15 @@ export function TopTradersScreen() {
       ? (b.contestsWon - a.contestsWon) || (b.xp - a.xp)
       : (b.xp - a.xp) || (b.contestsWon - a.contestsWon),
   );
+
+  // The signed-in user's own standing for the summary card. Their rank reflects
+  // the active sort; XP/wins come from their leaderboard row when ranked, else
+  // fall back to local state (XP) so the card is still useful off the board.
+  const myIndex = sorted.findIndex(r => !!userId && subOf(r.owner) === userId);
+  const meRow = myIndex >= 0 ? sorted[myIndex] : null;
+  const myRank = myIndex >= 0 ? myIndex + 1 : null;
+  const myXp = meRow?.xp ?? state.user.xp;
+  const myWins = meRow?.contestsWon ?? 0;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -89,6 +100,37 @@ export function TopTradersScreen() {
 
       {visible.length > 0 && (
         <>
+          {/* Your standing summary — rank (in the active sort) + XP + wins */}
+          <Card variant="tinted">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Avatar
+                initials={state.user.handle.slice(0, 2).toUpperCase()}
+                size="default"
+                uri={state.user.avatarUri}
+                style={state.user.avatarColor && !state.user.avatarUri ? { backgroundColor: state.user.avatarColor } : undefined}
+              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Your standing
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }} numberOfLines={1}>
+                  @{state.user.handle}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+                  {myXp.toLocaleString()} XP · {myWins} {myWins === 1 ? 'win' : 'wins'}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 26, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                  {myRank ? `#${myRank}` : '—'}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                  {myRank ? `by ${sortBy.toLowerCase()}` : 'Unranked'}
+                </Text>
+              </View>
+            </View>
+          </Card>
+
           {/* Sort the board by lifetime XP or contests won. */}
           <Segmented options={['XP', 'Wins']} value={sortBy} onChange={(v) => setSortBy(v as 'XP' | 'Wins')} />
           <Card variant="noPad">
