@@ -119,7 +119,7 @@ export function LeagueScreen() {
     tag: e.handle === state.user.handle ? 'you' : null,
   }));
 
-  // Global from real PublicProfile rows. Already sorted by pnlPct desc.
+  // Global leaderboard rows, already server-ranked by lifetime XP desc.
   const globalPlayers = globalTraders
     .filter(t => !state.blockedUsers.some(b => b.owner === t.owner || b.handle === t.handle))
     .map((t, idx) => ({
@@ -127,7 +127,7 @@ export function LeagueScreen() {
     handle: `@${t.handle}`,
     name: t.handle,
     pnl: `${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%`,
-    xpRaw: Math.round(t.value),
+    xpRaw: t.xp,
     trend: t.pnlPct >= 0 ? 'up' : 'down',
     tag: t.handle === state.user.handle ? 'you' : null,
   }));

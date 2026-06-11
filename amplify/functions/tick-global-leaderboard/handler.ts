@@ -15,10 +15,10 @@ const STARTING_BANKROLL = 100000;
 
 interface Holding { symbol: string; units: number; }
 
-// Runs on EventBridge schedule every 5 minutes. Values every opted-in user's
-// portfolio at current Token prices, ranks them, and rewrites the top-N
-// GlobalLeaderboard rows (id = rank string). All portfolios start at $10k, so
-// ranking by live value == ranking by P&L%.
+// Runs on EventBridge schedule every 5 minutes. Ranks every opted-in user by
+// lifetime XP and rewrites the top-N GlobalLeaderboard rows (id = rank string).
+// Each user's live-priced portfolio value + P&L% is also computed and stored as
+// a secondary stat shown under the handle.
 export const handler = async (): Promise<void> => {
   const profileTable = process.env.USER_PROFILE_TABLE_NAME;
   const tokenTable = process.env.TOKEN_TABLE_NAME;
@@ -32,15 +32,15 @@ export const handler = async (): Promise<void> => {
     if (t.symbol && typeof t.lastPrice === 'number') priceMap[t.symbol] = t.lastPrice;
   }
 
-  // 2. Value every visible profile.
+  // 2. Value every visible profile and read its lifetime XP.
   type Ranked = {
-    owner: string; handle: string; value: number; pnlPct: number;
+    owner: string; handle: string; xp: number; value: number; pnlPct: number;
     league?: string; avatarKey?: string; avatarColor?: string;
   };
   const ranked: Ranked[] = [];
   for await (const row of scanAll(profileTable)) {
     const p = unmarshall(row) as {
-      owner?: string; handle?: string; cash?: number; holdingsJson?: string;
+      owner?: string; handle?: string; xp?: number; cash?: number; holdingsJson?: string;
       league?: string; avatarKey?: string; avatarColor?: string; leaderboardVisible?: boolean;
     };
     if (p.leaderboardVisible === false) continue; // opted out (null/undefined = visible)
@@ -54,12 +54,13 @@ export const handler = async (): Promise<void> => {
     const value = (p.cash ?? 0) + holdingsValue;
     const pnlPct = ((value - STARTING_BANKROLL) / STARTING_BANKROLL) * 100;
     ranked.push({
-      owner: p.owner, handle: p.handle, value, pnlPct,
+      owner: p.owner, handle: p.handle, xp: p.xp ?? 0, value, pnlPct,
       league: p.league, avatarKey: p.avatarKey, avatarColor: p.avatarColor,
     });
   }
 
-  ranked.sort((a, b) => b.value - a.value);
+  // Rank by lifetime XP (tie-break on live value).
+  ranked.sort((a, b) => b.xp - a.xp || b.value - a.value);
   const top = ranked.slice(0, TOP_N);
   const now = new Date().toISOString();
 
@@ -73,6 +74,7 @@ export const handler = async (): Promise<void> => {
         rank: i + 1,
         owner: r.owner,
         handle: r.handle,
+        xp: r.xp,
         value: r.value,
         pnlPct: r.pnlPct,
         league: r.league ?? null,

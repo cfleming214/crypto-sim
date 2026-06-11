@@ -116,14 +116,14 @@ export function TopTradersScreen() {
                         {!!r.league && !isMe && <LeagueBadge league={r.league} />}
                       </View>
                       <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                        ${Math.round(r.value).toLocaleString()}
+                        {r.pnlPct >= 0 ? '+' : ''}{r.pnlPct.toFixed(1)}% · ${Math.round(r.value).toLocaleString()}
                       </Text>
                     </View>
                     <Text style={{
                       fontWeight: '700', fontVariant: ['tabular-nums'],
-                      color: r.pnlPct >= 0 ? colors.up : colors.down,
+                      color: colors.ink,
                     }}>
-                      {r.pnlPct >= 0 ? '+' : ''}{r.pnlPct.toFixed(1)}%
+                      {r.xp.toLocaleString()} XP
                     </Text>
                     {!isMe && (
                       <TouchableOpacity

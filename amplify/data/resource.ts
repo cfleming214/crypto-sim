@@ -224,7 +224,8 @@ const schema = a.schema({
     rank:        a.integer().required(),
     owner:       a.string().required(),  // Cognito sub — self-highlight + block filter
     handle:      a.string().required(),
-    value:       a.float(),              // live-priced bankroll = cash + Σ holdings×price
+    xp:          a.integer(),            // lifetime XP — the primary ranking metric
+    value:       a.float(),              // live-priced bankroll = cash + Σ holdings×price (secondary stat)
     pnlPct:      a.float(),
     league:      a.string(),
     avatarKey:   a.string(),

@@ -23,7 +23,8 @@ export interface LeaderboardRow {
   rank: number;
   owner: string;       // Cognito sub (may be "sub::username") — for self-highlight + block filter
   handle: string;
-  value: number;       // live-priced portfolio value
+  xp: number;          // lifetime XP — the primary ranking metric
+  value: number;       // live-priced portfolio value (secondary stat)
   pnlPct: number;
   league?: string;
   avatarKey?: string;
@@ -36,6 +37,7 @@ function mapRow(d: any): LeaderboardRow {
     rank: typeof d.rank === 'number' ? d.rank : 999,
     owner: d.owner ?? '',
     handle: d.handle ?? '',
+    xp: typeof d.xp === 'number' ? d.xp : 0,
     value: typeof d.value === 'number' ? d.value : 0,
     pnlPct: typeof d.pnlPct === 'number' ? d.pnlPct : 0,
     league: d.league ?? undefined,
