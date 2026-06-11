@@ -80,6 +80,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "contestsWon": {
+              "name": "contestsWon",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
             "cash": {
               "name": "cash",
               "isArray": false,
@@ -1511,6 +1518,20 @@
             },
             "xp": {
               "name": "xp",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "contestsWon": {
+              "name": "contestsWon",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "winsRank": {
+              "name": "winsRank",
               "isArray": false,
               "type": "Int",
               "isRequired": false,

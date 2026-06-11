@@ -16,6 +16,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
+import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { useNavigation } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X } from 'lucide-react-native';
@@ -117,6 +118,15 @@ export function CompeteScreen() {
   }, [predLive]);
   // While live but flat (no winning colour yet), pulse a neutral brand tint.
   const predPulseColor = predGlow ?? (predLive ? colors.brand : null);
+
+  // Top 3 of the global leaderboard, previewed on the Leaderboard card below.
+  const [topTraders, setTopTraders] = useState<LeaderboardRow[]>([]);
+  useEffect(() => {
+    fetchGlobalLeaderboard().then(rows => setTopTraders(rows.slice(0, 3)));
+    let unsub: () => void = () => {};
+    subscribeToGlobalLeaderboard(rows => setTopTraders(rows.slice(0, 3))).then(u => { unsub = u; });
+    return () => unsub();
+  }, []);
 
   // Live-tournament carousel: one card at a time, swipe left/right to cycle with
   // wraparound, with a sliding transition. The card tracks the finger (slideX),
@@ -573,7 +583,7 @@ export function CompeteScreen() {
         );
       })()}
 
-      {/* Top traders entry point */}
+      {/* Top traders entry point — previews the leaderboard's top 3 */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
         <Card variant="tinted">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -584,12 +594,36 @@ export function CompeteScreen() {
               <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2 }}>
                 Leaderboard
               </Text>
-              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-                Live portfolio rankings — see where you stand
-              </Text>
             </View>
             <Text style={{ fontSize: 18, color: colors.ink3 }}>›</Text>
           </View>
+
+          {topTraders.length > 0 ? (
+            <View style={{ marginTop: 12, gap: 10 }}>
+              {topTraders.map((r, i) => (
+                <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={{ width: 16, textAlign: 'center', fontWeight: '800', fontSize: 13, fontVariant: ['tabular-nums'], color: i === 0 ? colors.up : colors.ink3 }}>
+                    {i + 1}
+                  </Text>
+                  <Avatar
+                    initials={r.handle.slice(0, 2).toUpperCase()}
+                    size="sm"
+                    style={r.avatarColor ? { backgroundColor: r.avatarColor } : undefined}
+                  />
+                  <Text style={{ flex: 1, fontWeight: '600', fontSize: 13, color: colors.ink }} numberOfLines={1}>
+                    @{r.handle}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                    {r.xp.toLocaleString()} XP · {r.contestsWon}W
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+              Live portfolio rankings — see where you stand
+            </Text>
+          )}
         </Card>
       </TouchableOpacity>
       {/* 1v1 Duel */}
