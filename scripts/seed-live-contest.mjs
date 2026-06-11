@@ -126,13 +126,23 @@ if (Number.isFinite(playersArg) && playersArg > 0) {
   }
 }
 
-// Fallback coin universe if the Token catalog table is empty.
+// Fallback coin universe if the Token catalog table is empty. Mirrors the app's
+// 25 tradeable coins (src/store/AppContext.tsx INITIAL_COINS) so bot portfolios
+// span the full set even before `npm run seed:tokens` populates the catalog.
 const FALLBACK_COINS = [
-  { symbol: 'BTC', price: 68000 }, { symbol: 'ETH', price: 3500 },
-  { symbol: 'SOL', price: 165 },   { symbol: 'BNB', price: 600 },
-  { symbol: 'XRP', price: 0.62 },  { symbol: 'DOGE', price: 0.15 },
-  { symbol: 'ADA', price: 0.45 },  { symbol: 'AVAX', price: 36 },
-  { symbol: 'LINK', price: 18 },   { symbol: 'MATIC', price: 0.72 },
+  { symbol: 'BTC', price: 65000 },     { symbol: 'ETH', price: 3500 },
+  { symbol: 'SOL', price: 150 },       { symbol: 'BNB', price: 600 },
+  { symbol: 'XRP', price: 0.60 },      { symbol: 'DOGE', price: 0.15 },
+  { symbol: 'ADA', price: 0.45 },      { symbol: 'AVAX', price: 35 },
+  { symbol: 'LINK', price: 18 },       { symbol: 'DOT', price: 7 },
+  { symbol: 'TRX', price: 0.27 },      { symbol: 'TON', price: 7.5 },
+  { symbol: 'SHIB', price: 0.000025 }, { symbol: 'LTC', price: 95 },
+  { symbol: 'BCH', price: 480 },       { symbol: 'UNI', price: 12 },
+  { symbol: 'ATOM', price: 9.5 },      { symbol: 'XLM', price: 0.13 },
+  { symbol: 'NEAR', price: 6.0 },      { symbol: 'APT', price: 11 },
+  { symbol: 'ARB', price: 1.10 },      { symbol: 'OP', price: 2.20 },
+  { symbol: 'FIL', price: 6.0 },       { symbol: 'ICP', price: 13 },
+  { symbol: 'AAVE', price: 110 },
 ];
 
 // ── helpers ───────────────────────────────────────────────────────────────
