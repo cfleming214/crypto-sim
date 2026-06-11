@@ -1509,6 +1509,13 @@
               "isRequired": true,
               "attributes": []
             },
+            "xp": {
+              "name": "xp",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
             "value": {
               "name": "value",
               "isArray": false,

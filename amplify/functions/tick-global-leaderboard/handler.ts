@@ -80,6 +80,10 @@ export const handler = async (): Promise<void> => {
         league: r.league ?? null,
         avatarKey: r.avatarKey ?? null,
         avatarColor: r.avatarColor ?? null,
+        // createdAt is an Amplify-managed AWSDateTime! (non-null) field. Without
+        // it the AppSync list resolver nullifies every row and the client gets
+        // an empty/errored list — so always write it.
+        createdAt: now,
         updatedAt: now,
       }, { removeUndefinedValues: true }),
     })),
