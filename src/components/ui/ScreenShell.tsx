@@ -14,6 +14,9 @@ interface ScreenShellProps {
   rightActions?: React.ReactNode;
   children?: React.ReactNode;
   scrollable?: boolean;
+  /** Temporarily disable vertical scrolling (e.g. while a horizontal swipe is
+   * in progress, so an in-flight left/right gesture can't also scroll up/down). */
+  scrollEnabled?: boolean;
   style?: ViewStyle;
   contentStyle?: ViewStyle;
   brand?: boolean;
@@ -28,6 +31,7 @@ export function ScreenShell({
   rightActions,
   children,
   scrollable = true,
+  scrollEnabled = true,
   style,
   contentStyle,
   brand = false,
@@ -84,6 +88,7 @@ export function ScreenShell({
       {scrollable ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
+          scrollEnabled={scrollEnabled}
           contentContainerStyle={{ gap: 14, paddingHorizontal: 20, paddingBottom: 8, paddingTop: 4 }}
           refreshControl={onRefresh ? (
             <RNRefreshControl

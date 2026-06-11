@@ -125,6 +125,10 @@ export function CompeteScreen() {
   // once-created PanResponder always wraps against the latest length. animatingRef
   // blocks a new swipe mid-transition.
   const [liveIdx, setLiveIdx] = useState(0);
+  // True while a horizontal carousel swipe is in progress. Used to hard-disable
+  // the screen's vertical scroll for the duration, so an in-flight left/right
+  // swipe can't also scroll the page up/down.
+  const [swiping, setSwiping] = useState(false);
   const liveLenRef = useRef(0);
   const slideX = useRef(new Animated.Value(0)).current;
   const animatingRef = useRef(false);
@@ -139,12 +143,20 @@ export function CompeteScreen() {
         Math.abs(g.dx) > 24 &&
         Math.abs(g.dx) > Math.abs(g.dy) * 2.5 &&
         Math.abs(g.dy) < 18,
-      // Let the ScrollView reclaim the gesture if it decides it's a scroll.
-      onPanResponderTerminationRequest: () => true,
+      // Once we've grabbed a horizontal swipe, lock it: don't hand the gesture
+      // back to the vertical ScrollView (which is also disabled via `swiping`),
+      // so you can't start scrolling up/down mid-swipe.
+      onPanResponderGrant: () => setSwiping(true),
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, g) => {
         if (!animatingRef.current) slideX.setValue(g.dx);
       },
+      onPanResponderTerminate: () => {
+        setSwiping(false);
+        if (!animatingRef.current) Animated.spring(slideX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+      },
       onPanResponderRelease: (_, g) => {
+        setSwiping(false);
         const n = liveLenRef.current;
         // Commit on distance OR a quick flick (velocity), so a fast short swipe
         // still pages — a deliberate slow drag needs the 40px travel. vx is in
@@ -274,6 +286,23 @@ export function CompeteScreen() {
         .filter(c => !activeTabType || c.type === activeTabType)
         .sort((a, b) => a.endAt - b.endAt);
 
+  // Current balance of the player's portfolio for a joined contest: cash + live
+  // value of its holdings. The active contest's data lives at the top level of
+  // state; the others are stashed in state.portfolios. Returns null if there's
+  // no portfolio for it (i.e. not joined).
+  const contestBalance = (id: string): number | null => {
+    const slice = id === state.activePortfolioId
+      ? { cash: state.cash, holdings: state.holdings }
+      : state.portfolios[id];
+    if (!slice) return null;
+    const held = slice.holdings.reduce((sum, h) => {
+      const price = state.coins.find(c => c.symbol === h.symbol)?.price ?? 0;
+      return sum + h.units * price;
+    }, 0);
+    return slice.cash + held;
+  };
+  const fmtBalance = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const finalizeJoin = async (comp: Competition) => {
     await join(comp.id);
     Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
@@ -334,6 +363,7 @@ export function CompeteScreen() {
     <ScreenShell
       eyebrow="Contests"
       title="Compete"
+      scrollEnabled={!swiping}
       onRefresh={refresh}
       rightActions={
         <TouchableOpacity style={{ padding: 8 }} onPress={() => nav.navigate('Notifications')}>
@@ -397,7 +427,13 @@ export function CompeteScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{currentLive.name}</Text>
-                    <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>${(STARTING_CASH / 1000).toFixed(0)}K bankroll · No leverage</Text>
+                    {isJoined(currentLive.id) && contestBalance(currentLive.id) != null ? (
+                      <Text style={{ fontSize: 12, color: colors.ink2, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+                        Your balance: ${fmtBalance(contestBalance(currentLive.id)!)}
+                      </Text>
+                    ) : (
+                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>${(STARTING_CASH / 1000).toFixed(0)}K bankroll · No leverage</Text>
+                    )}
                   </View>
                   {isJoined(currentLive.id) && state.activeTournament && (
                     <View style={{ alignItems: 'flex-end' }}>
@@ -521,6 +557,11 @@ export function CompeteScreen() {
                     {comp.lockAfterStart ? (comp.startAt > Date.now() ? ' · 🔒 locks at start' : ' · 🔒 locked') : ''}
                   </Text>
                 </View>
+                {isJoined(comp.id) && contestBalance(comp.id) != null && (
+                  <Text style={{ fontSize: 11, color: colors.ink2, fontVariant: ['tabular-nums'] }}>
+                    Your balance: ${fmtBalance(contestBalance(comp.id)!)}
+                  </Text>
+                )}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
