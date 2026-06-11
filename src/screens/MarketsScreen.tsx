@@ -11,7 +11,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { formatLargeNumber } from '../services/priceService';
 import { useNavigation } from '@react-navigation/native';
-import { Search, Star, SlidersHorizontal, X } from 'lucide-react-native';
+import { Search, Star, SlidersHorizontal, X, Info } from 'lucide-react-native';
 
 // Absolute 24h price move in dollars, derived from the current price and the
 // 24h % change (prev = price / (1 + pct/100)). Returned unsigned and compactly
@@ -155,6 +155,7 @@ export function MarketsScreen() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<Filters>({ change: 'all', mcap: 'all' });
   const [filterOpen, setFilterOpen] = useState(false);
+  const [fgInfoOpen, setFgInfoOpen] = useState(false);
 
   const activeFilterCount = (filters.change !== 'all' ? 1 : 0) + (filters.mcap !== 'all' ? 1 : 0);
 
@@ -237,8 +238,11 @@ export function MarketsScreen() {
             );
           })()}
         </View>
-        <View style={{ flex: 1, padding: 12 }}>
-          <Text style={{ fontSize: 11, color: colors.ink3 }}>Fear & Greed</Text>
+        <TouchableOpacity style={{ flex: 1, padding: 12 }} activeOpacity={0.7} onPress={() => setFgInfoOpen(true)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={{ fontSize: 11, color: colors.ink3 }}>Fear & Greed</Text>
+            <Info size={11} color={colors.ink3} strokeWidth={2} />
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>
               {state.fearGreed ? String(state.fearGreed.value) : '—'}
@@ -253,7 +257,7 @@ export function MarketsScreen() {
               );
             })()}
           </View>
-        </View>
+        </TouchableOpacity>
       </Card>
 
       {/* Available cash to trade (active portfolio) */}
@@ -308,20 +312,20 @@ export function MarketsScreen() {
               {movers.map(a => (
                 <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
                   <Card variant="compact" style={{ width: 150, gap: 8 }}>
-                    {/* Name + price on one line; the change sits tight underneath the price */}
-                    <View style={{ gap: 2 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <CoinGlyph symbol={a.symbol} size={24} />
-                          <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-                        </View>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                    {/* Name on top; price below it; the $ + % change sits directly underneath the price */}
+                    <View style={{ gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <CoinGlyph symbol={a.symbol} size={24} />
+                        <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                      </View>
+                      <View style={{ gap: 2 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                           ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                          {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                        </Text>
                       </View>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'], textAlign: 'right' }} numberOfLines={1}>
-                        {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                      </Text>
                     </View>
                     <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={126} height={28} />
                   </Card>
@@ -411,6 +415,66 @@ export function MarketsScreen() {
         onApply={setFilters}
         onClose={() => setFilterOpen(false)}
       />
+
+      {/* Fear & Greed explainer */}
+      <Modal visible={fgInfoOpen} transparent animationType="fade" onRequestClose={() => setFgInfoOpen(false)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setFgInfoOpen(false)}
+          style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', padding: 24 }}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}
+            style={{ backgroundColor: colors.surface, borderRadius: 18, padding: 20, gap: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.ink }}>Fear &amp; Greed Index</Text>
+              <TouchableOpacity onPress={() => setFgInfoOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X color={colors.ink3} size={20} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            {state.fearGreed && (
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                <Text style={{ fontSize: 30, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                  {state.fearGreed.value}
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink2 }}>{state.fearGreed.label}</Text>
+                <Text style={{ fontSize: 12, color: colors.ink3 }}> / 100</Text>
+              </View>
+            )}
+
+            <Text style={{ fontSize: 13, color: colors.ink2, lineHeight: 19 }}>
+              A single 0–100 score for the crypto market&apos;s mood. Low numbers mean investors are fearful
+              (selling, prices depressed); high numbers mean they&apos;re greedy (buying, prices frothy).
+            </Text>
+
+            {/* Bands */}
+            <View style={{ gap: 4 }}>
+              {[
+                { range: '0–24', label: 'Extreme Fear', c: colors.up },
+                { range: '25–44', label: 'Fear', c: colors.warn },
+                { range: '45–54', label: 'Neutral', c: colors.ink3 },
+                { range: '55–74', label: 'Greed', c: colors.warn },
+                { range: '75–100', label: 'Extreme Greed', c: colors.down },
+              ].map(b => (
+                <View key={b.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: b.c }} />
+                  <Text style={{ fontSize: 12, color: colors.ink2, width: 64, fontVariant: ['tabular-nums'] }}>{b.range}</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink }}>{b.label}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18 }}>
+              Source: alternative.me, updated daily. It blends market volatility, momentum &amp; trading volume,
+              social-media sentiment, Bitcoin dominance, and search trends into one number.
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18 }}>
+              Many traders read it as a contrarian signal — &quot;extreme fear&quot; can flag a buying opportunity,
+              while &quot;extreme greed&quot; can warn the market is due for a pullback. It&apos;s a sentiment gauge, not a
+              guarantee.
+            </Text>
+
+            <Button variant="brand" onPress={() => setFgInfoOpen(false)}>Got it</Button>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </ScreenShell>
   );
 }

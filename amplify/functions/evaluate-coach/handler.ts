@@ -30,7 +30,7 @@ export const handler = async (event: { Records: any[] }): Promise<void> => {
       bankroll: number; cash: number; holdingsJson?: string; stopLossesJson?: string;
     };
     const holdings: HoldingRecord[] = profile.holdingsJson ? JSON.parse(profile.holdingsJson) : [];
-    const bankroll = profile.bankroll ?? 10000;
+    const bankroll = profile.bankroll ?? 100000;
     const cash = profile.cash ?? 0;
     const stopLosses: Record<string, number> = profile.stopLossesJson ? JSON.parse(profile.stopLossesJson) : {};
 

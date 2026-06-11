@@ -65,8 +65,12 @@ const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 const tickFn = backend.tickLeaderboard.resources.lambda;
 competitionTable.grantReadData(tickFn);
 entryTable.grantReadWriteData(tickFn);
+// Reads live Token prices to reprice each entry's holdings before ranking.
+tokenTable.grantReadData(tickFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 tickFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+tickFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 
 new Rule(Stack.of(tickFn), 'TickLeaderboardRule', {
   schedule: Schedule.rate(Duration.minutes(5)),

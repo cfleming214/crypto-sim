@@ -9,7 +9,9 @@ import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 const ddb = new DynamoDBClient({});
 
 const TOP_N = 100;
-const STARTING_BANKROLL = 10000;
+// Must match the app's STARTING_CASH (src/constants/featureFlags.ts). Was 10000
+// from an earlier starting balance, which made every pnlPct ~10× too high.
+const STARTING_BANKROLL = 100000;
 
 interface Holding { symbol: string; units: number; }
 

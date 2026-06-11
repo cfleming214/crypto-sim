@@ -130,7 +130,17 @@ export function CompeteScreen() {
   const animatingRef = useRef(false);
   const livePan = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => !animatingRef.current && Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      // Only grab the gesture once it's a deliberate, clearly-horizontal swipe —
+      // a larger dx threshold plus a strong horizontal-over-vertical ratio (and a
+      // hard cap on vertical travel) keeps the outer vertical ScrollView in charge
+      // of any up/down motion, so scrolling no longer snags the live cards.
+      onMoveShouldSetPanResponder: (_, g) =>
+        !animatingRef.current &&
+        Math.abs(g.dx) > 24 &&
+        Math.abs(g.dx) > Math.abs(g.dy) * 2.5 &&
+        Math.abs(g.dy) < 18,
+      // Let the ScrollView reclaim the gesture if it decides it's a scroll.
+      onPanResponderTerminationRequest: () => true,
       onPanResponderMove: (_, g) => {
         if (!animatingRef.current) slideX.setValue(g.dx);
       },
@@ -464,8 +474,17 @@ export function CompeteScreen() {
             No {contestTab === 'All' ? '' : `${contestTab.toLowerCase()} `}contests right now — check back soon.
           </Text>
         </Card>
-      ) : (
-        <View style={{ gap: 10 }}>
+      ) : (() => {
+        // Show 3 contests at a glance; once there are more, cap the height to ~3
+        // cards and let the rest scroll inside their own area (nestedScrollEnabled
+        // so it cooperates with ScreenShell's outer vertical ScrollView).
+        const many = listComps.length > 3;
+        const Wrapper: any = many ? ScrollView : View;
+        const wrapperProps: any = many
+          ? { style: { maxHeight: 360 }, nestedScrollEnabled: true, showsVerticalScrollIndicator: true, contentContainerStyle: { gap: 10 } }
+          : { style: { gap: 10 } };
+        return (
+        <Wrapper {...wrapperProps}>
           {listComps.map(comp => (
             <TouchableOpacity
               key={comp.id}
@@ -505,8 +524,9 @@ export function CompeteScreen() {
               </Card>
             </TouchableOpacity>
           ))}
-        </View>
-      )}
+        </Wrapper>
+        );
+      })()}
 
       {/* Top traders entry point */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>

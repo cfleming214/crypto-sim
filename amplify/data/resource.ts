@@ -130,7 +130,7 @@ const schema = a.schema({
     joinedAt: a.string().required(), // ISO timestamp
     isActive: a.boolean(),
     // Per-contest portfolio — separate from the user's main UserProfile.
-    // Each contest gives the player a fresh $10K and tracks its own holdings
+    // Each contest gives the player a fresh $100K and tracks its own holdings
     // and trade history independently.
     cash: a.float(),
     holdingsJson: a.string(),
@@ -178,7 +178,7 @@ const schema = a.schema({
     handle:      a.string().required(),
     league:      a.string(),
     bankroll:    a.float(),
-    pnlPct:      a.float(),       // (bankroll - 10000) / 10000 * 100
+    pnlPct:      a.float(),       // (bankroll - 100000) / 100000 * 100
     winRate:     a.float(),       // 0..100
     tradeCount:  a.integer(),
     avatarKey:   a.string(),

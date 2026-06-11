@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -344,8 +344,8 @@ export function TournamentDetailScreen() {
           <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 8 }}>
             Join the contest and rankings will appear here.
           </Text>
-        ) : (
-          [...entries]
+        ) : (() => {
+          const rows = [...entries]
             .sort((a, b) => b.bankroll - a.bankroll)
             .map((e, idx, arr) => {
               const liveRank = idx + 1;
@@ -397,8 +397,15 @@ export function TournamentDetailScreen() {
                   </Text>
                 </View>
               );
-            })
-        )}
+            });
+          // Show 6 players at a time; the rest scroll within the leaderboard
+          // itself (nestedScrollEnabled so it works inside the screen's scroll).
+          return entries.length > 6 ? (
+            <ScrollView style={{ maxHeight: 330 }} nestedScrollEnabled showsVerticalScrollIndicator>
+              {rows}
+            </ScrollView>
+          ) : <>{rows}</>;
+        })()}
       </Card>
 
       {/* Footer */}

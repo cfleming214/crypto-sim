@@ -348,9 +348,13 @@ export function PortfolioScreen() {
     const coin = getCoin(h.symbol);
     const data = getHolding(h.symbol);
     const pct = data ? (data.value / totalEquity) * 100 : 0;
+    const unitPrice = coin?.price ?? 0;
     return {
       symbol: h.symbol,
       name: coin?.name ?? h.symbol,
+      price: unitPrice < 0.01
+        ? unitPrice.toFixed(6)
+        : unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       value: data?.value.toFixed(2) ?? '0.00',
       change: data ? `${data.pnlPct >= 0 ? '+' : ''}${data.pnlPct.toFixed(1)}%` : '—',
       down: (data?.pnlPct ?? 0) < 0,
@@ -685,8 +689,11 @@ export function PortfolioScreen() {
                   )}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
+                      <Text style={{ fontSize: 12, color: colors.ink3, fontVariant: ['tabular-nums'] }}>${h.price}</Text>
+                    </View>
                     <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${h.value}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
