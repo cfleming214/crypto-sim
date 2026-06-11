@@ -298,8 +298,8 @@ async function main() {
     await clearPriorSeed(tables);
   }
 
-  // Build the three contests. When appending, tag each name with a short run id
-  // so accumulated batches are distinguishable on screen (and don't look like
+  // Build the contests. When appending, tag each name with a short run id so
+  // accumulated batches are distinguishable on screen (and don't look like
   // duplicates). All batches stay tagged createdBy=seed-script, so a later
   // default (non-append) run still cleans every one of them up.
   const now = Date.now();
@@ -307,6 +307,9 @@ async function main() {
   const contests = [
     { item: competitionItem({ id: randomUUID(), name: `🔥 10-Minute Sprint${tag}`, startAt: now, endAt: now + 10 * MINUTE, maxPlayers: 15, lockAfterStart: false }), joinAll: true },
     { item: competitionItem({ id: randomUUID(), name: `📈 3-Day Showdown${tag}`,   startAt: now, endAt: now + 3 * DAY,    maxPlayers: 20, lockAfterStart: false }), joinAll: true },
+    // 1-hour, 100K-player cap, 5,000 XP — a big-capacity contest for load testing
+    // (all 10 bots join, leaving the cap wide open).
+    { item: competitionItem({ id: randomUUID(), name: `⚡ 1-Hour 100K${tag}`, startAt: now, endAt: now + HOUR, maxPlayers: 100_000, lockAfterStart: false }), joinAll: true },
     { item: competitionItem({ id: randomUUID(), name: `⏳ Tomorrow's Lockout${tag}`, startAt: now + 24 * HOUR, endAt: now + 24 * HOUR + 2 * DAY, maxPlayers: 50, lockAfterStart: true }), joinAll: false },
   ];
 
@@ -370,6 +373,7 @@ async function main() {
   console.log('\n✅ Done.');
   console.log('   • Open the app → Compete. Join "🔥 10-Minute Sprint" (5 spots left) to play against the bots.');
   console.log('   • "📈 3-Day Showdown" has all 10 bots already in it.');
+  console.log('   • "⚡ 1-Hour 100K" — 1h, 100K-player cap, 5,000 XP, all 10 bots in (load-test capacity).');
   console.log("   • \"⏳ Tomorrow's Lockout\" starts in 24h and locks at start (try joining before vs after).");
   console.log('   • Global leaderboard fills in within ~5 min (after tick-global-leaderboard runs).');
   if (DRY) console.log('\n(With --dry-run nothing was written.)');
