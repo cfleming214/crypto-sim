@@ -3,9 +3,9 @@
  * Tears down everything scripts/seed-live-contest.mjs creates:
  *   1. Seed contests (Competition rows where createdBy = "seed-script") and all
  *      their CompetitionEntry rows.
- *   2. The 10 bots' CompetitionEntry + UserProfile rows (matched by owner sub,
- *      so it also clears bot entries in any non-seed contest you tested with).
- *   3. The 10 bot Cognito accounts (unless --keep-users is passed).
+ *   2. The bots' CompetitionEntry + UserProfile rows (matched by owner sub, so
+ *      it also clears bot entries in any non-seed contest you tested with).
+ *   3. The bot Cognito accounts (seedbot01–50, unless --keep-users is passed).
  *
  * It does NOT touch the precomputed GlobalLeaderboard table — the
  * tick-global-leaderboard Lambda drops the bots on its next run once their
@@ -16,7 +16,7 @@
  *
  * Usage:
  *   node scripts/seed-contests-clean.mjs                 # full teardown (incl. bot accounts)
- *   node scripts/seed-contests-clean.mjs --keep-users    # wipe data, keep the 10 accounts
+ *   node scripts/seed-contests-clean.mjs --keep-users    # wipe data, keep the accounts
  *   node scripts/seed-contests-clean.mjs --dry-run       # show what it would delete
  */
 import {
@@ -46,13 +46,11 @@ const ddb = new DynamoDBClient({ region: REGION });
 
 const CREATED_BY = 'seed-script'; // must match seed-live-contest.mjs
 
-// The 10 fixed bot emails — must match seed-live-contest.mjs.
-const BOT_EMAILS = [
-  'seedbot01@cryptocomp.app', 'seedbot02@cryptocomp.app', 'seedbot03@cryptocomp.app',
-  'seedbot04@cryptocomp.app', 'seedbot05@cryptocomp.app', 'seedbot06@cryptocomp.app',
-  'seedbot07@cryptocomp.app', 'seedbot08@cryptocomp.app', 'seedbot09@cryptocomp.app',
-  'seedbot10@cryptocomp.app',
-];
+// The 50 fixed bot emails (seedbot01–50) — must match seed-live-contest.mjs.
+// We always scan for all 50 so teardown catches whatever a given run created,
+// regardless of how many --players it used. botSubs() skips any not in the pool.
+const BOT_EMAILS = Array.from({ length: 50 }, (_, i) =>
+  `seedbot${String(i + 1).padStart(2, '0')}@cryptocomp.app`);
 
 async function findTables() {
   const want = ['Competition', 'CompetitionEntry', 'UserProfile'];

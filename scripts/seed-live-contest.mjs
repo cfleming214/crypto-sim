@@ -81,8 +81,12 @@ const SEED_PASSWORD = 'SeedBot!2026';    // fixed password for every bot account
 const CREATED_BY    = 'seed-script';     // marker so reruns can find + replace
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 
-// The 10 fixed bots. Emails never change → accounts are reused across runs.
-const BOTS = [
+// 50 fixed bots. Emails never change → accounts are reused across runs. The
+// first 10 are hand-named; the rest (seedbot11–50) are generated so the pool can
+// fill larger contests when you pass --players. ensureUser() only creates the
+// ones a given run actually uses (the first BOT_COUNT), so unused accounts are
+// never provisioned. Keep the email list in sync with seed-contests-clean.mjs.
+const NAMED_BOTS = [
   { email: 'seedbot01@cryptocomp.app', handle: 'AvaWhale',    color: '#6366F1', league: 'Gold' },
   { email: 'seedbot02@cryptocomp.app', handle: 'MaxLeverage', color: '#EC4899', league: 'Silver' },
   { email: 'seedbot03@cryptocomp.app', handle: 'DiamondHan',  color: '#10B981', league: 'Diamond' },
@@ -94,6 +98,33 @@ const BOTS = [
   { email: 'seedbot09@cryptocomp.app', handle: 'AlphaSeeka',  color: '#F97316', league: 'Bronze' },
   { email: 'seedbot10@cryptocomp.app', handle: 'NakamotoZ',   color: '#0EA5E9', league: 'Diamond' },
 ];
+
+const BOT_PALETTE = ['#6366F1', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#8B5CF6', '#EF4444', '#14B8A6', '#F97316', '#0EA5E9'];
+const BOT_LEAGUES = ['Bronze', 'Silver', 'Gold', 'Diamond', 'Platinum'];
+
+// 40 generated bots → seedbot11 … seedbot50, for 50 total.
+const EXTRA_BOTS = Array.from({ length: 40 }, (_, i) => {
+  const n = i + 11;
+  return {
+    email: `seedbot${String(n).padStart(2, '0')}@cryptocomp.app`,
+    handle: `LoadBot${n}`,
+    color: BOT_PALETTE[i % BOT_PALETTE.length],
+    league: BOT_LEAGUES[i % BOT_LEAGUES.length],
+  };
+});
+
+const BOTS = [...NAMED_BOTS, ...EXTRA_BOTS];
+
+// How many bots this run spins up + joins. Defaults to 10; --players <n> scales
+// it to match your input (clamped to the 50 available accounts).
+const DEFAULT_BOTS = 10;
+let BOT_COUNT = DEFAULT_BOTS;
+if (Number.isFinite(playersArg) && playersArg > 0) {
+  BOT_COUNT = Math.min(playersArg, BOTS.length);
+  if (playersArg > BOTS.length) {
+    console.warn(`  ! --players ${playersArg} exceeds the ${BOTS.length} available bot accounts; running ${BOTS.length}.`);
+  }
+}
 
 // Fallback coin universe if the Token catalog table is empty.
 const FALLBACK_COINS = [
@@ -296,9 +327,9 @@ async function main() {
   for (const [m, t] of Object.entries(tables)) console.log(`  ${m} → ${t}`);
   if (!tables.Competition || !tables.CompetitionEntry) throw new Error('Missing Competition/CompetitionEntry tables');
 
-  console.log('\nEnsuring 10 bot accounts…');
+  console.log(`\nEnsuring ${BOT_COUNT} bot account(s)…`);
   const bots = [];
-  for (const b of BOTS) bots.push({ ...b, ...(await ensureUser(b)) });
+  for (const b of BOTS.slice(0, BOT_COUNT)) bots.push({ ...b, ...(await ensureUser(b)) });
 
   console.log('\nLoading coin universe…');
   const coins = await loadCoins(tables.Token);
@@ -321,19 +352,20 @@ async function main() {
     { item: competitionItem({ id: randomUUID(), name: `🔥 10-Minute Sprint${tag}`, startAt: now, endAt: now + 10 * MINUTE, maxPlayers: 15, lockAfterStart: false }), joinAll: true },
     { item: competitionItem({ id: randomUUID(), name: `📈 3-Day Showdown${tag}`,   startAt: now, endAt: now + 3 * DAY,    maxPlayers: 20, lockAfterStart: false }), joinAll: true },
     // 1-hour, 5,000 XP, $100K starting portfolio (the default). Cap defaults to
-    // 20 but grows to --players <n> when n > 20. All 10 bots join.
+    // 20 but grows to --players <n> when n > 20; the running bots fill it.
     { item: competitionItem({ id: randomUUID(), name: `⚡ 1-Hour Dash${tag}`, startAt: now, endAt: now + HOUR, maxPlayers: DASH_CAP, lockAfterStart: false }), joinAll: true },
     { item: competitionItem({ id: randomUUID(), name: `⏳ Tomorrow's Lockout${tag}`, startAt: now + 24 * HOUR, endAt: now + 24 * HOUR + 2 * DAY, maxPlayers: 50, lockAfterStart: true }), joinAll: false },
   ];
 
   console.log('\nCreating contests + entries…');
   for (const { item, joinAll } of contests) {
-    const entries = joinAll ? bots.length : 0;
+    // Never seed more entries than the contest can hold.
+    const entries = joinAll ? Math.min(bots.length, item.maxPlayers) : 0;
     item.entryCount = entries;
     await put(tables.Competition, item);
     console.log(`  ${item.name}  [${item.status}${item.lockAfterStart ? ', 🔒 lock-after-start' : ''}]  cap ${item.maxPlayers}  ${entries} bot entries`);
     if (!joinAll) continue;
-    for (const bot of bots) {
+    for (const bot of bots.slice(0, entries)) {
       const pf = randomPortfolio(coins);
       await put(tables.CompetitionEntry, {
         __typename: 'CompetitionEntry',
@@ -383,10 +415,11 @@ async function main() {
     console.log(`  wrote ${bots.length} profiles`);
   }
 
+  const joined = (cap) => Math.min(BOT_COUNT, cap);
   console.log('\n✅ Done.');
-  console.log('   • Open the app → Compete. Join "🔥 10-Minute Sprint" (5 spots left) to play against the bots.');
-  console.log('   • "📈 3-Day Showdown" has all 10 bots already in it.');
-  console.log(`   • "⚡ 1-Hour Dash" — 1h, ${DASH_CAP}-player cap, 5,000 XP, all 10 bots in (${DASH_CAP - 10} spots left).`);
+  console.log(`   • Open the app → Compete. "🔥 10-Minute Sprint" — ${joined(15)} bots in, ${15 - joined(15)} spot(s) left for you.`);
+  console.log(`   • "📈 3-Day Showdown" — ${joined(20)} bots in, ${20 - joined(20)} spot(s) left.`);
+  console.log(`   • "⚡ 1-Hour Dash" — 1h, ${DASH_CAP}-player cap, 5,000 XP, ${joined(DASH_CAP)} bots in (${DASH_CAP - joined(DASH_CAP)} spots left).`);
   console.log("   • \"⏳ Tomorrow's Lockout\" starts in 24h and locks at start (try joining before vs after).");
   console.log('   • Global leaderboard fills in within ~5 min (after tick-global-leaderboard runs).');
   if (DRY) console.log('\n(With --dry-run nothing was written.)');
