@@ -481,7 +481,7 @@ export function TradeScreen() {
         {/* Back button → portfolio page */}
         <TouchableOpacity
           testID="order-filled-back-btn"
-          onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}
+          onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Home' }); }}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 12, paddingVertical: 10 }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
@@ -545,7 +545,7 @@ export function TradeScreen() {
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
-            <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('Home'); }}>View portfolio</Button>
+            <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Home' }); }}>View portfolio</Button>
           </View>
         </ScrollView>
       </SafeAreaView>
