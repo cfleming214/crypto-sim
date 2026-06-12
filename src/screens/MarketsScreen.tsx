@@ -311,23 +311,30 @@ export function MarketsScreen() {
             <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
               {movers.map(a => (
                 <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
-                  <Card variant="compact" style={{ width: 150, gap: 8 }}>
-                    {/* Name on top; price below it; the $ + % change sits directly underneath the price */}
-                    <View style={{ gap: 6 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <CoinGlyph symbol={a.symbol} size={24} />
-                        <Text style={{ fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
-                      </View>
-                      <View style={{ gap: 2 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                  <Card variant="compact" style={{ width: 170, height: 152, justifyContent: 'space-between' }}>
+                    <View style={{ gap: 3 }}>
+                      {/* Title line: coin on the left, price on the right */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+                          <CoinGlyph symbol={a.symbol} size={22} />
+                          <Text style={{ fontWeight: '600', color: colors.ink }} numberOfLines={1}>{a.symbol}</Text>
+                        </View>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                           ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Text>
+                      </View>
+                      {/* $ + % change, lined up to the right beneath the price */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
                         <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
-                          {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
+                          {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)}
+                        </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                          {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
                         </Text>
                       </View>
                     </View>
-                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={126} height={28} />
+                    {/* Graph takes ~60% of the card height */}
+                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={146} height={90} />
                   </Card>
                 </TouchableOpacity>
               ))}

@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { View, ViewStyle, PanResponder, Text } from 'react-native';
+import { View, ViewStyle, PanResponder, Text, Pressable } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
+import type { ChartMarker } from './CandleChart';
 
 interface AreaChartProps {
   height?: number;
@@ -14,6 +15,7 @@ interface AreaChartProps {
   timestamps?: number[];   // optional ms-epoch per data point — enables date in crosshair tooltip
   crosshair?: boolean;     // enable touch-driven inspection (default true when data supplied)
   axes?: boolean;          // render $ (Y) + time (X) labels in gutters (default false)
+  markers?: ChartMarker[]; // buy/sell trades pinned on the curve as up/down triangles
 }
 
 function generatePath(data: number[], w: number, h: number, closed = false): string {
@@ -107,8 +109,21 @@ function formatAxisMoney(v: number): string {
   return `$${v.toFixed(0)}`;
 }
 
-export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair, axes = false }: AreaChartProps) {
+function fmtMarkerPrice(v: number): string {
+  return v < 0.01
+    ? v.toFixed(8)
+    : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtMarkerUnits(u: number): string {
+  if (u >= 1000) return u.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (u >= 1)    return u.toFixed(2);
+  return u.toFixed(4);
+}
+
+export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair, axes = false, markers }: AreaChartProps) {
   const { colors } = useTheme();
+  const [selMarker, setSelMarker] = useState<number | null>(null);
 
   const baseValueRef = useRef(baseValue ?? 10847);
   useEffect(() => {
@@ -167,6 +182,35 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const range = max - min || 1;
   const yForValue = (v: number) => plotH - ((v - min) / range) * plotH * 0.85 - plotH * 0.075;
   const xForIdx = (i: number) => (i / (chartData.length - 1)) * 300;
+
+  // Map buy/sell markers to the nearest point on the equity curve by timestamp.
+  const markerData = useMemo(() => {
+    if (!markers || !markers.length || !timestamps || timestamps.length < 2) return [];
+    const t0 = timestamps[0];
+    const tN = timestamps[timestamps.length - 1];
+    const tol = (tN - t0) / timestamps.length;
+    return markers
+      .filter(m => m.timestamp >= t0 - tol && m.timestamp <= tN + tol)
+      .map(m => {
+        let bi = 0, bd = Infinity;
+        for (let i = 0; i < timestamps.length; i++) {
+          const d = Math.abs(timestamps[i] - m.timestamp);
+          if (d < bd) { bd = d; bi = i; }
+        }
+        return { ...m, idx: bi };
+      });
+  }, [markers, timestamps, chartData.length]);
+
+  const upTri = (c: string): ViewStyle => ({
+    width: 0, height: 0,
+    borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 8,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: c,
+  });
+  const downTri = (c: string): ViewStyle => ({
+    width: 0, height: 0,
+    borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 8,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: c,
+  });
 
   const hoverIdx = crosshairIdx;
   const hoverValue = hoverIdx !== null ? chartData[hoverIdx] : null;
@@ -281,6 +325,58 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
           {...panResponder.panHandlers}
         />
       )}
+
+      {/* Buy/sell triangle markers, anchored to the equity curve. Rendered above
+          the touch overlay so taps hit the triangle, not the crosshair. */}
+      {markerData.map((m, i) => {
+        const xPx = leftGutter + (m.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const yPx = Math.max(7, Math.min(plotH - 7, yForValue(chartData[m.idx])));
+        const buy = m.side === 'buy';
+        const col = buy ? colors.up : colors.down;
+        return (
+          <Pressable
+            key={`m${i}`}
+            onPress={() => setSelMarker(prev => (prev === i ? null : i))}
+            hitSlop={8}
+            style={{
+              position: 'absolute',
+              left: xPx - 6,
+              top: buy ? yPx + 3 : yPx - 11,
+              width: 12, height: 9, alignItems: 'center', justifyContent: 'center', zIndex: 6,
+            }}
+          >
+            <View style={buy ? upTri(col) : downTri(col)} />
+          </Pressable>
+        );
+      })}
+
+      {/* Marker detail tooltip */}
+      {selMarker !== null && markerData[selMarker] && (() => {
+        const m = markerData[selMarker];
+        const xPx = leftGutter + (m.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const tipW = 150;
+        const left = Math.max(4, Math.min(layoutWidth - tipW - 4, xPx - tipW / 2));
+        const buy = m.side === 'buy';
+        return (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', left, top: 2, width: tipW, zIndex: 20,
+              backgroundColor: colors.ink, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+            }}
+          >
+            <Text style={{ color: buy ? colors.up : colors.down, fontWeight: '800', fontSize: 11, letterSpacing: 0.4 }}>
+              {buy ? 'BUY' : 'SELL'}{m.symbol ? ` · ${m.symbol}` : ''}
+            </Text>
+            <Text style={{ color: colors.brandOn, fontSize: 12, fontWeight: '700', marginTop: 2, fontVariant: ['tabular-nums'] }}>
+              {fmtMarkerUnits(m.units)} @ ${fmtMarkerPrice(m.price)}
+            </Text>
+            <Text style={{ color: `${colors.brandOn}B0`, fontSize: 11, marginTop: 1, fontVariant: ['tabular-nums'] }}>
+              ${fmtMarkerPrice(m.amount)} total
+            </Text>
+          </View>
+        );
+      })()}
     </View>
   );
 }

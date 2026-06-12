@@ -10,6 +10,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { RiskMeter } from '../components/ui/RiskMeter';
 import { CoinGlyph, Avatar } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
+import type { ChartMarker } from '../components/charts/CandleChart';
 import { DonutChart } from '../components/charts/DonutChart';
 import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
@@ -344,6 +345,15 @@ export function PortfolioScreen() {
     };
   }, [history, totalEquity, tf]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Your trades pinned on the equity curve as up (buy) / down (sell) triangles;
+  // AreaChart filters them to the visible timeframe by timestamp.
+  const chartMarkers = React.useMemo<ChartMarker[]>(() =>
+    state.trades
+      .filter(t => t.kind !== 'reward')
+      .map(t => ({ timestamp: t.timestamp, side: t.side, price: t.price, units: t.units, amount: t.amount, symbol: t.symbol })),
+    [state.trades],
+  );
+
   const holdingRows = state.holdings.map(h => {
     const coin = getCoin(h.symbol);
     const data = getHolding(h.symbol);
@@ -530,7 +540,7 @@ export function PortfolioScreen() {
 
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
-        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} down={!pnlPositive} axes />
+        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} markers={chartMarkers} down={!pnlPositive} axes />
         {historyLoading && history.length === 0 && (
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={colors.ink3} />

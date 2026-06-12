@@ -7,7 +7,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
-import { CandleChart, type Indicator } from '../components/charts/CandleChart';
+import { CandleChart, type Indicator, type ChartMarker } from '../components/charts/CandleChart';
 import { fetchOhlc, type OhlcCandle } from '../services/priceService';
 import { latestRSI } from '../lib/indicators';
 import { CoinGlyph } from '../components/ui/Avatar';
@@ -381,22 +381,41 @@ export function TradeScreen() {
   // Chart data: 24H from the in-state rolling series (live, no fetch), other
   // timeframes from the fetched OHLC. CandleChart draws a line through closes,
   // so flat OHLC synthesized from the price series renders the same line.
-  const chartCandles = useMemo(() => {
+  const { chartCandles, chartTimestamps } = useMemo(() => {
     if (tf === '24H') {
       // Real 24h series + the live price as the right-edge tip, so the chart
       // moves with every price update (same data the Markets sparkline uses).
       const base = coin?.history ?? [];
       const h = base.length ? [...base, coin!.price] : [];
-      if (h.length < 2) return undefined;
-      return h.map((p, i) => {
+      if (h.length < 2) return { chartCandles: undefined, chartTimestamps: undefined };
+      // The series is ~hourly closes ending at "now"; synthesize per-point
+      // timestamps so trade markers land at the right place on the X axis.
+      const now = Date.now();
+      const hourMs = 60 * 60 * 1000;
+      const candles = h.map((p, i) => {
         const o = i > 0 ? h[i - 1] : p;
         return { open: o, high: Math.max(o, p), low: Math.min(o, p), close: p };
       });
+      const ts = h.map((_, i) => now - (h.length - 1 - i) * hourMs);
+      return { chartCandles: candles, chartTimestamps: ts };
     }
-    return fetchedCandles.length > 0
-      ? fetchedCandles.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close }))
-      : undefined;
+    if (fetchedCandles.length > 0) {
+      return {
+        chartCandles: fetchedCandles.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close })),
+        chartTimestamps: fetchedCandles.map(c => c.timestamp),
+      };
+    }
+    return { chartCandles: undefined, chartTimestamps: undefined };
   }, [tf, coin?.history, coin?.price, fetchedCandles]);
+
+  // Your buy/sell trades for this coin, pinned on the chart as up/down triangles.
+  // Reward grants (kind === 'reward') aren't trades, so they're excluded.
+  const chartMarkers = useMemo<ChartMarker[]>(() =>
+    state.trades
+      .filter(t => t.symbol === symbol && t.kind !== 'reward')
+      .map(t => ({ timestamp: t.timestamp, side: t.side, price: t.price, units: t.units, amount: t.amount, symbol: t.symbol })),
+    [state.trades, symbol],
+  );
 
   // The Trade screen stays mounted as a tab, so the post-trade confirmation
   // (showSuccess) would otherwise still be up when you navigate away and return
@@ -595,6 +614,9 @@ export function TradeScreen() {
             <CandleChart
               height={220}
               data={chartCandles}
+              timestamps={chartTimestamps}
+              markers={chartMarkers}
+              axes
               timeframe={tf}
               basePrice={price}
               indicators={activeIndicators}
