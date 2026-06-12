@@ -21,6 +21,7 @@
     "expo-image-picker": "~56.0.14",
     "expo-notifications": "~56.0.15",
     "expo-status-bar": "~56.0.4",
+    "expo-updates": "~56.0.19",
     "lucide-react-native": "^1.16.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

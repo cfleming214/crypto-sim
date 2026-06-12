@@ -10,10 +10,15 @@ import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui/Toast';
 import { AchievementWatcher } from './src/components/AchievementWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
+import { startOtaUpdates } from './src/lib/otaUpdates';
 
 configureAmplify();
 
 export default function App() {
+  // Production-safe OTA "hot reload": pull the latest JS bundle on launch +
+  // foreground (no-op in dev / Expo Go). See src/lib/otaUpdates.ts.
+  React.useEffect(() => startOtaUpdates(), []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
