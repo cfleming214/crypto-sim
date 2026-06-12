@@ -2,11 +2,11 @@ import React, { createContext, useContext, useReducer, useEffect, useRef, useSta
 import { AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
-import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
+import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
-import { fetchTokenCatalog } from '../services/tokenCatalog';
+import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
@@ -1073,7 +1073,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Fan out all external market fetches in parallel so a slow one doesn't
       // block the others. Each call has its own cache + 429 backoff internally.
       const [prices, globalStats, fearGreed] = await Promise.all([
-        fetchPrices().catch(() => null),
+        // Backend-first (Token table, refreshed centrally by tick-prices) so
+        // signed-in devices don't each hit the shared CoinGecko key.
+        fetchLivePrices().catch(() => null),
         fetchGlobalMarketStats().catch(() => null),
         fetchFearGreedIndex().catch(() => null),
       ]);

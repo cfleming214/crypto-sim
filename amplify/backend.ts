@@ -6,6 +6,7 @@ import { FunctionUrlAuthType } from 'aws-cdk-lib/aws-lambda';
 import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
 import { storage } from './storage/resource.js';
+import { tickPrices } from './functions/tick-prices/resource.js';
 import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
 import { tickGlobalLeaderboard } from './functions/tick-global-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
@@ -30,6 +31,7 @@ const backend = defineBackend({
   auth,
   data,
   storage,
+  tickPrices,
   tickLeaderboard,
   tickGlobalLeaderboard,
   closeCompetition,
@@ -67,6 +69,19 @@ const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 // Device push tokens — read by the notification-sending Lambdas; write access
 // is for flipping dead tokens (DeviceNotRegistered) to active:false.
 const pushDeviceTable    = backend.data.resources.tables['PushDevice'];
+
+// --- tickPrices: every minute, refresh Token live prices from CoinGecko once
+// for the whole user base (so devices read prices from our backend, not the
+// shared CoinGecko key) and keep the valuation crons reading fresh prices ---
+const pricesFn = backend.tickPrices.resources.lambda;
+tokenTable.grantReadWriteData(pricesFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+pricesFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
+
+new Rule(Stack.of(pricesFn), 'TickPricesRule', {
+  schedule: Schedule.rate(Duration.minutes(1)),
+  targets: [new LambdaFunction(pricesFn)],
+});
 
 // --- tickLeaderboard: runs every 5 minutes ---
 const tickFn = backend.tickLeaderboard.resources.lambda;

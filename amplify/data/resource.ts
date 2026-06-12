@@ -211,7 +211,12 @@ const schema = a.schema({
     rank:               a.integer(),               // market-cap rank at last seed
     imageUrl:           a.string(),
     enabledForPractice: a.boolean(),               // true => tradeable in free-play mode
-    lastPrice:          a.float(),                 // USD snapshot at last seed (display only)
+    lastPrice:          a.float(),                 // live USD price, refreshed every minute by tick-prices
+    change24h:          a.float(),                 // 24h % change
+    high24h:            a.float(),
+    low24h:             a.float(),
+    sparklineJson:      a.string(),                // JSON array of the last ~24 hourly closes
+    priceUpdatedAt:     a.string(),                // ISO timestamp of the last live-price refresh
     marketCapRaw:       a.float(),
     volumeRaw:          a.float(),
     lastSeededAt:       a.string(),                // ISO timestamp of the most recent seed

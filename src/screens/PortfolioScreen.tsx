@@ -16,7 +16,7 @@ import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
-import { fetchPrices } from '../services/priceService';
+import { fetchLivePrices } from '../services/tokenCatalog';
 import { loadSnapshots, backfillGap, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
@@ -384,7 +384,7 @@ export function PortfolioScreen() {
     // re-dispatching LOAD_PROFILE here just causes a redundant merge that
     // can flash a stale bankroll until the next TICK_PRICES recomputes.
     try {
-      const prices = await fetchPrices();
+      const prices = await fetchLivePrices();
       dispatch({ type: 'UPDATE_PRICES', prices });
     } catch {
       // Silent — simulated tick keeps prices alive
