@@ -60,6 +60,9 @@ const stripeAccountTable = backend.data.resources.tables['StripeAccount'];
 const payoutTable        = backend.data.resources.tables['Payout'];
 const tokenTable         = backend.data.resources.tables['Token'];
 const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
+// Device push tokens — read by the notification-sending Lambdas; write access
+// is for flipping dead tokens (DeviceNotRegistered) to active:false.
+const pushDeviceTable    = backend.data.resources.tables['PushDevice'];
 
 // --- tickLeaderboard: runs every 5 minutes ---
 const tickFn = backend.tickLeaderboard.resources.lambda;
@@ -121,6 +124,10 @@ const finishedTable = backend.data.resources.tables['FinishedCompetition'];
 finishedTable.grantWriteData(closeFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 closeFn.addEnvironment('FINISHED_COMPETITION_TABLE_NAME', finishedTable.tableName);
+// Push the winner a "you won" notification at settlement.
+pushDeviceTable.grantReadWriteData(closeFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeFn.addEnvironment('PUSH_TOKEN_TABLE_NAME', pushDeviceTable.tableName);
 
 new Rule(Stack.of(closeFn), 'CloseCompetitionRule', {
   schedule: Schedule.rate(Duration.minutes(10)),

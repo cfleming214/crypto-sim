@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import Stripe from 'stripe';
+import { pushToUser } from '../lib/expoPush';
 
 const ddb = new DynamoDBClient({});
 // MOCK MODE when no Stripe key is configured (see resource.ts): winners who are
@@ -73,6 +74,23 @@ async function settleWinner(
   } catch (err: any) {
     if (err?.name === 'ConditionalCheckFailedException') return; // already settled
     throw err;
+  }
+
+  // Notify the winner — fired here, inside the once-per-winner conditional-put
+  // branch, so the 10-minute cron re-settling a contest never re-notifies.
+  const pushTable = process.env.PUSH_TOKEN_TABLE_NAME;
+  if (pushTable) {
+    const dollars = (amountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const place = entry.rank === 1 ? '1st place' : entry.rank === 2 ? '2nd place' : entry.rank === 3 ? '3rd place' : `Rank #${entry.rank}`;
+    try {
+      await pushToUser(pushTable, userId, {
+        title: 'You won! 🏆',
+        body: `${place} in ${comp.name || 'your contest'} — $${dollars} prize`,
+        data: { type: 'contest_result', competitionId: comp.id },
+      });
+    } catch (err) {
+      console.error('Winner push failed for', payoutId, err); // never block settlement on a push
+    }
   }
 
   // Auto-pay if they can receive funds; otherwise leave it pending to claim.
