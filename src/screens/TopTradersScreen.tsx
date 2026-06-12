@@ -144,12 +144,11 @@ export function TopTradersScreen() {
                   onPress={() => openTrader(r.owner)}
                   activeOpacity={0.7}
                 >
-                  <CardSection last={i === sorted.length - 1}>
-                    <View style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 12,
-                      backgroundColor: isMe ? `${colors.brand}0F` : undefined,
-                      marginHorizontal: isMe ? -16 : 0, paddingHorizontal: isMe ? 16 : 0,
-                    }}>
+                  <CardSection
+                    last={i === sorted.length - 1}
+                    style={isMe ? { backgroundColor: `${colors.brand}0F` } : undefined}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       {/* Rank (in the active sort) + name on the left */}
                       <Text style={{
                         width: 26, textAlign: 'center',
@@ -189,16 +188,20 @@ export function TopTradersScreen() {
                           {r.contestsWon} {r.contestsWon === 1 ? 'win' : 'wins'}
                         </Text>
                       </View>
-                      {!isMe && (
-                        <TouchableOpacity
-                          testID={`leaderboard-menu-${rank}`}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          onPress={() => openMenu({ owner: r.owner, handle: r.handle, context: 'leaderboard' })}
-                          style={{ paddingLeft: 4, paddingVertical: 4 }}
-                        >
-                          <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
-                        </TouchableOpacity>
-                      )}
+                      {/* Fixed-width trailing slot so every row's columns line up
+                          whether or not it shows the ⋯ menu (hidden on your own row). */}
+                      <View style={{ width: 22, alignItems: 'flex-end' }}>
+                        {!isMe && (
+                          <TouchableOpacity
+                            testID={`leaderboard-menu-${rank}`}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            onPress={() => openMenu({ owner: r.owner, handle: r.handle, context: 'leaderboard' })}
+                            style={{ paddingVertical: 4 }}
+                          >
+                            <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   </CardSection>
                 </TouchableOpacity>
