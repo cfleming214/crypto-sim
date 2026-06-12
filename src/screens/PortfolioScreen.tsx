@@ -21,7 +21,8 @@ import { loadSnapshots, backfillGap, type EquityPoint } from '../services/equity
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
-import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight } from 'lucide-react-native';
+import { ACADEMY } from '../data/academy';
 
 // "2h 5m" / "45s" — compact countdown to the next daily claim (next UTC midnight).
 function formatCountdown(ms: number): string {
@@ -573,6 +574,30 @@ export function PortfolioScreen() {
           <Button testID="portfolio-stop-loss-btn" variant="brand" size="sm" style={{ flex: 1 }} onPress={() => setStopSheetVisible(true)}>Set stops</Button>
         </View>
       </Card>
+
+      {/* Continue learning — Crypto Academy entry */}
+      {(() => {
+        const academyDone = ACADEMY.filter(l => state.academyCompleted.includes(l.id)).length;
+        const next = ACADEMY.find(l => !state.academyCompleted.includes(l.id));
+        return (
+          <TouchableOpacity activeOpacity={0.85} onPress={() => nav.navigate('Learn')}>
+            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: next ? `${colors.brand}14` : `${colors.up}22`, alignItems: 'center', justifyContent: 'center' }}>
+                <GraduationCap color={next ? colors.brand : colors.up} size={22} strokeWidth={1.75} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>
+                  {next ? 'Continue learning' : 'Crypto Academy · complete 🎓'}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }} numberOfLines={1}>
+                  {next ? `${next.emoji} ${next.title}` : 'Review any lesson'} · {academyDone}/{ACADEMY.length}
+                </Text>
+              </View>
+              <ChevronRight color={colors.ink3} size={18} strokeWidth={1.75} />
+            </Card>
+          </TouchableOpacity>
+        );
+      })()}
 
       {/* Coach nudges */}
       {state.coachNudges.filter(n => !state.dismissedNudgeIds.includes(n.id)).slice(0, 2).map(nudge => {

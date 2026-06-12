@@ -13,6 +13,8 @@ import { TopTradersScreen } from '../screens/TopTradersScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
 import { PredictionScreen } from '../screens/PredictionScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { LearnScreen } from '../screens/LearnScreen';
+import { LessonScreen } from '../screens/LessonScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
 import { PayoutSetupScreen } from '../screens/PayoutSetupScreen';
 import { NewsDetailScreen } from '../screens/NewsDetailScreen';
@@ -37,6 +39,8 @@ export type RootStackParamList = {
   Replay: { eraId?: string };
   Predict: undefined;
   Notifications: undefined;
+  Learn: undefined;
+  Lesson: { lessonId: string };
   Activity: undefined;
   PayoutSetup: undefined;
   NewsDetail: { article: NewsArticle };
@@ -85,6 +89,8 @@ export function RootNavigator() {
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Learn" component={LearnScreen} />
+      <Stack.Screen name="Lesson" component={LessonScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
       <Stack.Screen name="PayoutSetup" component={PayoutSetupScreen} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />

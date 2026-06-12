@@ -178,6 +178,9 @@ export interface AppState {
   // Unlocked achievements: achievement id → unlockedAt (ms epoch). Persisted in
   // 'gamification.v1'. The watcher evaluates the engine and records new unlocks.
   achievements: Record<string, number>;
+  // Crypto Academy: ids of completed lessons (see src/data/academy.ts). Persisted
+  // in the gamification blob; drives Learn progress + the 'graduate' achievement.
+  academyCompleted: string[];
   // Price-prediction mini-game lifetime stats (Phase 5). Persisted in
   // 'gamification.v1'. predictionWins feeds the "Predictor" achievement.
   predictionWins: number;

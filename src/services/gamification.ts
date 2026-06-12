@@ -106,7 +106,7 @@ export type AchievementId =
   | 'first-trade' | 'trades-10' | 'trades-100' | 'trades-500'
   | 'streak-7' | 'streak-30' | 'diamond-hands' | 'safe-trader'
   | 'copycat' | 'top-50' | 'win-bracket' | 'big-winner'
-  | 'first-10x' | 'predictor';
+  | 'first-10x' | 'predictor' | 'graduate';
 
 export interface AchievementDef {
   id: AchievementId;
@@ -130,6 +130,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'big-winner',    name: 'Big winner',     description: 'Realize a $1,000+ profit on one sell',  icon: 'TrendingUp' },
   { id: 'first-10x',     name: 'First 10x',      description: 'Sell a position up 10x (900%+)',        icon: 'Rocket' },
   { id: 'predictor',     name: 'Predictor',      description: 'Win 5 price predictions',               icon: 'Target' },
+  { id: 'graduate',      name: 'Graduate',       description: 'Complete every Crypto Academy lesson',  icon: 'GraduationCap' },
 ];
 
 export interface AchievementInput {

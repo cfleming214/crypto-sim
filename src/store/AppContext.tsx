@@ -207,6 +207,7 @@ const INITIAL_STATE: AppState = {
   tradeSymbol: 'BTC',
   lastClaimDay: null,
   achievements: {},
+  academyCompleted: [],
   predictionWins: 0,
   predictionLosses: 0,
   predictionStreak: 0,
@@ -229,6 +230,7 @@ type Action =
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
   | { type: 'LOAD_ONBOARDING'; hasOnboarded: boolean }
+  | { type: 'COMPLETE_LESSON'; lessonId: string; xp: number; total: number }
   | { type: 'ADD_XP'; amount: number }
   | { type: 'PROMOTE_LEAGUE'; league: string; division: number }
   | { type: 'SET_TRADE_SYMBOL'; symbol: string }
@@ -268,7 +270,7 @@ type Action =
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -590,6 +592,22 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, hasOnboarded: true, onboardingChecked: true };
     case 'LOAD_ONBOARDING':
       return { ...state, hasOnboarded: action.hasOnboarded, onboardingChecked: true };
+    case 'COMPLETE_LESSON': {
+      // Idempotent: award the lesson's XP once, append the id, and unlock the
+      // 'graduate' achievement when the final lesson is done.
+      if (state.academyCompleted.includes(action.lessonId)) return state;
+      const academyCompleted = [...state.academyCompleted, action.lessonId];
+      const achievements = { ...state.achievements };
+      if (academyCompleted.length >= action.total && !achievements['graduate']) {
+        achievements['graduate'] = Date.now();
+      }
+      return {
+        ...state,
+        academyCompleted,
+        achievements,
+        user: { ...state.user, xp: state.user.xp + action.xp },
+      };
+    }
     case 'ADD_XP':
       return { ...state, user: { ...state.user, xp: state.user.xp + action.amount } };
     case 'PROMOTE_LEAGUE':
@@ -731,6 +749,7 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         lastClaimDay: action.data.lastClaimDay ?? state.lastClaimDay,
         achievements: action.data.achievements ?? state.achievements,
+        academyCompleted: action.data.academyCompleted ?? state.academyCompleted,
         predictionWins: action.data.predictionWins ?? state.predictionWins,
         predictionLosses: action.data.predictionLosses ?? state.predictionLosses,
         predictionStreak: action.data.predictionStreak ?? state.predictionStreak,
@@ -1402,6 +1421,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               lastClaimDay: typeof g.lastClaimDay === 'string' ? g.lastClaimDay : null,
               streak: typeof g.streak === 'number' ? g.streak : undefined,
               achievements: g.achievements && typeof g.achievements === 'object' ? g.achievements : undefined,
+              academyCompleted: Array.isArray(g.academyCompleted) ? g.academyCompleted.filter((x: any) => typeof x === 'string') : undefined,
               predictionWins: typeof g.predictionWins === 'number' ? g.predictionWins : undefined,
               predictionLosses: typeof g.predictionLosses === 'number' ? g.predictionLosses : undefined,
               predictionStreak: typeof g.predictionStreak === 'number' ? g.predictionStreak : undefined,
@@ -1425,6 +1445,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!gamiHydratedRef.current) return;
     const empty = state.lastClaimDay === null
       && Object.keys(state.achievements).length === 0
+      && state.academyCompleted.length === 0
       && state.predictionWins === 0
       && state.predictionLosses === 0
       && !state.activePrediction
@@ -1437,6 +1458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         lastClaimDay: state.lastClaimDay,
         streak: state.user.streak,
         achievements: state.achievements,
+        academyCompleted: state.academyCompleted,
         predictionWins: state.predictionWins,
         predictionLosses: state.predictionLosses,
         predictionStreak: state.predictionStreak,
@@ -1445,7 +1467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         duelsCreated: state.duelsCreated,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
 
   // Tier sync. Lifetime XP maps directly onto a fixed 10-level ladder (see
   // assignLeague), so whenever XP changes — or the stored tier/division is stale

@@ -14,7 +14,8 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw } from 'lucide-react-native';
+import { ACADEMY } from '../data/academy';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
@@ -417,6 +418,23 @@ export function ProfileScreen() {
 
       {/* Quick links */}
       <Card variant="noPad">
+        <TouchableOpacity onPress={() => nav.navigate('Learn')}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <GraduationCap color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Crypto Academy</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ color: colors.ink3, fontSize: 12 }}>
+                  {ACADEMY.filter(l => state.academyCompleted.includes(l.id)).length}/{ACADEMY.length}
+                </Text>
+                <Text style={{ color: colors.ink3 }}>›</Text>
+              </View>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => nav.navigate('Notifications')}>
           <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -473,7 +491,7 @@ export function ProfileScreen() {
         </CardSection>
 
         <TouchableOpacity onPress={() => nav.navigate('Activity')}>
-          <CardSection last={!PAYOUTS_ENABLED}>
+          <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Activity color={colors.ink} size={18} strokeWidth={1.75} />
@@ -485,6 +503,23 @@ export function ProfileScreen() {
                 </Text>
                 <Text style={{ color: colors.ink3 }}>›</Text>
               </View>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={async () => {
+            await AsyncStorage.removeItem('hasOnboarded');   // keep 'onboardingRewarded' so XP isn't re-farmed
+            dispatch({ type: 'LOAD_ONBOARDING', hasOnboarded: false });
+          }}
+        >
+          <CardSection last={!PAYOUTS_ENABLED}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <RotateCcw color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Replay onboarding</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
             </View>
           </CardSection>
         </TouchableOpacity>
