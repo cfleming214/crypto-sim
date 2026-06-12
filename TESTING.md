@@ -102,6 +102,20 @@ maestro --device <udid-or-serial> test .maestro/<flow>.yaml
 
 ---
 
+## Tutorial: onboarding, Academy & coachmarks
+Reset the teaching flows so you can re-test them as a fresh user:
+| To re-test… | How |
+|---|---|
+| First-run **walkthrough** (W1–W8) | In-app: **Profile → Replay onboarding**. Or clear the flag: `AsyncStorage.removeItem('hasOnboarded')` (delete the `hasOnboarded` key) and relaunch. |
+| **Crypto Academy** progress | Clear the gamification blob to wipe completed lessons + XP: delete the `gamification.v1` AsyncStorage key (also resets streak/achievements), then relaunch. |
+| **Coachmark** tips (show again) | In-app: **Profile → In-app tips → "Reset — show all tips again."** Or clear the `coachmarksSeen` key. Toggle the whole system with the **In-app tips** switch (`coachmarksEnabled` key). |
+
+- The full app reset (**Profile → Reset demo**, or the `reset-demo` Lambda) clears trades/portfolio but **not** `hasOnboarded` / Academy progress — use the keys above for those.
+- Onboarding XP is one-time (guarded by the `onboardingRewarded` key); replaying the walkthrough won't re-award it.
+- Quick AsyncStorage wipe in a dev build: shake → **Clear AsyncStorage** (Expo dev menu), then relaunch to hit a truly first-run state.
+
+---
+
 ## Multiple simulators (UI load)
 | Command | What it does |
 |---|---|
