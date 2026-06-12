@@ -26,7 +26,15 @@ All the commands for running, testing, load-testing, and tearing down crypto-sim
 | Command | What it does |
 |---|---|
 | `npx ampx sandbox --identifier cflem` | Deploy the Amplify backend (this is the **live/prod** backend). Provisions tables, Lambdas, crons. Run after any `amplify/` change. Leave running to watch/hot-deploy. |
-| `npx ampx sandbox secret set <NAME> <value>` | Set a backend secret (e.g. a CoinGecko key for `tick-prices`). |
+
+**Secrets: none required.** The backend deploys + runs with no secrets — Stripe stays in **mock mode**
+(payouts simulated) and the price crons (`tick-prices`/`price-watch`) run **keyless** against CoinGecko.
+All secrets are optional and currently commented out:
+| Secret | Only needed for | Note |
+|---|---|---|
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Real Stripe prize payouts | Must first **uncomment the `secret()` block** in `amplify/functions/{stripe-connect,stripe-webhook,close-competition}/resource.ts`, then set + redeploy. |
+| `COINGECKO_API_KEY` | Higher CoinGecko rate limits | Not wired yet — must add an `environment` block to `tick-prices`/`price-watch` `resource.ts` first. |
+> `npx ampx sandbox secret set <NAME> <value>` only takes effect **after** the matching `secret()` wiring exists in that function's `resource.ts`.
 
 ---
 
