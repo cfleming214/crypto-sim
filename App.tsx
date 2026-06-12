@@ -10,6 +10,7 @@ import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui/Toast';
 import { AchievementWatcher } from './src/components/AchievementWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
+import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
 
 configureAmplify();
@@ -28,9 +29,11 @@ export default function App() {
               <ToastProvider>
                 <AchievementWatcher />
                 <EventWatcher />
-                <NavigationContainer ref={navigationRef}>
-                  <RootNavigator />
-                </NavigationContainer>
+                <CoachmarkProvider>
+                  <NavigationContainer ref={navigationRef}>
+                    <RootNavigator />
+                  </NavigationContainer>
+                </CoachmarkProvider>
               </ToastProvider>
             </ThemeProvider>
           </AppProvider>

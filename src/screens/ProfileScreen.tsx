@@ -16,6 +16,8 @@ import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw } from 'lucide-react-native';
 import { ACADEMY } from '../data/academy';
+import { useCoachmarkSettings } from '../components/coachmarks/CoachmarkProvider';
+import { Lightbulb } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
@@ -218,6 +220,7 @@ export function ProfileScreen() {
   // flips registration on/off. Default on.
   const PUSH_PREF_KEY = 'pref:pushEnabled';
   const [pushOn, setPushOn] = useState(true);
+  const { enabled: tipsEnabled, setEnabled: setTipsEnabled, resetSeen: resetTips } = useCoachmarkSettings();
   useEffect(() => {
     AsyncStorage.getItem(PUSH_PREF_KEY).then(v => { if (v !== null) setPushOn(v === '1'); });
   }, []);
@@ -470,6 +473,28 @@ export function ProfileScreen() {
               testID="profile-push-toggle"
               value={pushOn}
               onValueChange={togglePush}
+              trackColor={{ true: colors.brand, false: colors.surface2 }}
+            />
+          </View>
+        </CardSection>
+
+        <CardSection>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <Lightbulb color={colors.ink} size={18} strokeWidth={1.75} />
+              <View>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>In-app tips</Text>
+                {tipsEnabled && (
+                  <TouchableOpacity onPress={resetTips} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>Reset — show all tips again</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            <Switch
+              testID="profile-tips-toggle"
+              value={tipsEnabled}
+              onValueChange={setTipsEnabled}
               trackColor={{ true: colors.brand, false: colors.surface2 }}
             />
           </View>

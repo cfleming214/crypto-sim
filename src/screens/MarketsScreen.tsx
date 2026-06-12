@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { formatLargeNumber } from '../services/priceService';
 import { useNavigation } from '@react-navigation/native';
+import { useCoachmark } from '../components/coachmarks/CoachmarkProvider';
 import { Search, Star, SlidersHorizontal, X, Info } from 'lucide-react-native';
 
 // Absolute 24h price move in dollars, derived from the current price and the
@@ -150,6 +151,11 @@ export function MarketsScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
+  const fgCoachRef = useCoachmark(
+    'mk-feargreed',
+    "This 0–100 gauge is the market's mood: low = fear (often a buying chance), high = greed (time to be cautious). Tap it to learn more.",
+    'Fear & Greed',
+  );
   const [cat, setCat] = useState('All');
   const [sortIdx, setSortIdx] = useState(0);
   const [query, setQuery] = useState('');
@@ -238,6 +244,7 @@ export function MarketsScreen() {
             );
           })()}
         </View>
+        <View ref={fgCoachRef} style={{ flex: 1 }} collapsable={false}>
         <TouchableOpacity style={{ flex: 1, padding: 12 }} activeOpacity={0.7} onPress={() => setFgInfoOpen(true)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={{ fontSize: 11, color: colors.ink3 }}>Fear & Greed</Text>
@@ -258,6 +265,7 @@ export function MarketsScreen() {
             })()}
           </View>
         </TouchableOpacity>
+        </View>
       </Card>
 
       {/* Available cash to trade (active portfolio) */}

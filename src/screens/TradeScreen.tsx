@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useCoachmark } from '../components/coachmarks/CoachmarkProvider';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
@@ -340,6 +341,11 @@ function MoreSheet({ visible, symbol, currentPrice, onClose, onSetAlert }: {
 export function TradeScreen() {
   const { colors } = useTheme();
   const { state, getCoin, dispatch } = useApp();
+  const buyCoachRef = useCoachmark(
+    'tr-buy',
+    'Tap Buy to place a trade. You spend dollars and get crypto at the live price — sell anytime to return it to cash. It\'s all simulated.',
+    'Make a trade',
+  );
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const [tf, setTf] = useState('24H');
@@ -722,7 +728,9 @@ export function TradeScreen() {
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
             <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
-            <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
+            <View ref={buyCoachRef} style={{ flex: 1 }} collapsable={false}>
+              <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
+            </View>
           </View>
         </View>
       </ScreenShell>
