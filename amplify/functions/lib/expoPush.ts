@@ -107,10 +107,14 @@ export async function sendExpoPush(table: string, messages: PushMessage[]): Prom
       });
       const json: any = await res.json().catch(() => null);
       const tickets: any[] = json?.data ?? [];
+      // Expo returns tickets in request order; only trust index→token alignment
+      // for DeviceNotRegistered cleanup when the counts match, so we never
+      // deactivate the wrong token off a partial/misaligned response.
+      const aligned = tickets.length === chunk.length;
       await Promise.all(tickets.map((ticket, idx) => {
         if (ticket?.status === 'ok') { result.delivered += 1; return Promise.resolve(); }
         result.failed += 1;
-        if (ticket?.details?.error === 'DeviceNotRegistered') {
+        if (aligned && ticket?.details?.error === 'DeviceNotRegistered') {
           return deactivateToken(table, chunk[idx].to);
         }
         return Promise.resolve();

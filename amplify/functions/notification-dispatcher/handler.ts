@@ -61,12 +61,16 @@ export const handler = async (): Promise<void> => {
     let criteria: Criteria;
     try { criteria = JSON.parse(c.criteriaJson || '{}'); } catch { criteria = { type: 'everyone' }; }
 
-    // 3. Resolve audience → tokens.
-    let tokens: string[] = [];
+    // 3. Resolve audience → tokens. On a transient failure, revert the claim
+    // (sending → scheduled) so the next run retries instead of finalizing the
+    // campaign as sent-to-nobody (which would permanently lose it).
+    let tokens: string[];
     try {
       tokens = await resolveTokens(criteria, { pushTable, profileTable, entryTable });
     } catch (err) {
       console.error('audience resolution failed for campaign', c.id, err);
+      await revertClaim(campaignTable, c.id);
+      continue;
     }
 
     // 4. Build + send messages.
@@ -145,6 +149,22 @@ async function claim(table: string, id: string): Promise<boolean> {
     if (err?.name === 'ConditionalCheckFailedException') return false;
     console.error('campaign claim failed', id, err);
     return false;
+  }
+}
+
+// Revert a claimed-but-unsent campaign back to scheduled so a later run retries.
+async function revertClaim(table: string, id: string): Promise<void> {
+  try {
+    await ddb.send(new UpdateItemCommand({
+      TableName: table,
+      Key: marshall({ id }),
+      UpdateExpression: 'SET #s = :scheduled, updatedAt = :now',
+      ConditionExpression: '#s = :sending',
+      ExpressionAttributeNames: { '#s': 'status' },
+      ExpressionAttributeValues: marshall({ ':scheduled': 'scheduled', ':sending': 'sending', ':now': new Date().toISOString() }),
+    }));
+  } catch (err) {
+    console.error('campaign revert failed', id, err);
   }
 }
 

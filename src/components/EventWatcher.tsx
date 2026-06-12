@@ -15,8 +15,12 @@ import { Bell, Clock, Award } from 'lucide-react-native';
 function routeFromResponse(resp: Notifications.NotificationResponse | null) {
   const data = resp?.notification?.request?.content?.data as Record<string, any> | undefined;
   if (!data?.type) return;
+  let attempts = 0;
   const go = () => {
-    if (!navigationRef.isReady()) { setTimeout(go, 300); return; }
+    if (!navigationRef.isReady()) {
+      if (attempts++ < 20) setTimeout(go, 300); // cap retries (~6s) so a failed mount can't loop forever
+      return;
+    }
     switch (data.type) {
       case 'contest_result':
         if (data.competitionId) navigationRef.navigate('TournamentDetail', { id: String(data.competitionId) });
@@ -71,10 +75,13 @@ export function EventWatcher() {
 
   // Register this device for server-sent push once signed in (PushDevice is
   // owner-auth, so guests can't register). Re-runs on login so a guest→user
-  // transition registers. Requires permission, which the mount effect requests.
+  // transition registers. Awaits permission first — getExpoPushToken returns
+  // null until it's granted, so registering before the prompt resolves would
+  // silently no-op until the next launch. requestNotificationPermission is
+  // idempotent (checks current status), so calling it here + on mount is safe.
   useEffect(() => {
     if (!userId) return;
-    registerDevice(userId);
+    requestNotificationPermission().then(granted => { if (granted) registerDevice(userId); });
   }, [userId]);
 
   // League promotion / relegation (set by the weekly settle-season cron, arrives

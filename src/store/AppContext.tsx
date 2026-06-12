@@ -1119,8 +1119,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // (cancelled OR locally filled) → delete it. Deleting on a local fill is also
   // the mutex that stops the server from re-filling an order the client already
   // filled. No-ops for guests (the service short-circuits when unconfigured).
+  // Depends on authStatus too, so the moment a guest signs in this re-runs and
+  // uploads any alerts/orders they created while signed out (hydrate seeds the
+  // seen sets synchronously before its dispatch, so cloud items aren't re-created).
   useEffect(() => {
-    if (authRef.current !== 'authenticated') return;
+    if (authStatus !== 'authenticated') return;
     const curAlerts = new Set(state.priceAlerts.map(a => a.id));
     for (const a of state.priceAlerts) {
       if (!seenAlertIds.current.has(a.id)) { seenAlertIds.current.add(a.id); createCloudAlert(a); }
@@ -1135,7 +1138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     for (const id of [...seenOrderIds.current]) {
       if (!curOrders.has(id)) { seenOrderIds.current.delete(id); deleteCloudOrder(id); }
     }
-  }, [state.priceAlerts, state.pendingOrders]);
+  }, [state.priceAlerts, state.pendingOrders, authStatus]);
 
   // Always-on: record the live portfolio balance every 60s so the equity chart
   // is driven by ACTUAL observed values, not reconstruction. Reads the latest
@@ -1237,6 +1240,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authStatus === 'unauthenticated') {
       dispatch({ type: 'CLEAR_USER_DATA' });
+      // Reset the price-trigger sync gates so the NEXT user to sign in hydrates
+      // their own cloud alerts/orders (the hydrate ref is "once per session") and
+      // doesn't inherit the previous user's mirrored ids.
+      triggersHydratedRef.current = false;
+      seenAlertIds.current.clear();
+      seenOrderIds.current.clear();
     }
   }, [authStatus]);
 

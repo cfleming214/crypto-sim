@@ -259,7 +259,6 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
     <View
       style={[{ height }, style]}
       onLayout={e => setContainerWidth(e.nativeEvent.layout.width)}
-      {...panResponder.panHandlers}
     >
       {/* Floating price tooltip (crosshair) */}
       {chPrice !== null && (
@@ -277,7 +276,7 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
       )}
 
       {/* Main price region (price line + axes overlays + markers) */}
-      <View style={{ height: plotH }}>
+      <View style={{ height: plotH, position: 'relative' }}>
         <Svg width="100%" height={plotH} viewBox={`0 0 ${W} ${plotH}`} preserveAspectRatio="none">
           {/* Horizontal Y gridlines */}
           {axesOn && yTicks.map((v, i) => (
@@ -316,6 +315,12 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
             </Text>
           );
         })}
+
+        {/* Transparent crosshair touch overlay. Lives UNDER the marker Pressables
+            (rendered before them) so a tap on a marker hits the Pressable, while
+            a touch anywhere else drives the crosshair — putting the PanResponder
+            on the parent container instead would swallow every marker tap. */}
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} {...panResponder.panHandlers} />
 
         {/* Buy/sell triangle markers */}
         {markerData.map((m, i) => {

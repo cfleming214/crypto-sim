@@ -99,8 +99,11 @@ export async function fetchTokenPrices(): Promise<PriceData[]> {
           marketCapRaw: Number(r.marketCapRaw || 0),
           volumeRaw:    Number(r.volumeRaw || 0),
           sparkline24h: parseSpark(r.sparklineJson),
-          high24h:      Number(r.high24h) > 0 ? Number(r.high24h) : price,
-          low24h:       Number(r.low24h)  > 0 ? Number(r.low24h)  : price,
+          // Send 0 when absent (not spot price) so the UPDATE_PRICES reducer's
+          // `>0` guard keeps the previously-known 24h high/low instead of
+          // collapsing the range to the current price each tick.
+          high24h:      Number(r.high24h) > 0 ? Number(r.high24h) : 0,
+          low24h:       Number(r.low24h)  > 0 ? Number(r.low24h)  : 0,
         } as PriceData;
       });
   } catch (e) {

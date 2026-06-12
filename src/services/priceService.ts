@@ -177,16 +177,30 @@ export function formatLargeNumber(n: number): string {
 }
 
 export async function fetchPrices(): Promise<PriceData[]> {
+  // Honor the shared 429 backoff so the guest fallback path doesn't hammer a
+  // rate-limited key every poll (returns [] → caller keeps last prices).
+  if (Date.now() < rateLimitedUntil) return [];
   const ids = Object.values(COINGECKO_IDS).join(',');
   // /coins/markets returns prices, market cap, volume, AND a 7-day hourly
   // sparkline for every coin in a single request — same rate-limit cost as
   // /simple/price but with the sparkline series included for free.
-  const res = await fetch(
-    `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h&sparkline=true`,
-    { headers: cgHeaders() },
-  );
-  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-  const json = await res.json() as any[];
+  let json: any[];
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h&sparkline=true`,
+      { headers: cgHeaders() },
+    );
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + 60 * 1000;
+      console.warn('CoinGecko markets 429 — backing off 60s');
+      return [];
+    }
+    if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+    json = await res.json() as any[];
+  } catch (e) {
+    console.warn('fetchPrices failed:', e);
+    return [];
+  }
 
   // Build lookup by gecko id
   const byId: Record<string, any> = {};

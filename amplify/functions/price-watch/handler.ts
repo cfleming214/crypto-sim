@@ -1,6 +1,7 @@
 import {
   DynamoDBClient,
   ScanCommand,
+  GetItemCommand,
   PutItemCommand,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
@@ -92,19 +93,21 @@ export const handler = async (): Promise<void> => {
 
   // 5. Limit orders are filled authoritatively. Load every profile once, keyed
   // by bare sub (UserProfile uses a random id, so we can't GetItem by sub).
-  type Prof = { id: string; cash: number; xp: number; holdings: Holding[]; owner?: string };
-  const profBySub: Record<string, Prof> = {};
+  // sub → the row id of the profile the client is actually using. We re-read the
+  // profile FRESH at write time (below), so the scan only resolves identity;
+  // prefer the most-recently-updated row per sub (not an arbitrary dupe).
+  const idBySub: Record<string, string> = {};
+  const updatedBySub: Record<string, string> = {};
   for await (const row of scanAll(profileTable)) {
-    const p = unmarshall(row) as { id?: string; owner?: string; cash?: number; xp?: number; holdingsJson?: string };
+    const p = unmarshall(row) as { id?: string; owner?: string; updatedAt?: string };
     const sub = subFromOwner(p.owner);
     if (!p.id || !sub) continue;
-    if (profBySub[sub] && profBySub[sub].xp >= (p.xp ?? 0)) continue; // keep highest-xp dupe
-    let holdings: Holding[] = [];
-    try { holdings = JSON.parse(p.holdingsJson || '[]'); } catch { holdings = []; }
-    profBySub[sub] = { id: p.id, cash: p.cash ?? 0, xp: p.xp ?? 0, holdings, owner: p.owner };
+    if (idBySub[sub] && (updatedBySub[sub] || '') >= (p.updatedAt || '')) continue;
+    idBySub[sub] = p.id;
+    updatedBySub[sub] = p.updatedAt || '';
   }
 
-  // Group triggered orders by owner so each profile is written once.
+  // Group triggered orders by owner.
   const ordersBySub: Record<string, OrderRow[]> = {};
   for (const o of orders) {
     const p = price[o.symbol];
@@ -112,35 +115,39 @@ export const handler = async (): Promise<void> => {
     const triggered = o.side === 'buy' ? p <= o.limitPrice : p >= o.limitPrice;
     if (!triggered) continue;
     const sub = subFromOwner(o.owner);
-    if (!sub || !profBySub[sub]) continue;
+    if (!sub || !idBySub[sub]) continue;
     (ordersBySub[sub] ||= []).push(o);
   }
 
-  const nowIso = new Date().toISOString();
   for (const [sub, subOrders] of Object.entries(ordersBySub)) {
-    const prof = profBySub[sub];
-    let dirty = false;
+    const id = idBySub[sub];
+    // Claim each triggered order up front (conditional active true→false). If the
+    // client already filled+deleted it, or another run claimed it, the claim
+    // fails and we skip — so the order is consumed exactly once.
+    const claimed: OrderRow[] = [];
     for (const o of subOrders) {
-      const p = price[o.symbol];
-      // Claim the order row first — conditional on active=true. If the client
-      // already filled it (deleted the row) or another run claimed it, skip.
-      if (!(await claim(orderTable, 'orderId', o.orderId))) continue;
+      if (await claim(orderTable, 'orderId', o.orderId)) claimed.push(o);
+    }
+    if (claimed.length === 0) continue;
 
-      const fill = applyFill(prof, o, p);
-      if (!fill) continue; // couldn't afford / nothing to sell — order is consumed, no trade
-      dirty = true;
+    // Apply the fills against a FRESH read of the profile under an optimistic
+    // lock, so a market trade the user makes in the app at the same moment can't
+    // be clobbered by a stale-snapshot write.
+    const applied = await applyOrdersToProfile(profileTable, id, claimed, price);
 
-      // Write the Trade row (id = order id, 'LMT-' prefix → client treats it as a
-      // background fill). Mirrors portfolioService.saveTrade + AppSync fields.
+    // Write the Trade rows + push for what actually filled.
+    for (const { order, fill } of applied) {
+      const p = price[order.symbol];
+      const nowIso = new Date().toISOString();
       await ddb.send(new PutItemCommand({
         TableName: tradeTable,
         Item: marshall({
           id: randomUUID(),
           __typename: 'Trade',
-          tradeId: o.orderId,
-          owner: o.owner,
-          symbol: o.symbol,
-          side: o.side,
+          tradeId: order.orderId,
+          owner: order.owner,
+          symbol: order.symbol,
+          side: order.side,
           amount: fill.amount,
           units: fill.units,
           price: p,
@@ -151,25 +158,14 @@ export const handler = async (): Promise<void> => {
           updatedAt: nowIso,
         }, { removeUndefinedValues: true }),
       }));
-
       if (pushTable) {
-        const verb = o.side === 'buy' ? 'Bought' : 'Sold';
+        const verb = order.side === 'buy' ? 'Bought' : 'Sold';
         await pushToUser(pushTable, sub, {
           title: 'Limit order filled',
-          body: `${verb} ${fill.units.toFixed(4)} ${o.symbol} at $${fmt(p)}`,
-          data: { type: 'limit_fill', symbol: o.symbol },
+          body: `${verb} ${fill.units.toFixed(4)} ${order.symbol} at $${fmt(p)}`,
+          data: { type: 'limit_fill', symbol: order.symbol },
         }).catch(err => console.error('fill push failed', err));
       }
-    }
-    if (dirty) {
-      await ddb.send(new UpdateItemCommand({
-        TableName: profileTable,
-        Key: marshall({ id: prof.id }),
-        UpdateExpression: 'SET cash = :c, holdingsJson = :h, xp = :x, updatedAt = :u',
-        ExpressionAttributeValues: marshall({
-          ':c': prof.cash, ':h': JSON.stringify(prof.holdings), ':x': prof.xp, ':u': nowIso,
-        }),
-      }));
     }
   }
 };
@@ -182,8 +178,8 @@ function applyFill(
   o: OrderRow,
   price: number,
 ): { amount: number; units: number; xpEarned: number } | null {
+  if (o.symbol === 'USDC') return null;              // USDC is the cash anchor — never trade it
   if (o.side === 'buy') {
-    if (o.symbol === 'USDC') return null;            // never strand cash in the anchor
     if (prof.cash < o.amount) return null;           // can't afford
     const units = o.amount / price;
     const existing = prof.holdings.find(h => h.symbol === o.symbol);
@@ -213,6 +209,53 @@ function applyFill(
   prof.cash += proceeds;
   prof.xp += xpEarned;
   return { amount: proceeds, units: unitsToSell, xpEarned };
+}
+
+type Fill = NonNullable<ReturnType<typeof applyFill>>;
+
+// Read the profile fresh, apply the orders' fills, and write back under an
+// optimistic lock (condition on updatedAt), retrying on contention so a market
+// trade the user makes concurrently in the app isn't clobbered by a stale write.
+// Returns the orders that actually filled, so the caller writes matching Trades.
+async function applyOrdersToProfile(
+  profileTable: string,
+  id: string,
+  ords: OrderRow[],
+  price: Record<string, number>,
+): Promise<{ order: OrderRow; fill: Fill }[]> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const got = await ddb.send(new GetItemCommand({ TableName: profileTable, Key: marshall({ id }) }));
+    if (!got.Item) return [];
+    const p = unmarshall(got.Item) as { cash?: number; xp?: number; holdingsJson?: string; updatedAt?: string };
+    let holdings: Holding[] = [];
+    try { holdings = JSON.parse(p.holdingsJson || '[]'); } catch { holdings = []; }
+    const prof = { cash: p.cash ?? 0, xp: p.xp ?? 0, holdings };
+    const applied: { order: OrderRow; fill: Fill }[] = [];
+    for (const o of ords) {
+      const pr = price[o.symbol];
+      if (typeof pr !== 'number') continue;
+      const fill = applyFill(prof, o, pr);
+      if (fill) applied.push({ order: o, fill });
+    }
+    if (applied.length === 0) return [];
+    const now = new Date().toISOString();
+    const base = { ':c': prof.cash, ':h': JSON.stringify(prof.holdings), ':x': prof.xp, ':u': now };
+    try {
+      await ddb.send(new UpdateItemCommand({
+        TableName: profileTable,
+        Key: marshall({ id }),
+        UpdateExpression: 'SET cash = :c, holdingsJson = :h, xp = :x, updatedAt = :u',
+        ConditionExpression: p.updatedAt ? 'updatedAt = :seen' : 'attribute_not_exists(updatedAt)',
+        ExpressionAttributeValues: marshall(p.updatedAt ? { ...base, ':seen': p.updatedAt } : base),
+      }));
+      return applied;
+    } catch (err: any) {
+      if (err?.name === 'ConditionalCheckFailedException') continue; // someone else wrote — retry fresh
+      throw err;
+    }
+  }
+  console.error('applyOrdersToProfile: optimistic-lock contention exhausted for', id);
+  return [];
 }
 
 // Claim a row by flipping active true→false, conditional on it still being

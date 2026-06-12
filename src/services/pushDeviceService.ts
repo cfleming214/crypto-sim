@@ -45,14 +45,15 @@ export async function registerDevice(userId: string): Promise<void> {
   const client = await getClient();
   if (!client) return;
   lastUserId = userId;
+  // Wire token rotation first, so it's active even if the initial upsert below
+  // throws on a transient network error at launch.
+  setPushTokenChangeHandler((newToken) => {
+    if (lastUserId) upsert(client, newToken, lastUserId).catch(() => {});
+  });
   const token = await getExpoPushToken();
   if (!token) return;
   try {
     await upsert(client, token, userId);
-    // Wire token rotation: re-upsert the new token under the same user.
-    setPushTokenChangeHandler((newToken) => {
-      if (lastUserId) upsert(client, newToken, lastUserId).catch(() => {});
-    });
   } catch (err) {
     console.warn('registerDevice failed', err);
   }
