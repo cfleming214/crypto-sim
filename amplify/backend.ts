@@ -16,6 +16,7 @@ import { executeTrade } from './functions/execute-trade/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
 import { priceWatch } from './functions/price-watch/resource.js';
+import { notificationDispatcher } from './functions/notification-dispatcher/resource.js';
 import { stripeConnect } from './functions/stripe-connect/resource.js';
 import { stripeWebhook } from './functions/stripe-webhook/resource.js';
 
@@ -39,6 +40,7 @@ const backend = defineBackend({
   runMirror,
   settleSeason,
   priceWatch,
+  notificationDispatcher,
   stripeConnect,
   stripeWebhook,
 });
@@ -227,6 +229,27 @@ priceWatchFn.addEnvironment('PUSH_TOKEN_TABLE_NAME', pushDeviceTable.tableName);
 new Rule(Stack.of(priceWatchFn), 'PriceWatchRule', {
   schedule: Schedule.rate(Duration.minutes(1)),
   targets: [new LambdaFunction(priceWatchFn)],
+});
+
+// --- notificationDispatcher: every minute, send due admin push campaigns ---
+const dispatchFn = backend.notificationDispatcher.resources.lambda;
+const campaignTable = backend.data.resources.tables['NotificationCampaign'];
+campaignTable.grantReadWriteData(dispatchFn);   // claim + write back stats
+pushDeviceTable.grantReadWriteData(dispatchFn); // read tokens + deactivate dead ones
+profileTable.grantReadData(dispatchFn);         // resolve league / xp audiences
+entryTable.grantReadData(dispatchFn);           // resolve specific-contest audiences
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+dispatchFn.addEnvironment('NOTIFICATION_CAMPAIGN_TABLE_NAME', campaignTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+dispatchFn.addEnvironment('PUSH_TOKEN_TABLE_NAME', pushDeviceTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+dispatchFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+dispatchFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
+
+new Rule(Stack.of(dispatchFn), 'NotificationDispatcherRule', {
+  schedule: Schedule.rate(Duration.minutes(1)),
+  targets: [new LambdaFunction(dispatchFn)],
 });
 
 // --- stripeConnect: backs the payout onboarding / status / claim mutations ---

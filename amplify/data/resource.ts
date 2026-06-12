@@ -283,6 +283,27 @@ const schema = a.schema({
     createdAt:  a.string(),
   }).identifier(['orderId']).authorization(allow => [allow.owner()]),
 
+  // Admin-authored push campaign. Composed + scheduled from the crypto-dashboard
+  // (direct DynamoDB writes, like Token); the notification-dispatcher cron sends
+  // it when due and writes back the send stats. Clients only read (the app could
+  // surface a "sent" history); admin writes bypass model authz via the SDK.
+  NotificationCampaign: a.model({
+    title:          a.string().required(),
+    body:           a.string().required(),
+    dataJson:       a.string(),              // tap-routing payload, e.g. {"type":"announcement"}
+    criteriaJson:   a.string().required(),   // audience selector (see notification-dispatcher)
+    scheduledAt:    a.string().required(),   // ISO — dispatcher fires when now >= this
+    status:         a.string().required(),   // 'scheduled' | 'sending' | 'sent' | 'canceled'
+    audienceSize:   a.integer(),
+    sentCount:      a.integer(),
+    deliveredCount: a.integer(),
+    failedCount:    a.integer(),
+    createdBy:      a.string(),              // admin email, stamped from the JWT
+    createdAt:      a.string(),
+    updatedAt:      a.string(),
+    sentAt:         a.string(),
+  }).authorization(allow => [allow.authenticated().to(['read'])]),
+
   // A user's Stripe Connect (Express) account, used to pay out contest prizes.
   // The row's `id` is deliberately the Cognito userId (the `sub`) so the
   // settlement Lambda can resolve owner -> account with a single GetItem (the
