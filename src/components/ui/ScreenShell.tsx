@@ -23,6 +23,10 @@ interface ScreenShellProps {
   onRefresh?: () => Promise<void>;
   /** Jitter the title when it changes (used for the live portfolio value). */
   animateTitle?: boolean;
+  /** Force the back chevron on/off. Defaults to navigation.canGoBack(). Pass
+   * `false` from a tab-root screen (the bottom-tab navigator keeps cross-tab
+   * history, so canGoBack() is true after switching tabs). */
+  back?: boolean;
 }
 
 export function ScreenShell({
@@ -37,6 +41,7 @@ export function ScreenShell({
   brand = false,
   onRefresh,
   animateTitle = false,
+  back,
 }: ScreenShellProps) {
   const { colors, isDark } = useTheme();
   const [refreshing, setRefreshing] = React.useState(false);
@@ -47,7 +52,7 @@ export function ScreenShell({
     try { await onRefresh(); } finally { setRefreshing(false); }
   }, [onRefresh]);
   const navigation = useNavigation();
-  const canGoBack = navigation.canGoBack();
+  const canGoBack = back ?? navigation.canGoBack();
   const bg = brand ? colors.brand : colors.surface;
   const ink = brand ? colors.brandOn : colors.ink;
 

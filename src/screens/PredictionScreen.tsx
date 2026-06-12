@@ -28,7 +28,7 @@ interface Settled {
 export function PredictionScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
-  const { celebrate } = useToast();
+  const { celebrate, show } = useToast();
 
   const active = state.activePrediction ?? null;
   const tradeable = state.coins.filter(c => c.symbol !== 'USDC');
@@ -67,7 +67,25 @@ export function PredictionScreen() {
       const oc = resolvePrediction(active.direction, active.lockedPrice, fp);
       setSettled({ symbol: active.symbol, direction: active.direction, lockedPrice: active.lockedPrice, finalPrice: fp, outcome: oc });
       dispatch({ type: 'SETTLE_PREDICTION', outcome: oc });
-      if (oc === 'win') celebrate();
+
+      // Result toast (uses pre-settle streak: a win awards base + bonus × the
+      // streak it's about to become).
+      const pct = active.lockedPrice > 0 ? ((fp - active.lockedPrice) / active.lockedPrice) * 100 : 0;
+      const moved = `${active.symbol} ${pct >= 0 ? 'up' : 'down'} ${Math.abs(pct).toFixed(2)}%`;
+      if (oc === 'win') {
+        const wonXp = PREDICTION_XP + PREDICTION_STREAK_XP * (state.predictionStreak + 1);
+        celebrate();
+        show({
+          title: 'Prediction won! 🎯',
+          subtitle: `+${wonXp.toLocaleString()} XP · ${moved}`,
+          variant: 'up',
+          icon: Target,
+        });
+      } else if (oc === 'loss') {
+        show({ title: 'Prediction missed', subtitle: moved, variant: 'warn', icon: Target });
+      } else {
+        show({ title: 'Push — no move', subtitle: moved, variant: 'brand', icon: Target });
+      }
     };
     const tick = () => {
       const left = Math.ceil((active.expiresAt - Date.now()) / 1000);

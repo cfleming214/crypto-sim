@@ -377,6 +377,7 @@ export function CompeteScreen() {
     <ScreenShell
       eyebrow="Contests"
       title="Compete"
+      back={false}
       scrollEnabled={!swiping}
       onRefresh={refresh}
       rightActions={
@@ -543,7 +544,17 @@ export function CompeteScreen() {
             <TouchableOpacity
               key={comp.id}
               testID={`compete-card-${comp.id}`}
-              onPress={() => (comp.status === 'finished' || isJoined(comp.id)) ? nav.navigate('TournamentDetail', { id: comp.id }) : handleJoin(comp)}
+              onPress={() => {
+                // Finished, already joined, or locked-after-start → open the
+                // detail screen read-only (the join CTA is hidden there). Only an
+                // open, joinable contest routes through handleJoin's prompt.
+                const isLocked = comp.lockAfterStart && Date.now() >= comp.startAt;
+                if (comp.status === 'finished' || isJoined(comp.id) || isLocked) {
+                  nav.navigate('TournamentDetail', { id: comp.id });
+                } else {
+                  handleJoin(comp);
+                }
+              }}
               activeOpacity={0.85}
             >
               <Card variant="compact" style={{ gap: 6 }}>

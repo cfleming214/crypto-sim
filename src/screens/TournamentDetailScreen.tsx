@@ -45,6 +45,9 @@ export function TournamentDetailScreen() {
   }
 
   const joined = isJoined(competitionId);
+  // A lock-after-start contest that's already begun no longer accepts new
+  // players — viewable read-only, but the Join CTA is hidden for non-members.
+  const lockedOut = !joined && !!competition.lockAfterStart && Date.now() >= competition.startAt;
   // Blocked users are removed from the live leaderboard instantly.
   const entries = (leaderboard[competitionId] ?? [])
     .filter(e => !state.blockedUsers.some(b => b.handle === e.handle));
@@ -410,14 +413,26 @@ export function TournamentDetailScreen() {
 
       {/* Footer */}
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Button
-          testID={joined ? 'tournament-leave-btn' : 'tournament-join-btn'}
-          variant="ghost"
-          style={{ flex: 1 }}
-          onPress={handleJoinLeave}
-        >
-          {joined ? 'Leave' : 'Join'}
-        </Button>
+        {lockedOut ? (
+          <View
+            style={{
+              flex: 1, alignItems: 'center', justifyContent: 'center',
+              borderRadius: 14, borderWidth: 1, borderColor: colors.hairline,
+              backgroundColor: colors.surface2, paddingVertical: 14,
+            }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink3 }}>Locked</Text>
+          </View>
+        ) : (
+          <Button
+            testID={joined ? 'tournament-leave-btn' : 'tournament-join-btn'}
+            variant="ghost"
+            style={{ flex: 1 }}
+            onPress={handleJoinLeave}
+          >
+            {joined ? 'Leave' : 'Join'}
+          </Button>
+        )}
         <Button
           variant="brand"
           style={{ flex: 1 }}
