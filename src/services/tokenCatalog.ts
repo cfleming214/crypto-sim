@@ -88,8 +88,18 @@ export async function fetchTokenPrices(): Promise<PriceData[]> {
   try {
     const res = await client.models.Token.list({ filter: { enabledForPractice: { eq: true } } });
     const rows = (res?.data ?? []) as any[];
+    // Only trust prices the tick-prices Lambda refreshed recently. Without this
+    // freshness gate the app would serve STALE seed `lastPrice` values (and never
+    // fall back to CoinGecko) on a backend where tick-prices isn't running yet —
+    // i.e. frozen "mock" prices. No fresh row → [] → fetchLivePrices uses CoinGecko.
+    const FRESH_MS = 15 * 60 * 1000;
+    const now = Date.now();
+    const isFresh = (r: any) => {
+      const t = r?.priceUpdatedAt ? Date.parse(r.priceUpdatedAt) : NaN;
+      return Number.isFinite(t) && now - t < FRESH_MS;
+    };
     return rows
-      .filter(r => r?.symbol && Number(r.lastPrice) > 0)
+      .filter(r => r?.symbol && Number(r.lastPrice) > 0 && isFresh(r))
       .map(r => {
         const price = Number(r.lastPrice);
         return {
