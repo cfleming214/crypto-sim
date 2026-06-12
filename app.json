@@ -7,9 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/app-icon-1024.png",
     "userInterfaceStyle": "automatic",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/e7abe187-7396-439e-96ec-aa7832f23d46",
       "fallbackToCacheTimeout": 0
