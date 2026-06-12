@@ -317,6 +317,8 @@ export async function saveProfile(state: AppState): Promise<void> {
       // Public-leaderboard opt-in (default true). The tick-global-leaderboard
       // Lambda excludes users whose flag is false.
       leaderboardVisible: state.user.leaderboardVisible ?? true,
+      // A save is also a sign of life — refresh the presence heartbeat.
+      lastActiveAt: new Date().toISOString(),
       // Cross-device gamification blob. seasonStartXp is intentionally NOT
       // written here — it's owned by the settle-season Lambda.
       gamificationJson: JSON.stringify({
@@ -397,6 +399,7 @@ export async function saveProfile(state: AppState): Promise<void> {
       equityHistoryJson: JSON.stringify(history),
       recentTradesJson:  JSON.stringify(recentTrades),
       allocationJson:    JSON.stringify(allocation),
+      lastActiveAt:      new Date(now).toISOString(),
     };
     if (existingPublic.length) {
       await client.models.PublicProfile.update({ id: existingPublic[0].id, ...publicPayload });
@@ -405,6 +408,28 @@ export async function saveProfile(state: AppState): Promise<void> {
     }
   } catch (e) {
     console.warn('saveProfile failed:', e);
+  }
+}
+
+// Lightweight presence heartbeat — patch ONLY lastActiveAt on the user's
+// UserProfile (and PublicProfile mirror) so other viewers see an up-to-date
+// online dot, without the cost of a full saveProfile. Called on app foreground
+// and on a ~1/min timer while foregrounded (see AppContext). No-op when signed
+// out or before a profile row exists (the first saveProfile creates it).
+export async function touchPresence(): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    const nowIso = new Date().toISOString();
+    const { data: existing } = await client.models.UserProfile.list();
+    if (!existing.length) return; // no profile yet — saveProfile seeds presence
+    await client.models.UserProfile.update({ id: existing[0].id, lastActiveAt: nowIso });
+    const { data: existingPublic } = await client.models.PublicProfile.list();
+    if (existingPublic.length) {
+      await client.models.PublicProfile.update({ id: existingPublic[0].id, lastActiveAt: nowIso });
+    }
+  } catch (e) {
+    console.warn('touchPresence failed:', e);
   }
 }
 
@@ -420,6 +445,7 @@ export interface PublicTrader {
   avatarKey?:  string;
   avatarColor?: string;
   avatarUrl?:  string;       // signed S3 URL resolved at fetch time
+  lastActiveAt?: string;     // ISO of last heartbeat — drives the presence dot
   equityHistory: number[];   // bankroll values over time (most recent last)
   recentTrades: { symbol: string; side: 'buy' | 'sell'; amount: number; units: number; price: number; t: number }[];
   allocation: { symbol: string; pct: number }[];   // portfolio weights, for "copy portfolio"
@@ -481,6 +507,7 @@ async function publicTraderFromRecord(d: any): Promise<PublicTrader> {
     avatarKey:   d.avatarKey ?? undefined,
     avatarColor: d.avatarColor ?? undefined,
     avatarUrl,
+    lastActiveAt: d.lastActiveAt ?? undefined,
     equityHistory: history,
     recentTrades,
     allocation,

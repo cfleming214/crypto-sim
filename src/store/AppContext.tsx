@@ -3,7 +3,7 @@ import { AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
 import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
+import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence } from '../services/portfolioService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
@@ -1246,6 +1246,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s.activePortfolioId === 'main' && Date.now() - lastCloudFlushRef.current >= CLOUD_FLUSH_MS) {
         flushEquityToCloud(series);
       }
+      // Presence heartbeat — refresh lastActiveAt while foregrounded so other
+      // viewers see an accurate online dot (one cheap single-field write/min).
+      if (authRef.current === 'authenticated') touchPresence();
     };
     const id = setInterval(capture, 60_000);
     return () => clearInterval(id);
@@ -1306,6 +1309,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (next === 'active') {
         const s = stateRef.current;
         if (s.bankroll > 0) appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
+        // Mark the user online again the moment they return to the app.
+        if (authRef.current === 'authenticated') touchPresence();
         return;
       }
       if (next !== 'background' && next !== 'inactive') return;

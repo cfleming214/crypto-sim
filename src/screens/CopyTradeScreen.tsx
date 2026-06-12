@@ -14,6 +14,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/ui/Toast';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchTrader, subscribeToTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
+import { presenceStatus } from '../services/presence';
 import { planCopyAllocation } from '../services/rebalance';
 import { useModeration } from '../hooks/useModeration';
 import { MoreHorizontal, Pause, X, Copy, ArrowUpRight, ArrowDownLeft, PieChart } from 'lucide-react-native';
@@ -204,6 +205,7 @@ export function CopyTradeScreen() {
             initials={traderName.slice(0, 2).toUpperCase()}
             size="lg"
             uri={trader.avatarUrl}
+            status={presenceStatus(trader.lastActiveAt)}
             style={trader.avatarColor && !trader.avatarUrl ? { backgroundColor: trader.avatarColor } : undefined}
           />
           <View style={{ flex: 1 }}>

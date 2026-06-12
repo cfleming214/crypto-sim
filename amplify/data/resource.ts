@@ -36,6 +36,10 @@ const schema = a.schema({
     // seasonXp = xp - seasonStartXp drives league/division. Kept out of
     // gamificationJson so client saves never clobber it.
     seasonStartXp: a.integer(),
+    // ISO timestamp of the user's last foreground heartbeat (see
+    // portfolioService.touchPresence). Drives the online/away/offline dot on
+    // avatars; carried onto GlobalLeaderboard/PublicProfile for other viewers.
+    lastActiveAt: a.string(),
   }).authorization(allow => [allow.owner()]),
 
   Trade: a.model({
@@ -199,6 +203,9 @@ const schema = a.schema({
     // JSON array of { symbol, pct } where pct is % of the trader's equity; the
     // remainder (100 − Σpct) is cash. No dollar amounts are exposed.
     allocationJson: a.string(),
+    // ISO timestamp of the trader's last heartbeat, mirrored from UserProfile so
+    // the copy-trade screen can show an online/away/offline dot.
+    lastActiveAt: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
@@ -247,6 +254,9 @@ const schema = a.schema({
     avatarKey:   a.string(),
     avatarColor: a.string(),
     updatedAt:   a.string(),
+    // ISO timestamp of the user's last heartbeat (copied from UserProfile by the
+    // tick Lambda) — drives the presence dot on the leaderboard.
+    lastActiveAt: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
   ]),

@@ -5,6 +5,9 @@ import { coinColors, coinColorsDark } from '../../theme/tokens';
 
 type AvatarSize = 'sm' | 'default' | 'lg' | 'xl';
 
+/** Presence states for the corner status dot. 'busy' is the catch-all "other". */
+export type AvatarStatus = 'online' | 'away' | 'offline' | 'busy';
+
 interface AvatarProps {
   initials?: string;
   size?: AvatarSize;
@@ -12,43 +15,73 @@ interface AvatarProps {
   brand?: boolean;
   uri?: string;
   style?: ViewStyle;
+  /** Render a small colored presence dot at the bottom-right when set. */
+  status?: AvatarStatus;
 }
 
 const sizeMap: Record<AvatarSize, number> = { sm: 28, default: 36, lg: 52, xl: 64 };
 const fontSizeMap: Record<AvatarSize, number> = { sm: 11, default: 14, lg: 18, xl: 22 };
 
-export function Avatar({ initials = '?', size = 'default', square, brand, uri, style }: AvatarProps) {
-  const { colors, isDark } = useTheme();
+export function Avatar({ initials = '?', size = 'default', square, brand, uri, style, status }: AvatarProps) {
+  const { colors } = useTheme();
   const dim = sizeMap[size];
   const br = square ? 10 : dim / 2;
 
-  if (uri) {
-    return (
-      <View style={[{ width: dim, height: dim, borderRadius: br, overflow: 'hidden' }, style]}>
-        <Image source={{ uri }} style={{ width: dim, height: dim }} />
-      </View>
-    );
-  }
+  // Callers pass backgroundColor via `style` to tint the initials circle; keep
+  // that on the inner element while layout props (e.g. marginLeft for overlap)
+  // stay on the wrapper.
+  const bgOverride = (style as { backgroundColor?: string } | undefined)?.backgroundColor;
 
-  return (
+  const inner = uri ? (
+    <View style={{ width: dim, height: dim, borderRadius: br, overflow: 'hidden' }}>
+      <Image source={{ uri }} style={{ width: dim, height: dim }} />
+    </View>
+  ) : (
     <View
-      style={[
-        {
-          width: dim,
-          height: dim,
-          borderRadius: br,
-          backgroundColor: brand ? colors.brand : colors.surface2,
-          borderWidth: 1,
-          borderColor: colors.hairline,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        style,
-      ]}
+      style={{
+        width: dim,
+        height: dim,
+        borderRadius: br,
+        backgroundColor: bgOverride ?? (brand ? colors.brand : colors.surface2),
+        borderWidth: 1,
+        borderColor: colors.hairline,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
       <Text style={{ fontSize: fontSizeMap[size], fontWeight: '700', color: brand ? colors.brandOn : colors.ink }}>
         {initials}
       </Text>
+    </View>
+  );
+
+  // Wrap so the absolutely-positioned dot anchors to the avatar regardless of
+  // which render path (image vs initials) produced it.
+  const dotColor =
+    status === 'online' ? colors.up :
+    status === 'away' ? colors.warn :
+    status === 'busy' ? colors.down :
+    colors.ink3; // offline
+  const dotSize = Math.max(8, Math.round(dim / 3.2));
+
+  return (
+    <View style={[{ width: dim, height: dim }, style]}>
+      {inner}
+      {status && (
+        <View
+          style={{
+            position: 'absolute',
+            right: -1,
+            bottom: -1,
+            width: dotSize,
+            height: dotSize,
+            borderRadius: dotSize / 2,
+            backgroundColor: dotColor,
+            borderWidth: 2,
+            borderColor: colors.surface,
+          }}
+        />
+      )}
     </View>
   );
 }

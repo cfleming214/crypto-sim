@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../store/AuthContext';
 import { useApp } from '../store/AppContext';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
+import { presenceStatus } from '../services/presence';
 import { fetchTraderByOwner } from '../services/portfolioService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { useModeration } from '../hooks/useModeration';
@@ -163,6 +164,7 @@ export function TopTradersScreen() {
                       <Avatar
                         initials={r.handle.slice(0, 2).toUpperCase()}
                         size="default"
+                        status={presenceStatus(r.lastActiveAt)}
                         style={r.avatarColor ? { backgroundColor: r.avatarColor } : undefined}
                       />
                       <View style={{ flex: 1, minWidth: 0 }}>

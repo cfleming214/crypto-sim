@@ -65,13 +65,13 @@ export const handler = async (): Promise<void> => {
   // 2. Value every visible profile and read its lifetime XP + contests won.
   type Ranked = {
     owner: string; handle: string; xp: number; contestsWon: number; value: number; pnlPct: number;
-    league?: string; avatarKey?: string; avatarColor?: string;
+    league?: string; avatarKey?: string; avatarColor?: string; lastActiveAt?: string;
   };
   const ranked: Ranked[] = [];
   for await (const row of scanAll(profileTable)) {
     const p = unmarshall(row) as {
       owner?: string; handle?: string; xp?: number; contestsWon?: number; cash?: number; holdingsJson?: string;
-      league?: string; avatarKey?: string; avatarColor?: string; leaderboardVisible?: boolean;
+      league?: string; avatarKey?: string; avatarColor?: string; leaderboardVisible?: boolean; lastActiveAt?: string;
     };
     if (p.leaderboardVisible === false) continue; // opted out (null/undefined = visible)
     if (!p.owner || !p.handle) continue;
@@ -86,7 +86,7 @@ export const handler = async (): Promise<void> => {
     const contestsWon = Math.max(winsByOwner[p.owner] ?? 0, p.contestsWon ?? 0);
     ranked.push({
       owner: p.owner, handle: p.handle, xp: p.xp ?? 0, contestsWon, value, pnlPct,
-      league: p.league, avatarKey: p.avatarKey, avatarColor: p.avatarColor,
+      league: p.league, avatarKey: p.avatarKey, avatarColor: p.avatarColor, lastActiveAt: p.lastActiveAt,
     });
   }
 
@@ -144,6 +144,7 @@ export const handler = async (): Promise<void> => {
         league: r.league ?? null,
         avatarKey: r.avatarKey ?? null,
         avatarColor: r.avatarColor ?? null,
+        lastActiveAt: r.lastActiveAt ?? null,
         // createdAt is an Amplify-managed AWSDateTime! (non-null) field. Without
         // it the AppSync list resolver nullifies every row and the client gets
         // an empty/errored list — so always write it.

@@ -31,6 +31,7 @@ export interface LeaderboardRow {
   league?: string;
   avatarKey?: string;
   avatarColor?: string;
+  lastActiveAt?: string; // ISO of last heartbeat — drives the presence dot
 }
 
 function mapRow(d: any): LeaderboardRow {
@@ -47,6 +48,7 @@ function mapRow(d: any): LeaderboardRow {
     league: d.league ?? undefined,
     avatarKey: d.avatarKey ?? undefined,
     avatarColor: d.avatarColor ?? undefined,
+    lastActiveAt: d.lastActiveAt ?? undefined,
   };
 }
 
