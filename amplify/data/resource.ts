@@ -195,6 +195,10 @@ const schema = a.schema({
     // Last ~10 trades the user made, for the "recent trades" feed on their
     // public profile. JSON array of { symbol, side, amount, units, price, t }.
     recentTradesJson: a.string(),
+    // Current portfolio allocation (weights), so others can copy the same mix.
+    // JSON array of { symbol, pct } where pct is % of the trader's equity; the
+    // remainder (100 − Σpct) is cash. No dollar amounts are exposed.
+    allocationJson: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),

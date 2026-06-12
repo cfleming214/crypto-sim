@@ -11,10 +11,12 @@ import { CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/ui/Toast';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchTrader, subscribeToTrader, createOrUpdateMirror, pauseMirror, type PublicTrader } from '../services/portfolioService';
+import { planCopyAllocation } from '../services/rebalance';
 import { useModeration } from '../hooks/useModeration';
-import { MoreHorizontal, Pause, X } from 'lucide-react-native';
+import { MoreHorizontal, Pause, X, Copy, ArrowUpRight, ArrowDownLeft, PieChart } from 'lucide-react-native';
 
 function relTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -82,7 +84,8 @@ function EditMirrorModal({ visible, allocation, onSave, onClose }: {
 
 export function CopyTradeScreen() {
   const { colors } = useTheme();
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
+  const { show, celebrate } = useToast();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const { openMenu } = useModeration();
@@ -93,6 +96,7 @@ export function CopyTradeScreen() {
   const [paused, setPaused] = useState(false);
   const [allocation, setAllocation] = useState(2000);
   const [editOpen, setEditOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
 
   useEffect(() => {
     if (!traderId) { setLoading(false); return; }
@@ -138,6 +142,18 @@ export function CopyTradeScreen() {
     setAllocation(newAlloc);
     if (trader) await createOrUpdateMirror(trader.owner, newAlloc);
   };
+
+  // One-shot "copy portfolio": rebalance MY offline portfolio to match the
+  // trader's allocation weights (sells/buys via the shared planner).
+  const copyAllocation = trader?.allocation ?? [];
+  const copyPlan = planCopyAllocation(state.holdings, state.cash, state.coins, copyAllocation);
+  const confirmCopy = () => {
+    dispatch({ type: 'COPY_ALLOCATION', allocation: copyAllocation });
+    setCopyOpen(false);
+    show({ title: 'Portfolio copied', subtitle: `Matched ${traderHandle}'s allocation`, icon: Copy, variant: 'up' });
+    celebrate();
+  };
+  const fmtUsd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
   if (loading) {
     return (
@@ -261,6 +277,52 @@ export function CopyTradeScreen() {
           </CardSection>
         </Card>
 
+        {/* Their portfolio allocation + one-shot copy */}
+        <Card variant="noPad">
+          <CardSection last={copyAllocation.length === 0}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <PieChart color={colors.ink} size={16} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '700', color: colors.ink }}>{traderHandle}'s portfolio</Text>
+            </View>
+            {copyAllocation.length === 0 ? (
+              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 8 }}>
+                Allocation isn't available for this trader yet — it appears once they save their profile.
+              </Text>
+            ) : (
+              <View style={{ gap: 10, marginTop: 12 }}>
+                {[...copyAllocation].sort((a, b) => b.pct - a.pct).slice(0, 8).map(a => (
+                  <View key={a.symbol} style={{ gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <CoinGlyph symbol={a.symbol} size={20} />
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink }}>{a.symbol}</Text>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{a.pct.toFixed(1)}%</Text>
+                    </View>
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.surface2 }}>
+                      <View style={{ height: 6, borderRadius: 3, width: `${Math.min(100, a.pct)}%`, backgroundColor: colors.brand }} />
+                    </View>
+                  </View>
+                ))}
+                {(() => {
+                  const cashPct = Math.max(0, 100 - copyAllocation.reduce((s, a) => s + a.pct, 0));
+                  return cashPct > 0.5 ? <Text style={{ fontSize: 11, color: colors.ink3 }}>+ {cashPct.toFixed(0)}% cash</Text> : null;
+                })()}
+              </View>
+            )}
+          </CardSection>
+          {copyAllocation.length > 0 && (
+            <CardSection last>
+              <Button testID="copytrade-copy-portfolio-btn" variant="brand" onPress={() => setCopyOpen(true)} disabled={copyPlan.lines.length === 0}>
+                {copyPlan.lines.length === 0 ? 'Already matches their mix' : 'Copy portfolio'}
+              </Button>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 8, textAlign: 'center' }}>
+                Rebalances your {fmtUsd(state.bankroll)} to the same allocation — a one-time set of buys & sells.
+              </Text>
+            </CardSection>
+          )}
+        </Card>
+
         {/* Mirror settings */}
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -379,6 +441,42 @@ export function CopyTradeScreen() {
         onSave={handleSaveAllocation}
         onClose={() => setEditOpen(false)}
       />
+
+      {/* Copy-portfolio preview */}
+      <Modal visible={copyOpen} transparent animationType="slide" onRequestClose={() => setCopyOpen(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 32, gap: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.ink }}>Copy {traderHandle}'s portfolio</Text>
+              <TouchableOpacity onPress={() => setCopyOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X color={colors.ink3} size={22} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              These trades rebalance your portfolio to the same mix:
+            </Text>
+            <ScrollView style={{ maxHeight: 320 }}>
+              <View style={{ gap: 8 }}>
+                {copyPlan.lines.map((l, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: l.side === 'buy' ? `${colors.up}1A` : `${colors.down}1A` }}>
+                      {l.side === 'buy' ? <ArrowUpRight color={colors.up} size={16} strokeWidth={2} /> : <ArrowDownLeft color={colors.down} size={16} strokeWidth={2} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink }}>{l.side === 'buy' ? 'Buy' : 'Sell'} {l.symbol}</Text>
+                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{l.currentPct.toFixed(0)}% → {l.targetPct.toFixed(0)}%</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'], color: l.side === 'buy' ? colors.up : colors.down }}>{fmtUsd(l.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            <Button testID="copytrade-confirm-copy-btn" variant="brand" onPress={confirmCopy}>
+              Confirm · {copyPlan.lines.length} trade{copyPlan.lines.length === 1 ? '' : 's'}
+            </Button>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }

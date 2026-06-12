@@ -8,7 +8,7 @@ import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder,
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
-import { planRebalance } from '../services/rebalance';
+import { planRebalance, planCopyAllocation } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { useAuth } from './AuthContext';
@@ -236,6 +236,7 @@ type Action =
   | { type: 'SET_TRADE_SYMBOL'; symbol: string }
   | { type: 'SET_STOP_LOSS'; symbol: string; pct: number }
   | { type: 'REBALANCE' }
+  | { type: 'COPY_ALLOCATION'; allocation: { symbol: string; pct: number }[] }
   | { type: 'SET_COMPETITIONS'; competitions: Competition[] }
   | { type: 'SET_FINISHED_COMPETITIONS'; competitions: Competition[] }
   | { type: 'JOIN_TOURNAMENT'; tournamentId: string }
@@ -688,6 +689,65 @@ function reducer(state: AppState, action: Action): AppState {
         riskScore: computeRiskScore(newHoldings, newCash, newBankroll, state.coins, state.stopLosses),
       };
     }
+    case 'COPY_ALLOCATION': {
+      // Rebalance MY offline portfolio to MATCH a trader's allocation weights —
+      // same buy/sell engine as REBALANCE, just a different target plan. Sized
+      // to my own equity, so I end with the same mix (not the same dollars).
+      const plan = planCopyAllocation(state.holdings, state.cash, state.coins, action.allocation);
+      if (plan.lines.length === 0) return state;
+
+      let newHoldings = [...state.holdings];
+      let newCash = state.cash;
+      const newTrades = [...state.trades];
+
+      for (const line of plan.lines) {
+        if (line.side !== 'sell') continue;
+        newHoldings = newHoldings
+          .map(x => (x.symbol === line.symbol ? { ...x, units: x.units - line.units } : x))
+          .filter(x => x.units > 0.000001);
+        newCash += line.amount;
+        newTrades.unshift({
+          id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol: line.symbol, side: 'sell', amount: line.amount,
+          units: line.units, price: line.price,
+          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+        });
+      }
+      for (const line of plan.lines) {
+        if (line.side !== 'buy') continue;
+        if (newCash < line.amount) continue;
+        const existing = newHoldings.find(x => x.symbol === line.symbol);
+        newHoldings = existing
+          ? newHoldings.map(x =>
+              x.symbol === line.symbol
+                ? { ...x, units: x.units + line.units, avgCost: (x.avgCost * x.units + line.amount) / (x.units + line.units) }
+                : x,
+            )
+          : [...newHoldings, { symbol: line.symbol, units: line.units, avgCost: line.price }];
+        newCash -= line.amount;
+        newTrades.unshift({
+          id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol: line.symbol, side: 'buy', amount: line.amount,
+          units: line.units, price: line.price,
+          timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+        });
+      }
+
+      const newBankroll = newCash + newHoldings.reduce((s, h) => {
+        const coin = state.coins.find(c => c.symbol === h.symbol);
+        return s + (coin ? coin.price * h.units : 0);
+      }, 0);
+
+      return {
+        ...state,
+        holdings: newHoldings,
+        cash: newCash,
+        bankroll: newBankroll,
+        trades: newTrades,
+        user: { ...state.user, xp: state.user.xp + 50 },
+        riskScore: computeRiskScore(newHoldings, newCash, newBankroll, state.coins, state.stopLosses),
+      };
+    }
     case 'PLACE_LIMIT_ORDER': {
       const order: PendingOrder = {
         id: `LMT-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
@@ -1057,7 +1117,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // limit-order management.
   const SAVE_ACTIONS = [
     'SEED_STARTER',
-    'BUY', 'SELL', 'REBALANCE',
+    'BUY', 'SELL', 'REBALANCE', 'COPY_ALLOCATION',
     'SET_HANDLE', 'SET_LEADERBOARD_VISIBLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',

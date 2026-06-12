@@ -374,6 +374,17 @@ export async function saveProfile(state: AppState): Promise<void> {
       t:      t.timestamp,
     }));
 
+    // Allocation weights (% of equity per coin) so others can copy the mix.
+    const allocation = state.bankroll > 0
+      ? state.holdings
+          .filter(h => h.symbol !== 'USDC')
+          .map(h => {
+            const price = state.coins.find(c => c.symbol === h.symbol)?.price ?? 0;
+            return { symbol: h.symbol, pct: (h.units * price / state.bankroll) * 100 };
+          })
+          .filter(a => a.pct > 0.1)
+      : [];
+
     const publicPayload = {
       handle:      state.user.handle,
       league:      state.user.league,
@@ -385,6 +396,7 @@ export async function saveProfile(state: AppState): Promise<void> {
       avatarColor: state.user.avatarColor,
       equityHistoryJson: JSON.stringify(history),
       recentTradesJson:  JSON.stringify(recentTrades),
+      allocationJson:    JSON.stringify(allocation),
     };
     if (existingPublic.length) {
       await client.models.PublicProfile.update({ id: existingPublic[0].id, ...publicPayload });
@@ -410,6 +422,7 @@ export interface PublicTrader {
   avatarUrl?:  string;       // signed S3 URL resolved at fetch time
   equityHistory: number[];   // bankroll values over time (most recent last)
   recentTrades: { symbol: string; side: 'buy' | 'sell'; amount: number; units: number; price: number; t: number }[];
+  allocation: { symbol: string; pct: number }[];   // portfolio weights, for "copy portfolio"
 }
 
 // Cache resolved avatar URLs so subscription events don't re-fetch them on
@@ -449,6 +462,13 @@ async function publicTraderFromRecord(d: any): Promise<PublicTrader> {
     try { recentTrades = JSON.parse(d.recentTradesJson); }
     catch { recentTrades = []; }
   }
+  let allocation: PublicTrader['allocation'] = [];
+  if (d.allocationJson) {
+    try {
+      const parsed = JSON.parse(d.allocationJson);
+      if (Array.isArray(parsed)) allocation = parsed.filter((a: any) => a && typeof a.symbol === 'string' && typeof a.pct === 'number');
+    } catch { allocation = []; }
+  }
   return {
     id:          d.id,
     owner:       d.owner,
@@ -463,6 +483,7 @@ async function publicTraderFromRecord(d: any): Promise<PublicTrader> {
     avatarUrl,
     equityHistory: history,
     recentTrades,
+    allocation,
   };
 }
 
