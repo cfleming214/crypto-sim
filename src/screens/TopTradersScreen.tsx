@@ -188,20 +188,19 @@ export function TopTradersScreen() {
                           {r.contestsWon} {r.contestsWon === 1 ? 'win' : 'wins'}
                         </Text>
                       </View>
-                      {/* Fixed-width trailing slot so every row's columns line up
-                          whether or not it shows the ⋯ menu (hidden on your own row). */}
-                      <View style={{ width: 22, alignItems: 'flex-end' }}>
-                        {!isMe && (
-                          <TouchableOpacity
-                            testID={`leaderboard-menu-${rank}`}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            onPress={() => openMenu({ owner: r.owner, handle: r.handle, context: 'leaderboard' })}
-                            style={{ paddingVertical: 4 }}
-                          >
-                            <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                      {/* The ⋯ menu always renders so every row's XP/wins column
+                          lines up identically; on your own row it's just made
+                          invisible + non-interactive (an empty fixed-width View
+                          didn't reliably reserve the column). */}
+                      <TouchableOpacity
+                        testID={isMe ? undefined : `leaderboard-menu-${rank}`}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        disabled={isMe}
+                        onPress={isMe ? undefined : () => openMenu({ owner: r.owner, handle: r.handle, context: 'leaderboard' })}
+                        style={{ paddingVertical: 4, paddingLeft: 4, opacity: isMe ? 0 : 1 }}
+                      >
+                        <MoreHorizontal color={colors.ink3} size={18} strokeWidth={1.75} />
+                      </TouchableOpacity>
                     </View>
                   </CardSection>
                 </TouchableOpacity>
