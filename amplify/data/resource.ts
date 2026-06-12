@@ -258,6 +258,31 @@ const schema = a.schema({
     updatedAt:  a.string(),
   }).identifier(['token']).authorization(allow => [allow.owner()]),
 
+  // Persisted price alerts and limit orders so the server-side price-watch cron
+  // can evaluate them while the app is closed (they used to be in-memory only).
+  // Owner-auth — the client CRUDs its own rows and hydrates them on launch. The
+  // row id IS the client-generated id ('ALT-...' / 'LMT-...') so create/delete is
+  // a keyed upsert and the cron can claim a row with a single conditional update.
+  // The auto `owner` field tells the cron whose portfolio to act on.
+  PriceAlert: a.model({
+    alertId:     a.string().required(),  // client id 'ALT-...' — identifier
+    symbol:      a.string().required(),
+    targetPrice: a.float().required(),
+    direction:   a.string().required(),  // 'above' | 'below'
+    active:      a.boolean(),            // false once it fires (or is dismissed)
+    createdAt:   a.string(),
+  }).identifier(['alertId']).authorization(allow => [allow.owner()]),
+
+  LimitOrder: a.model({
+    orderId:    a.string().required(),   // client id 'LMT-...' — identifier
+    symbol:     a.string().required(),
+    side:       a.string().required(),   // 'buy' | 'sell'
+    amount:     a.float().required(),
+    limitPrice: a.float().required(),
+    active:     a.boolean(),             // false once filled (or cancelled)
+    createdAt:  a.string(),
+  }).identifier(['orderId']).authorization(allow => [allow.owner()]),
+
   // A user's Stripe Connect (Express) account, used to pay out contest prizes.
   // The row's `id` is deliberately the Cognito userId (the `sub`) so the
   // settlement Lambda can resolve owner -> account with a single GetItem (the

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
 import { fetchPrices, fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio } from '../services/portfolioService';
+import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { fetchTokenCatalog } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
@@ -244,6 +245,7 @@ type Action =
   | { type: 'CANCEL_LIMIT_ORDER'; orderId: string }
   | { type: 'ADD_PRICE_ALERT'; symbol: string; targetPrice: number; direction: 'above' | 'below' }
   | { type: 'DISMISS_PRICE_ALERT'; alertId: string }
+  | { type: 'HYDRATE_PRICE_TRIGGERS'; alerts: PriceAlert[]; orders: PendingOrder[] }
   | { type: 'RESET_DEMO' }
   | { type: 'DISMISS_NUDGE'; nudgeId: string }
   | { type: 'SET_AVATAR_URI'; uri: string }
@@ -941,6 +943,17 @@ function reducer(state: AppState, action: Action): AppState {
         priceAlerts: state.priceAlerts.filter(a => a.id !== action.alertId),
         triggeredAlerts: state.triggeredAlerts.filter(a => a.id !== action.alertId),
       };
+    case 'HYDRATE_PRICE_TRIGGERS': {
+      // Merge cloud-persisted alerts/orders into local state on launch (union by
+      // id) so they survive reinstall / sync across devices.
+      const haveAlerts = new Set(state.priceAlerts.map(a => a.id));
+      const haveOrders = new Set(state.pendingOrders.map(o => o.id));
+      return {
+        ...state,
+        priceAlerts: [...state.priceAlerts, ...action.alerts.filter(a => !haveAlerts.has(a.id))],
+        pendingOrders: [...state.pendingOrders, ...action.orders.filter(o => !haveOrders.has(o.id))],
+      };
+    }
     case 'DISMISS_NUDGE':
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
@@ -1008,6 +1021,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
   stateRef.current = state;
   const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (~15 min)
+  const triggersHydratedRef = useRef(false);     // gate: load cloud alerts/orders once per auth session
+  const seenAlertIds = useRef<Set<string>>(new Set());  // alert ids already mirrored to the cloud
+  const seenOrderIds = useRef<Set<string>>(new Set());  // order ids already mirrored to the cloud
   const { status: authStatus } = useAuth();
   const authRef = useRef(authStatus);            // latest auth status for timer/AppState callbacks
   authRef.current = authStatus;
@@ -1081,6 +1097,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearInterval(priceRef.current);
     };
   }, []);
+
+  // Hydrate cloud-persisted price alerts + limit orders once signed in, so they
+  // survive reinstall and sync across devices. Seeds seenAlertIds/seenOrderIds
+  // with the cloud ids so the sync effect below doesn't try to re-create them.
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || triggersHydratedRef.current) return;
+    triggersHydratedRef.current = true;
+    (async () => {
+      const { alerts, orders } = await hydratePriceTriggers();
+      alerts.forEach(a => seenAlertIds.current.add(a.id));
+      orders.forEach(o => seenOrderIds.current.add(o.id));
+      if (alerts.length || orders.length) dispatch({ type: 'HYDRATE_PRICE_TRIGGERS', alerts, orders });
+    })();
+  }, [authStatus]);
+
+  // Mirror local alert/order changes to the cloud so the price-watch Lambda can
+  // act on them while the app is closed. New ids → create the row; removed ids
+  // (cancelled OR locally filled) → delete it. Deleting on a local fill is also
+  // the mutex that stops the server from re-filling an order the client already
+  // filled. No-ops for guests (the service short-circuits when unconfigured).
+  useEffect(() => {
+    if (authRef.current !== 'authenticated') return;
+    const curAlerts = new Set(state.priceAlerts.map(a => a.id));
+    for (const a of state.priceAlerts) {
+      if (!seenAlertIds.current.has(a.id)) { seenAlertIds.current.add(a.id); createCloudAlert(a); }
+    }
+    for (const id of [...seenAlertIds.current]) {
+      if (!curAlerts.has(id)) { seenAlertIds.current.delete(id); deleteCloudAlert(id); }
+    }
+    const curOrders = new Set(state.pendingOrders.map(o => o.id));
+    for (const o of state.pendingOrders) {
+      if (!seenOrderIds.current.has(o.id)) { seenOrderIds.current.add(o.id); createCloudOrder(o); }
+    }
+    for (const id of [...seenOrderIds.current]) {
+      if (!curOrders.has(id)) { seenOrderIds.current.delete(id); deleteCloudOrder(id); }
+    }
+  }, [state.priceAlerts, state.pendingOrders]);
 
   // Always-on: record the live portfolio balance every 60s so the equity chart
   // is driven by ACTUAL observed values, not reconstruction. Reads the latest

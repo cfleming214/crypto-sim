@@ -15,6 +15,7 @@ import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
+import { priceWatch } from './functions/price-watch/resource.js';
 import { stripeConnect } from './functions/stripe-connect/resource.js';
 import { stripeWebhook } from './functions/stripe-webhook/resource.js';
 
@@ -37,6 +38,7 @@ const backend = defineBackend({
   executeTrade,
   runMirror,
   settleSeason,
+  priceWatch,
   stripeConnect,
   stripeWebhook,
 });
@@ -196,6 +198,35 @@ seasonFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 new Rule(Stack.of(seasonFn), 'SettleSeasonRule', {
   schedule: Schedule.rate(Duration.days(7)),
   targets: [new LambdaFunction(seasonFn)],
+});
+
+// --- priceWatch: every minute, evaluate persisted alerts/limit orders against
+// live CoinGecko prices; push alerts and fill limit orders authoritatively ---
+const priceWatchFn = backend.priceWatch.resources.lambda;
+const priceAlertTable = backend.data.resources.tables['PriceAlert'];
+const limitOrderTable = backend.data.resources.tables['LimitOrder'];
+priceAlertTable.grantReadWriteData(priceWatchFn);  // claim (active true→false)
+limitOrderTable.grantReadWriteData(priceWatchFn);  // claim + consume
+profileTable.grantReadWriteData(priceWatchFn);     // server-authoritative fills
+tradeTable.grantWriteData(priceWatchFn);           // write the fill Trade row
+tokenTable.grantReadData(priceWatchFn);            // symbol → coingeckoId catalog
+pushDeviceTable.grantReadWriteData(priceWatchFn);  // notify the user
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+priceWatchFn.addEnvironment('PRICE_ALERT_TABLE_NAME', priceAlertTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+priceWatchFn.addEnvironment('LIMIT_ORDER_TABLE_NAME', limitOrderTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+priceWatchFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+priceWatchFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+priceWatchFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+priceWatchFn.addEnvironment('PUSH_TOKEN_TABLE_NAME', pushDeviceTable.tableName);
+
+new Rule(Stack.of(priceWatchFn), 'PriceWatchRule', {
+  schedule: Schedule.rate(Duration.minutes(1)),
+  targets: [new LambdaFunction(priceWatchFn)],
 });
 
 // --- stripeConnect: backs the payout onboarding / status / claim mutations ---
