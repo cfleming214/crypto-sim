@@ -17,6 +17,19 @@ import * as Notifications from 'expo-notifications';
 let configured = false;
 let permissionGranted = false;
 
+// EAS projectId (app.json → expo.extra.eas.projectId). Hardcoded rather than
+// read via expo-constants so registration needs no extra native dependency —
+// getExpoPushTokenAsync requires this id to mint an ExpoPushToken for the
+// project. Keep in sync with app.json if the project is ever re-created.
+const EAS_PROJECT_ID = 'e7abe187-7396-439e-96ec-aa7832f23d46';
+
+// Set by the push-device service so a token rotation (rare: reinstall/restore)
+// re-upserts the row without notifications.ts depending on the data layer.
+let onTokenChange: ((token: string) => void) | null = null;
+export function setPushTokenChangeHandler(cb: (token: string) => void) {
+  onTokenChange = cb;
+}
+
 export function configureNotifications() {
   if (configured) return;
   configured = true;
@@ -35,8 +48,26 @@ export function configureNotifications() {
         importance: Notifications.AndroidImportance.DEFAULT,
       }).catch(() => {});
     }
+    // Re-register if Expo rotates the device token while the app is running.
+    Notifications.addPushTokenListener(e => {
+      const t = (e as any)?.data;
+      if (typeof t === 'string' && onTokenChange) onTokenChange(t);
+    });
   } catch {
     // Native module not present in this build — ignore.
+  }
+}
+
+// Fetch this device's ExpoPushToken for server-sent push. Returns null on a
+// simulator / Expo Go / missing-permission / absent-native-module — every one
+// of which throws or no-ops, so callers can treat null as "not pushable".
+export async function getExpoPushToken(): Promise<string | null> {
+  if (!permissionGranted) return null;
+  try {
+    const res = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
+    return res?.data ?? null;
+  } catch {
+    return null;
   }
 }
 

@@ -16,7 +16,9 @@ import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
+import { registerDevice, deactivateDevices } from '../services/pushDeviceService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
@@ -207,8 +209,23 @@ export function ProfileScreen() {
     unlockedAt: state.achievements[def.id] as number | undefined,
   }));
   const earnedCount = achievements.filter(a => a.earned).length;
-  const { signOut, deleteAccount, status } = useAuth();
+  const { signOut, deleteAccount, status, userId } = useAuth();
   const nav = useNavigation<any>();
+
+  // Master push-notification toggle. The real source of truth is the server-side
+  // PushDevice.active flag; this just persists the user's intent locally and
+  // flips registration on/off. Default on.
+  const PUSH_PREF_KEY = 'pref:pushEnabled';
+  const [pushOn, setPushOn] = useState(true);
+  useEffect(() => {
+    AsyncStorage.getItem(PUSH_PREF_KEY).then(v => { if (v !== null) setPushOn(v === '1'); });
+  }, []);
+  const togglePush = (v: boolean) => {
+    setPushOn(v);
+    AsyncStorage.setItem(PUSH_PREF_KEY, v ? '1' : '0').catch(() => {});
+    if (v && userId) registerDevice(userId);
+    else if (!v) deactivateDevices();
+  };
 
   // Two-step confirmation, then a permanent client-side wipe + Cognito
   // deleteUser (App Store guideline 5.1.1(v)). On success auth flips to
@@ -422,6 +439,21 @@ export function ProfileScreen() {
               <Text style={{ fontWeight: '600', color: colors.ink }}>Dark mode</Text>
             </View>
             <Switch value={isDark} onValueChange={toggle} trackColor={{ true: colors.brand, false: colors.surface2 }} />
+          </View>
+        </CardSection>
+
+        <CardSection>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Bell color={colors.ink} size={18} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '600', color: colors.ink }}>Push notifications</Text>
+            </View>
+            <Switch
+              testID="profile-push-toggle"
+              value={pushOn}
+              onValueChange={togglePush}
+              trackColor={{ true: colors.brand, false: colors.surface2 }}
+            />
           </View>
         </CardSection>
 

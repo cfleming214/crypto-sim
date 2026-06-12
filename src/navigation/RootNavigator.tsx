@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
+import { createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
 import { TradeScreen } from '../screens/TradeScreen';
@@ -38,6 +39,11 @@ export type RootStackParamList = {
   NewsDetail: { article: NewsArticle };
   BlockedUsers: undefined;
 };
+
+// Imperative navigation handle so push-notification taps (handled outside the
+// React tree, in EventWatcher) can route to a screen. Attached to the
+// NavigationContainer in App.tsx.
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 

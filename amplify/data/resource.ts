@@ -242,6 +242,22 @@ const schema = a.schema({
     allow.authenticated().to(['read']),
   ]),
 
+  // One row per device push token. The client registers/refreshes its own row
+  // (owner-auth); the send Lambdas (close-competition, tick-global-leaderboard,
+  // price-watch, notification-dispatcher) read every active token for a given
+  // Cognito sub via the DynamoDB SDK (bypassing model authz, like Token /
+  // GlobalLeaderboard). The row id IS the Expo token string, so re-registering
+  // the same device is an idempotent upsert and a DeviceNotRegistered receipt
+  // can flip `active` with a single keyed UpdateItem.
+  PushDevice: a.model({
+    token:      a.string().required(),   // ExpoPushToken[...] — also the identifier
+    userId:     a.string().required(),   // bare Cognito sub (== owner.split('::')[0])
+    platform:   a.string(),              // 'ios' | 'android'
+    deviceName: a.string(),
+    active:     a.boolean(),             // false on opt-out or DeviceNotRegistered
+    updatedAt:  a.string(),
+  }).identifier(['token']).authorization(allow => [allow.owner()]),
+
   // A user's Stripe Connect (Express) account, used to pay out contest prizes.
   // The row's `id` is deliberately the Cognito userId (the `sub`) so the
   // settlement Lambda can resolve owner -> account with a single GetItem (the

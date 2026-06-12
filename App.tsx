@@ -6,7 +6,7 @@ import { configureAmplify } from './src/lib/amplify';
 import { ThemeProvider } from './src/theme/ThemeContext';
 import { AppProvider } from './src/store/AppContext';
 import { AuthProvider } from './src/store/AuthContext';
-import { RootNavigator } from './src/navigation/RootNavigator';
+import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui/Toast';
 import { AchievementWatcher } from './src/components/AchievementWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
@@ -23,7 +23,7 @@ export default function App() {
               <ToastProvider>
                 <AchievementWatcher />
                 <EventWatcher />
-                <NavigationContainer>
+                <NavigationContainer ref={navigationRef}>
                   <RootNavigator />
                 </NavigationContainer>
               </ToastProvider>
