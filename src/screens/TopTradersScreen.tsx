@@ -133,7 +133,10 @@ export function TopTradersScreen() {
 
           {/* Sort the board by lifetime XP or contests won. */}
           <Segmented options={['XP', 'Wins']} value={sortBy} onChange={(v) => setSortBy(v as 'XP' | 'Wins')} />
-          <Card variant="noPad">
+          {/* overflow:hidden clips each row's highlight tint to the card's rounded
+              corners, so the top (and bottom) row's background fills the rounded
+              corners instead of leaving square-rectangle gaps. */}
+          <Card variant="noPad" style={{ overflow: 'hidden' }}>
             {sorted.map((r, i) => {
               const isMe = !!userId && subOf(r.owner) === userId;
               const rank = i + 1;
