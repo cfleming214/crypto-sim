@@ -18,6 +18,7 @@ import { PayoutSetupScreen } from '../screens/PayoutSetupScreen';
 import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
+import { SplashLogo } from '../components/SplashLogo';
 import type { NewsArticle } from '../services/newsService';
 import { useAuth } from '../store/AuthContext';
 
@@ -50,11 +51,17 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { status } = useAuth();
 
-  // Hold on the splash until the session check resolves. After that the app
-  // is always reachable as a guest — the $10k demo portfolio lives in
-  // AppContext and works without an account. Auth-gated areas (Profile,
+  // Show the animated glowing-logo splash until the session check resolves, with
+  // a short minimum so the glow animation is actually seen on a fast cold start.
+  // After that the app is always reachable as a guest — the $10k demo portfolio
+  // lives in AppContext and works without an account. Auth-gated areas (Profile,
   // Compete) render their own sign-up wall and push the Auth modal below.
-  if (status === 'loading') return null;
+  const [minSplash, setMinSplash] = React.useState(true);
+  React.useEffect(() => {
+    const t = setTimeout(() => setMinSplash(false), 1400);
+    return () => clearTimeout(t);
+  }, []);
+  if (status === 'loading' || minSplash) return <SplashLogo />;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

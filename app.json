@@ -14,6 +14,11 @@
       "url": "https://u.expo.dev/e7abe187-7396-439e-96ec-aa7832f23d46",
       "fallbackToCacheTimeout": 0
     },
+    "splash": {
+      "image": "./assets/app-icon-1024.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0B"
+    },
     "ios": {
       "bundleIdentifier": "com.simpledesignllc.cryptocomp",
       "supportsTablet": true,
