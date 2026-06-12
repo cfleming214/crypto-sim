@@ -166,12 +166,14 @@ export function TopTradersScreen() {
                         style={r.avatarColor ? { backgroundColor: r.avatarColor } : undefined}
                       />
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ fontWeight: '700', fontSize: 14, color: colors.ink }} numberOfLines={1}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          {/* flexShrink lets a long handle truncate instead of pushing
+                              the league badge into the XP column. */}
+                          <Text style={{ fontWeight: '700', fontSize: 14, color: colors.ink, flexShrink: 1 }} numberOfLines={1}>
                             @{r.handle}
                           </Text>
-                          {isMe && <Chip variant="brand">You</Chip>}
-                          {!!r.league && !isMe && <LeagueBadge league={r.league} />}
+                          {isMe && <View style={{ flexShrink: 0 }}><Chip variant="brand">You</Chip></View>}
+                          {!!r.league && !isMe && <View style={{ flexShrink: 0 }}><LeagueBadge league={r.league} /></View>}
                         </View>
                       </View>
                       {/* XP + wins on the right; the active sort metric is emphasized */}
