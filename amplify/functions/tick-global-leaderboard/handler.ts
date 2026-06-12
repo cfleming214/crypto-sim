@@ -5,10 +5,24 @@ import {
   DeleteItemCommand,
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { pushToUser } from '../lib/expoPush';
 
 const ddb = new DynamoDBClient({});
 
 const TOP_N = 100;
+// Milestone bands (best first). A user is notified when they cross INTO a band
+// they weren't in last run — only on improvement, and at most one push per run
+// (the best band crossed) — so the 5-minute cron can't spam rank churn.
+const RANK_BANDS = [1, 3, 10, 25, 50, 100];
+
+function rankBandMessage(rank: number, band: number): { title: string; body: string } {
+  if (band === 1)  return { title: 'You\'re #1! 👑', body: 'You just took the top spot on the global leaderboard.' };
+  if (band === 3)  return { title: 'Top 3! 🥉', body: `You climbed to #${rank} on the global leaderboard.` };
+  if (band === 10) return { title: 'Top 10! 🔥', body: `You broke into the top 10 — now #${rank} globally.` };
+  if (band === 25) return { title: 'Top 25', body: `You moved up to #${rank} on the global leaderboard.` };
+  if (band === 50) return { title: 'Top 50', body: `You climbed to #${rank} on the global leaderboard.` };
+  return { title: 'Top 100', body: `You broke into the top 100 — now #${rank} globally.` };
+}
 // Must match the app's STARTING_CASH (src/constants/featureFlags.ts). Was 10000
 // from an earlier starting balance, which made every pnlPct ~10× too high.
 const STARTING_BANKROLL = 100000;
@@ -99,6 +113,19 @@ export const handler = async (): Promise<void> => {
   const top = deduped.slice(0, TOP_N);
   const now = new Date().toISOString();
 
+  // 2b. Snapshot each owner's PRIOR rank from the existing board BEFORE we
+  // overwrite it, so we can detect rank-band crossings. The board is rank-keyed
+  // (id = "1".."100"), so prior rank lives on whichever row currently holds it.
+  // boardHadRows guards the first run after deploy (empty board) from pushing a
+  // "you broke into the top 100" to everyone at once.
+  const prevRankByOwner: Record<string, number> = {};
+  let boardHadRows = false;
+  for await (const row of scanAll(boardTable)) {
+    const b = unmarshall(row) as { owner?: string; rank?: number };
+    boardHadRows = true;
+    if (b.owner && typeof b.rank === 'number') prevRankByOwner[b.owner] = b.rank;
+  }
+
   // 3. Write rows 1..N (id = rank string), overwriting in place.
   await Promise.all(top.map((r, i) =>
     ddb.send(new PutItemCommand({
@@ -135,6 +162,27 @@ export const handler = async (): Promise<void> => {
   await Promise.all(stale.map(id =>
     ddb.send(new DeleteItemCommand({ TableName: boardTable, Key: marshall({ id }) })),
   ));
+
+  // 5. Notify users who crossed UP into a new rank band since last run. Skipped
+  // on a cold board (first run) to avoid a mass push. Off-board last run counts
+  // as oldRank = Infinity, so a debut into the top 100 still notifies.
+  const pushTable = process.env.PUSH_TOKEN_TABLE_NAME;
+  if (pushTable && boardHadRows) {
+    const crossings = top.flatMap((r, i) => {
+      const newRank = i + 1;
+      const oldRank = prevRankByOwner[r.owner] ?? Infinity;
+      if (newRank >= oldRank) return []; // no improvement
+      // Best (smallest) band the user is now in but wasn't last run.
+      const band = RANK_BANDS.find(b => newRank <= b && oldRank > b);
+      if (!band) return [];
+      return [{ owner: r.owner, newRank, band }];
+    });
+    await Promise.all(crossings.map(c => {
+      const { title, body } = rankBandMessage(c.newRank, c.band);
+      return pushToUser(pushTable, c.owner, { title, body, data: { type: 'rank_change', rank: c.newRank } })
+        .catch(err => console.error('Rank-change push failed for', c.owner, err));
+    }));
+  }
 };
 
 // Paginated full-table scan generator.

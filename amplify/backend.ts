@@ -98,6 +98,10 @@ globalTickFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 globalTickFn.addEnvironment('GLOBAL_LEADERBOARD_TABLE_NAME', globalBoardTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 globalTickFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
+// Push rank-band crossings to the affected users.
+pushDeviceTable.grantReadWriteData(globalTickFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+globalTickFn.addEnvironment('PUSH_TOKEN_TABLE_NAME', pushDeviceTable.tableName);
 
 new Rule(Stack.of(globalTickFn), 'TickGlobalLeaderboardRule', {
   schedule: Schedule.rate(Duration.minutes(5)),
