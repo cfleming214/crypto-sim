@@ -9,7 +9,7 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { useTheme } from '../../theme/ThemeContext';
 import { Trophy, User, Clock, ChevronRight } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, CommonActions } from '@react-navigation/native';
+import { useApp } from '../../store/AppContext';
 
 type Props = NativeStackScreenProps<WalkthroughParamList, 'W8'>;
 
@@ -21,11 +21,18 @@ const actions = [
 
 export function W8Screen({ navigation }: Props) {
   const { colors } = useTheme();
-  const rootNav = useNavigation();
+  const { dispatch } = useApp();
 
   const finish = async () => {
     await AsyncStorage.setItem('hasOnboarded', 'true');
-    rootNav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs' }] }));
+    // Make the "+25 XP" the walkthrough promised real — once, so replaying the
+    // tutorial from Settings can't farm it.
+    const rewarded = await AsyncStorage.getItem('onboardingRewarded');
+    if (!rewarded) {
+      dispatch({ type: 'ADD_XP', amount: 50 });
+      await AsyncStorage.setItem('onboardingRewarded', '1');
+    }
+    dispatch({ type: 'SET_ONBOARDED' });
   };
 
   return (

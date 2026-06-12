@@ -8,17 +8,18 @@ import { Button } from '../../components/ui/Button';
 import { useTheme } from '../../theme/ThemeContext';
 import { Trophy } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, CommonActions } from '@react-navigation/native';
+import { useApp } from '../../store/AppContext';
 
 type Props = NativeStackScreenProps<WalkthroughParamList, 'W1'>;
 
 export function W1Screen({ navigation }: Props) {
   const { colors } = useTheme();
-  const rootNav = useNavigation<any>();
+  const { dispatch } = useApp();
 
+  // Flip the onboarding gate → RootNavigator re-renders into the main app.
   const skipToApp = async () => {
     await AsyncStorage.setItem('hasOnboarded', 'true');
-    rootNav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs' }] }));
+    dispatch({ type: 'SET_ONBOARDED' });
   };
 
   return (

@@ -1420,6 +1420,41 @@
               "isRequired": false,
               "attributes": []
             },
+            "change24h": {
+              "name": "change24h",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "high24h": {
+              "name": "high24h",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "low24h": {
+              "name": "low24h",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sparklineJson": {
+              "name": "sparklineJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "priceUpdatedAt": {
+              "name": "priceUpdatedAt",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "marketCapRaw": {
               "name": "marketCapRaw",
               "isArray": false,

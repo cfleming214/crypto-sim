@@ -203,6 +203,7 @@ const INITIAL_STATE: AppState = {
   coachNudges: [],
   dismissedNudgeIds: [],
   hasOnboarded: false,
+  onboardingChecked: false,
   tradeSymbol: 'BTC',
   lastClaimDay: null,
   achievements: {},
@@ -227,6 +228,7 @@ type Action =
   | { type: 'BUY'; symbol: string; amount: number }
   | { type: 'SELL'; symbol: string; amount: number }
   | { type: 'SET_ONBOARDED' }
+  | { type: 'LOAD_ONBOARDING'; hasOnboarded: boolean }
   | { type: 'ADD_XP'; amount: number }
   | { type: 'PROMOTE_LEAGUE'; league: string; division: number }
   | { type: 'SET_TRADE_SYMBOL'; symbol: string }
@@ -585,7 +587,9 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'SET_ONBOARDED':
-      return { ...state, hasOnboarded: true };
+      return { ...state, hasOnboarded: true, onboardingChecked: true };
+    case 'LOAD_ONBOARDING':
+      return { ...state, hasOnboarded: action.hasOnboarded, onboardingChecked: true };
     case 'ADD_XP':
       return { ...state, user: { ...state.user, xp: state.user.xp + action.amount } };
     case 'PROMOTE_LEAGUE':
@@ -1455,6 +1459,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'PROMOTE_LEAGUE', league: target.league, division: target.division });
     }
   }, [state.user.xp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Onboarding flag — read the persisted value once on mount so RootNavigator
+  // knows whether to show the first-run walkthrough. Resolves during the splash.
+  useEffect(() => {
+    AsyncStorage.getItem('hasOnboarded')
+      .then(v => dispatch({ type: 'LOAD_ONBOARDING', hasOnboarded: v === 'true' }))
+      .catch(() => dispatch({ type: 'LOAD_ONBOARDING', hasOnboarded: false }));
+  }, []);
 
   // Blocked-users persistence — hydrate once on mount (per-device, auth-agnostic)
   // then save on every change. The ref gates the save so the empty initial list

@@ -19,8 +19,10 @@ import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
 import { SplashLogo } from '../components/SplashLogo';
+import { WalkthroughNavigator } from './WalkthroughNavigator';
 import type { NewsArticle } from '../services/newsService';
 import { useAuth } from '../store/AuthContext';
+import { useApp } from '../store/AppContext';
 
 export type RootStackParamList = {
   Auth: { mode?: 'signin' | 'signup' } | undefined;
@@ -50,6 +52,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const { status } = useAuth();
+  const { state } = useApp();
 
   // Show the animated glowing-logo splash until the session check resolves, with
   // a short minimum so the glow animation is actually seen on a fast cold start.
@@ -61,7 +64,13 @@ export function RootNavigator() {
     const t = setTimeout(() => setMinSplash(false), 1400);
     return () => clearTimeout(t);
   }, []);
-  if (status === 'loading' || minSplash) return <SplashLogo />;
+  // Hold the splash until auth AND the onboarding flag are resolved (both finish
+  // during the 1.4s splash), so a returning user never flashes the walkthrough.
+  if (status === 'loading' || minSplash || !state.onboardingChecked) return <SplashLogo />;
+
+  // First run → the teaching walkthrough; it flips `hasOnboarded` when finished,
+  // which re-renders this into the main app below.
+  if (!state.hasOnboarded) return <WalkthroughNavigator />;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

@@ -168,6 +168,7 @@ export interface AppState {
   coachNudges: CoachNudge[];
   dismissedNudgeIds: string[];
   hasOnboarded: boolean;
+  onboardingChecked: boolean;   // true once the persisted onboarding flag has been read at launch
   tradeSymbol: string;
   // Daily-reward claim tracking. UTC day-key ("YYYY-MM-DD") of the last claim,
   // or null if never claimed. Drives the streak (see user.streak) and the
