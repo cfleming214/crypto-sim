@@ -66,7 +66,7 @@ export function CompeteScreen() {
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const { getLive, isJoined, join, timeRemaining, refresh } = useCompetitions();
-  const { emailVerified, status, userId } = useAuth();
+  const { emailVerified, status, userId, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
   const [duelModalOpen, setDuelModalOpen] = useState(false);
@@ -348,8 +348,12 @@ export function CompeteScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Join',
-          onPress: () => {
-            if (!emailVerified) {
+          onPress: async () => {
+            // Re-check live before gating: the cached flag can lag a server-side
+            // change (e.g. verified in another session), which would wrongly
+            // pop the verify sheet at an already-verified user.
+            const verified = emailVerified || (await refreshAttributes());
+            if (!verified) {
               pendingJoin.current = comp;
               setVerifyOpen(true);
               return;

@@ -14,8 +14,10 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Permanently delete the account + all cloud data, then drop to guest. */
   deleteAccount: () => Promise<void>;
-  /** Refresh `email` / `emailVerified` from the current Cognito session. */
-  refreshAttributes: () => Promise<void>;
+  /** Refresh `email` / `emailVerified` from the current Cognito session.
+   * Returns the live `email_verified` value so callers can gate on fresh
+   * state instead of the cached flag (which can lag a server-side change). */
+  refreshAttributes: () => Promise<boolean>;
   /** Start email-attribute update. Cognito sends a verification code to `email`. */
   startEmailVerification: (email: string) => Promise<void>;
   /** Confirm the code Cognito sent. On success, `emailVerified` flips to true. */
@@ -32,7 +34,7 @@ const AuthContext = createContext<AuthContextValue>({
   signUp: async () => {},
   signOut: async () => {},
   deleteAccount: async () => {},
-  refreshAttributes: async () => {},
+  refreshAttributes: async () => false,
   startEmailVerification: async () => {},
   confirmEmail: async () => {},
 });
@@ -65,15 +67,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function loadAttributes() {
+  async function loadAttributes(): Promise<boolean> {
     const { fetchUserAttributes } = await import('aws-amplify/auth');
     try {
       const attrs = await fetchUserAttributes();
       setEmail(attrs.email ?? null);
-      setEmailVerified(attrs.email_verified === 'true');
+      const verified = attrs.email_verified === 'true';
+      setEmailVerified(verified);
+      return verified;
     } catch {
       setEmail(null);
       setEmailVerified(false);
+      return false;
     }
   }
 

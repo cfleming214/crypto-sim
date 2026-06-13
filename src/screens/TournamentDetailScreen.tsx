@@ -23,7 +23,7 @@ export function TournamentDetailScreen() {
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const { getById, isJoined, join, leave, timeRemaining, refreshLeaderboard, leaderboard } = useCompetitions();
-  const { emailVerified } = useAuth();
+  const { emailVerified, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
 
   const competitionId: string = route.params?.id ?? '';
@@ -171,8 +171,12 @@ export function TournamentDetailScreen() {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Join',
-            onPress: () => {
-              if (!emailVerified) {
+            onPress: async () => {
+              // Re-check live before gating: the cached flag can lag a
+              // server-side change, which would wrongly pop the verify sheet
+              // at an already-verified user.
+              const verified = emailVerified || (await refreshAttributes());
+              if (!verified) {
                 setVerifyOpen(true);
                 return;
               }

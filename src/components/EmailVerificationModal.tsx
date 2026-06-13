@@ -26,6 +26,21 @@ export function EmailVerificationModal({ visible, onClose, onVerified, reason }:
   const [emailInput, setEmailInput] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  // Actually request a code from Cognito for an existing-but-unverified email.
+  // Previously the modal jumped to the code step and showed "Sent to …" without
+  // ever asking for a code, so users sat waiting for a code that never came.
+  async function sendInitialCode(value: string) {
+    setSending(true);
+    try {
+      await startEmailVerification(value);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? "Couldn't send verification code.");
+    } finally {
+      setSending(false);
+    }
+  }
 
   // When the modal opens, decide which step to show based on current state.
   useEffect(() => {
@@ -35,14 +50,15 @@ export function EmailVerificationModal({ visible, onClose, onVerified, reason }:
       onClose();
       return;
     }
+    setCode('');
     if (email) {
       setEmailInput(email);
       setStep('enter-code');
+      void sendInitialCode(email); // fire the code we're about to ask them for
     } else {
       setEmailInput('');
       setStep('enter-email');
     }
-    setCode('');
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inputStyle = {
@@ -150,7 +166,9 @@ export function EmailVerificationModal({ visible, onClose, onVerified, reason }:
           ) : (
             <>
               <Text style={{ fontSize: 13, color: colors.ink2 }}>
-                Sent to <Text style={{ fontWeight: '600', color: colors.ink }}>{emailInput.trim()}</Text>
+                {sending ? 'Sending a code to ' : 'Sent to '}
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{emailInput.trim()}</Text>
+                {sending ? '…' : ''}
               </Text>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Verification code</Text>
               <TextInput
@@ -162,7 +180,7 @@ export function EmailVerificationModal({ visible, onClose, onVerified, reason }:
                 placeholder="123456"
                 placeholderTextColor={colors.ink4}
               />
-              <Button testID="email-verify-confirm-btn" variant="brand" onPress={handleConfirm} disabled={loading}>
+              <Button testID="email-verify-confirm-btn" variant="brand" onPress={handleConfirm} disabled={loading || sending}>
                 {loading ? 'Verifying…' : 'Verify'}
               </Button>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
