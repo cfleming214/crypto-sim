@@ -58,10 +58,9 @@ export function Avatar({ initials = '?', size = 'default', square, brand, uri, s
   // Wrap so the absolutely-positioned dot anchors to the avatar regardless of
   // which render path (image vs initials) produced it.
   const dotColor =
-    status === 'online' ? colors.up :
-    status === 'away' ? colors.warn :
-    status === 'busy' ? colors.down :
-    colors.ink3; // offline
+    status === 'online' ? colors.up :   // green
+    status === 'away' ? colors.warn :   // yellow
+    colors.down;                        // red — offline / busy
   const dotSize = Math.max(8, Math.round(dim / 3.2));
 
   // The wrapper is a plain square (no border radius). The caller's `style` may
