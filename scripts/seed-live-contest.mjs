@@ -450,6 +450,10 @@ async function main() {
         leaderboardVisible: true,
         gamificationJson: '{}',
         owner: bot.owner,
+        // Stamp presence at seed time so bots start online (green). They decay
+        // to away (yellow) after 15 min and offline (red) after 45 min, since
+        // nothing re-stamps a bot's heartbeat. Re-seed to refresh them.
+        lastActiveAt: new Date(now).toISOString(),
         createdAt: new Date(now).toISOString(),
         updatedAt: new Date(now).toISOString(),
       });

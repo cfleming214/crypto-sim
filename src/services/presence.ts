@@ -4,8 +4,8 @@
 
 export type PresenceStatus = 'online' | 'away' | 'offline';
 
-const ONLINE_MS = 2 * 60_000;   // active in the last 2 min → online
-const AWAY_MS = 15 * 60_000;    // active in the last 15 min → away, else offline
+const ONLINE_MS = 15 * 60_000;  // active in the last 15 min → online (green)
+const AWAY_MS = 45 * 60_000;    // 15–45 min idle → away (yellow), else offline (red)
 
 /** Map an ISO `lastActiveAt` to a presence status. Missing/unparseable → offline. */
 export function presenceStatus(lastActiveAt?: string | null): PresenceStatus {
