@@ -64,8 +64,16 @@ export function Avatar({ initials = '?', size = 'default', square, brand, uri, s
     colors.ink3; // offline
   const dotSize = Math.max(8, Math.round(dim / 3.2));
 
+  // The wrapper is a plain square (no border radius). The caller's `style` may
+  // carry a `backgroundColor` meant to tint the inner circle — that's already
+  // applied via `bgOverride`. Leaving it on the wrapper too paints the square
+  // corners, so the color bleeds past the rounded avatar. Strip it here and
+  // keep only layout props (margin, position) on the wrapper.
+  const { backgroundColor: _bgIgnored, ...wrapperStyle } =
+    (style ?? {}) as ViewStyle & { backgroundColor?: string };
+
   return (
-    <View style={[{ width: dim, height: dim }, style]}>
+    <View style={[{ width: dim, height: dim }, wrapperStyle]}>
       {inner}
       {status && (
         <View

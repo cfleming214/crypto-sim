@@ -380,7 +380,7 @@ export function ProfileScreen() {
     >
       {/* Identity */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="xl" uri={state.user.avatarUri} style={{ backgroundColor: state.user.avatarColor }} />
+        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="xl" uri={state.user.avatarUri} status="online" style={{ backgroundColor: state.user.avatarColor }} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
