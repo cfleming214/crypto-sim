@@ -60,6 +60,8 @@
     }
   },
   "scripts": {
+    "postinstall": "node scripts/fix-zod-lock.mjs",
+    "eas-build-pre-install": "node scripts/fix-zod-lock.mjs",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
