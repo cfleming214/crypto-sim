@@ -1600,9 +1600,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const action = lastActionRef.current;
     if (!action) return;
-    lastActionRef.current = null;
 
-    if (authStatus !== 'authenticated') return;
+    if (authStatus !== 'authenticated') { lastActionRef.current = null; return; }
+    // Defer the first save until the bootstrap load-or-create has resolved.
+    // Otherwise an early autosave races the starter create: its own list-check
+    // can't yet see the just-created row (eventual consistency), so it writes a
+    // second UserProfile — the "you" + "newtrader" duplicate pair. Keep the
+    // pending action so it saves once profileLoaded flips.
+    if (!profileLoaded) return;
+    lastActionRef.current = null;
 
     // Route the save to the active portfolio's persistence source.
     if (state.activePortfolioId === 'main') {
@@ -1622,7 +1628,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pnlPct,
       );
     }
-  }, [saveTick, authStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [saveTick, authStatus, profileLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getCoin = (symbol: string) => state.coins.find(c => c.symbol === symbol);
 

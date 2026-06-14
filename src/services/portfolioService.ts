@@ -225,13 +225,39 @@ export type ProfileLoadResult =
   | { status: 'new' }
   | { status: 'error' };
 
+// One account should own exactly one UserProfile row. A historical
+// bootstrap race could write two (an adopted-guest "you" row plus a
+// "newtrader" starter), so pick a single canonical row: richest first (most
+// xp, then most holdings), tie-broken by earliest creation.
+function holdingsCount(p: { holdingsJson?: string | null }): number {
+  try { return JSON.parse(p.holdingsJson ?? '[]').length; } catch { return 0; }
+}
+function pickCanonicalProfile<T extends { id: string; xp?: number | null; holdingsJson?: string | null; createdAt?: string | null }>(profiles: T[]): T {
+  return [...profiles].sort((a, b) =>
+    (b.xp ?? 0) - (a.xp ?? 0) ||
+    holdingsCount(b) - holdingsCount(a) ||
+    String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
+  )[0];
+}
+
 export async function loadProfileIfExists(): Promise<ProfileLoadResult> {
   const client = await getClient();
   if (!client) return { status: 'error' };
   try {
     const { data: profiles } = await client.models.UserProfile.list();
     if (!profiles.length) return { status: 'new' };
-    const profile = await profileFromRecord(profiles[0]);
+    // Self-heal: if a past race left duplicate rows for this owner, keep the
+    // canonical one and delete the extras so the account converges to a single
+    // profile on next login.
+    const canonical = pickCanonicalProfile(profiles);
+    if (profiles.length > 1) {
+      await Promise.all(
+        profiles
+          .filter((p: { id: string }) => p.id !== canonical.id)
+          .map((p: { id: string }) => client.models.UserProfile.delete({ id: p.id }).catch(() => {})),
+      );
+    }
+    const profile = await profileFromRecord(canonical);
     // Also restore trade history and joined-competition list so the user sees
     // their actual past activity, not whatever INITIAL_STATE has.
     const [trades, joinedTournamentIds] = await Promise.all([
@@ -274,6 +300,14 @@ export async function createStarterProfile(): Promise<Partial<AppState> | null> 
       holdingsJson: '[]',
       avatarColor:  '#6366F1',
     };
+    // Guard against a double-bootstrap: if a row already exists (a concurrent
+    // adoptGuestProfile/saveProfile beat us, or this ran twice), adopt it
+    // instead of writing a second profile for this owner.
+    const { data: existing } = await client.models.UserProfile.list();
+    if (existing.length) {
+      const profile = await profileFromRecord(pickCanonicalProfile(existing));
+      return { ...profile, trades: [], joinedTournamentIds: [] };
+    }
     // Use the created record (it carries the server createdAt) so the new
     // account's equity graph can anchor its first point at account-creation time.
     const { data: created } = await client.models.UserProfile.create(starter);
