@@ -208,6 +208,7 @@ export function MarketsScreen() {
 
   return (
     <ScreenShell
+      back={false} // tab root — suppress the transient canGoBack() chevron flash
       eyebrow="Markets"
       title="Crypto"
       rightActions={

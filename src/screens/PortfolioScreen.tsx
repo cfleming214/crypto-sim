@@ -482,6 +482,8 @@ export function PortfolioScreen() {
 
   return (
     <ScreenShell
+      back={false} // tab root — the tab navigator keeps cross-tab history, so
+                   // canGoBack() is transiently true on entry and flashes a chevron
       eyebrow={eyebrowLabel}
       title={`$${totalEquity.toFixed(2)}`}
       animateTitle

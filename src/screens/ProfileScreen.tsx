@@ -349,6 +349,7 @@ export function ProfileScreen() {
 
   return (
     <ScreenShell
+      back={false} // tab root — suppress the transient canGoBack() chevron flash
       title="Profile"
       rightActions={
         <TouchableOpacity
