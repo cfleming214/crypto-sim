@@ -20,9 +20,10 @@ import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchLivePrices } from '../services/tokenCatalog';
 import { loadSnapshots, backfillGap, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
+import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
-import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target } from 'lucide-react-native';
 import { ACADEMY } from '../data/academy';
 
 // "2h 5m" / "45s" — compact countdown to the next daily claim (next UTC midnight).
@@ -656,6 +657,31 @@ export function PortfolioScreen() {
           </Card>
         </View>
       )}
+
+      {/* Daily quests — tap through to the quest list */}
+      {!isContest && (() => {
+        const qv = questViews(state, now);
+        const done = qv.filter(v => v.complete).length;
+        const claimable = qv.some(v => v.complete && !v.claimed) || (qv.length > 0 && qv.every(v => v.complete) && !state.quests.chestClaimed);
+        return (
+          <Card onPress={() => nav.navigate('Quests')}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Target color={colors.accent} size={18} strokeWidth={2} />
+                </View>
+                <View>
+                  <Text style={{ fontWeight: '700', color: colors.ink }}>Daily quests</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{done}/{qv.length} complete today</Text>
+                </View>
+              </View>
+              {claimable
+                ? <Chip variant="accent">Claim</Chip>
+                : <ChevronRight color={colors.ink3} size={18} strokeWidth={1.75} />}
+            </View>
+          </Card>
+        );
+      })()}
 
       {/* Available cash — shown above holdings, not as a row inside the list */}
       <Card>

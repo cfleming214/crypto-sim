@@ -213,6 +213,7 @@ const INITIAL_STATE: AppState = {
   predictionStreak: 0,
   claimedContestIds: [],
   duelsCreated: 0,
+  quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
   activePrediction: null,
   blockedUsers: [],
   activePortfolioId: 'main',
@@ -267,11 +268,14 @@ type Action =
   | { type: 'SETTLE_PREDICTION'; outcome: PredictionOutcome }
   | { type: 'CLAIM_CONTEST_XP'; contestId: string; xp: number }
   | { type: 'INCREMENT_DUELS_CREATED' }
+  | { type: 'ROLL_QUEST_DAY'; dayKey: string }
+  | { type: 'CLAIM_QUEST'; questId: string; xp: number }
+  | { type: 'CLAIM_QUEST_CHEST'; xp: number; cash: number }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests'] } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -816,6 +820,7 @@ function reducer(state: AppState, action: Action): AppState {
         activePrediction: action.data.activePrediction ?? state.activePrediction,
         claimedContestIds: action.data.claimedContestIds ?? state.claimedContestIds,
         duelsCreated: action.data.duelsCreated ?? state.duelsCreated,
+        quests: action.data.quests ?? state.quests,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -905,6 +910,54 @@ function reducer(state: AppState, action: Action): AppState {
         lastClaimDay: res.lastClaimDay,
         trades: [rewardTrade, ...state.trades],
         user: { ...state.user, xp: state.user.xp + res.xp, streak: res.streak },
+      };
+    }
+    case 'ROLL_QUEST_DAY':
+      // New UTC day: re-snapshot the baselines (so "today" metrics restart from
+      // zero) and clear claims. No-op if already on this day.
+      if (state.quests.dayKey === action.dayKey) return state;
+      return {
+        ...state,
+        quests: {
+          dayKey: action.dayKey,
+          baseline: {
+            predictionsTotal: state.predictionWins + state.predictionLosses,
+            lessonsTotal: state.academyCompleted.length,
+            watchlistCount: state.watchlist.length,
+          },
+          claimedIds: [],
+          chestClaimed: false,
+        },
+      };
+    case 'CLAIM_QUEST': {
+      if (state.quests.claimedIds.includes(action.questId)) return state;  // already claimed
+      return {
+        ...state,
+        quests: { ...state.quests, claimedIds: [...state.quests.claimedIds, action.questId] },
+        user: { ...state.user, xp: state.user.xp + action.xp },
+      };
+    }
+    case 'CLAIM_QUEST_CHEST': {
+      if (state.quests.chestClaimed) return state;
+      // Bonus cash rides in as a sentinel reward trade, same as the daily reward.
+      const chestTrade: Trade = {
+        id: `QST-${Date.now()}`,
+        symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.cash,
+        units: 0, price: 0, timestamp: Date.now(),
+        xpEarned: action.xp, slippage: 0, kind: 'reward',
+      };
+      const newCash = state.cash + action.cash;
+      const holdingsValue = state.holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      return {
+        ...state,
+        cash: newCash,
+        bankroll: newCash + holdingsValue,
+        trades: [chestTrade, ...state.trades],
+        quests: { ...state.quests, chestClaimed: true },
+        user: { ...state.user, xp: state.user.xp + action.xp },
       };
     }
     case 'SET_COMPETITIONS':
@@ -1515,7 +1568,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       && state.predictionLosses === 0
       && !state.activePrediction
       && state.claimedContestIds.length === 0
-      && state.duelsCreated === 0;
+      && state.duelsCreated === 0
+      && state.quests.claimedIds.length === 0
+      && !state.quests.chestClaimed;
     if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
@@ -1530,9 +1585,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         activePrediction: state.activePrediction ?? null,
         claimedContestIds: state.claimedContestIds,
         duelsCreated: state.duelsCreated,
+        quests: state.quests,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated, state.quests]);
 
   // Tier sync. Lifetime XP maps directly onto a fixed 10-level ladder (see
   // assignLeague), so whenever XP changes — or the stored tier/division is stale

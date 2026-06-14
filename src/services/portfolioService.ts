@@ -87,6 +87,7 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
       predictionWins:   typeof gami.predictionWins === 'number' ? gami.predictionWins : 0,
       predictionLosses: typeof gami.predictionLosses === 'number' ? gami.predictionLosses : 0,
       predictionStreak: typeof gami.predictionStreak === 'number' ? gami.predictionStreak : 0,
+      ...(gami.quests && typeof gami.quests === 'object' ? { quests: gami.quests } : {}),
     } : {}),
   };
 }
@@ -361,6 +362,7 @@ export async function saveProfile(state: AppState): Promise<void> {
         predictionWins:   state.predictionWins,
         predictionLosses: state.predictionLosses,
         predictionStreak: state.predictionStreak,
+        quests:           state.quests,
       }),
     };
     const { data: existing } = await client.models.UserProfile.list();

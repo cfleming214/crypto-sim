@@ -9,6 +9,7 @@ import { AuthProvider } from './src/store/AuthContext';
 import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui/Toast';
 import { AchievementWatcher } from './src/components/AchievementWatcher';
+import { QuestWatcher } from './src/components/QuestWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
@@ -28,6 +29,7 @@ export default function App() {
             <ThemeProvider>
               <ToastProvider>
                 <AchievementWatcher />
+                <QuestWatcher />
                 <EventWatcher />
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>

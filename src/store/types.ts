@@ -195,6 +195,16 @@ export interface AppState {
   // Count of duels this user has created — drives the incrementing "Duel #N"
   // name. Persisted in the gamification.v1 blob.
   duelsCreated: number;
+  // Daily Quests — today's progress + claims. `dayKey` is the UTC day these
+  // belong to; on rollover the baseline re-snapshots and claims clear (see
+  // ROLL_QUEST_DAY). `baseline` holds counters captured at day-start for metrics
+  // that lack per-event timestamps. Persisted in the gamification.v1 blob.
+  quests: {
+    dayKey: string | null;
+    baseline: { predictionsTotal: number; lessonsTotal: number; watchlistCount: number };
+    claimedIds: string[];
+    chestClaimed: boolean;
+  };
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.
