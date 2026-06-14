@@ -210,6 +210,26 @@ export function contestXpForRank(prizeXp: number, rank: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Seasons (Season Pass). Time is divided into fixed-length windows from a fixed
+// anchor, so the season id + its start/end are pure functions of the clock —
+// every device agrees with no server. Season XP = lifetime XP earned since the
+// season started; the client snapshots a baseline when it first sees a new id.
+// ---------------------------------------------------------------------------
+export const SEASON_LENGTH_DAYS = 28;
+const SEASON_MS = SEASON_LENGTH_DAYS * DAY_MS;
+const SEASON_ANCHOR = Date.UTC(2026, 0, 5); // Mon 2026-01-05 00:00 UTC
+
+export function seasonId(now: number): number {
+  return Math.floor((now - SEASON_ANCHOR) / SEASON_MS);
+}
+export function seasonStartAt(now: number): number {
+  return SEASON_ANCHOR + seasonId(now) * SEASON_MS;
+}
+export function seasonEndsAt(now: number): number {
+  return seasonStartAt(now) + SEASON_MS;
+}
+
+// ---------------------------------------------------------------------------
 // Tier ladder (Phase 9). Players climb 10 levels across 5 tiers, 2 levels each:
 // Bronze 1, Bronze 2, Silver 1, … Platinum 2. XP is spent per level — clearing a
 // level resets the bar and any leftover XP carries into the next level (this is

@@ -214,6 +214,8 @@ const INITIAL_STATE: AppState = {
   claimedContestIds: [],
   duelsCreated: 0,
   quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
+  season: { id: null, baselineXp: 0, claimedTiers: [] },
+  cosmetics: { titles: [], frames: [], equippedTitle: null, equippedFrame: null },
   activePrediction: null,
   blockedUsers: [],
   activePortfolioId: 'main',
@@ -271,11 +273,14 @@ type Action =
   | { type: 'ROLL_QUEST_DAY'; dayKey: string }
   | { type: 'CLAIM_QUEST'; questId: string; xp: number }
   | { type: 'CLAIM_QUEST_CHEST'; xp: number; cash: number }
+  | { type: 'ROLL_SEASON'; id: number; baselineXp: number }
+  | { type: 'CLAIM_SEASON_TIER'; tier: number; kind: 'xp' | 'cash' | 'title' | 'frame'; value: number | string }
+  | { type: 'EQUIP_COSMETIC'; slot: 'title' | 'frame'; id: string | null }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests'] } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests']; season?: AppState['season']; cosmetics?: AppState['cosmetics'] } };
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -821,6 +826,8 @@ function reducer(state: AppState, action: Action): AppState {
         claimedContestIds: action.data.claimedContestIds ?? state.claimedContestIds,
         duelsCreated: action.data.duelsCreated ?? state.duelsCreated,
         quests: action.data.quests ?? state.quests,
+        season: action.data.season ?? state.season,
+        cosmetics: action.data.cosmetics ?? state.cosmetics,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -960,6 +967,51 @@ function reducer(state: AppState, action: Action): AppState {
         user: { ...state.user, xp: state.user.xp + action.xp },
       };
     }
+    case 'ROLL_SEASON':
+      // New season window: snapshot the XP baseline + clear claimed tiers.
+      // Cosmetics are intentionally preserved. No-op if already on this season.
+      if (state.season.id === action.id) return state;
+      return { ...state, season: { id: action.id, baselineXp: action.baselineXp, claimedTiers: [] } };
+    case 'CLAIM_SEASON_TIER': {
+      if (state.season.claimedTiers.includes(action.tier)) return state;
+      const season = { ...state.season, claimedTiers: [...state.season.claimedTiers, action.tier] };
+      if (action.kind === 'xp') {
+        return { ...state, season, user: { ...state.user, xp: state.user.xp + Number(action.value) } };
+      }
+      if (action.kind === 'cash') {
+        const cash = Number(action.value);
+        const tierTrade: Trade = {
+          id: `SSN-${Date.now()}`,
+          symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: cash,
+          units: 0, price: 0, timestamp: Date.now(), xpEarned: 0, slippage: 0, kind: 'reward',
+        };
+        const newCash = state.cash + cash;
+        const holdingsValue = state.holdings.reduce((s, h) => {
+          const c = state.coins.find(x => x.symbol === h.symbol);
+          return s + (c ? c.price * h.units : 0);
+        }, 0);
+        return { ...state, season, cash: newCash, bankroll: newCash + holdingsValue, trades: [tierTrade, ...state.trades] };
+      }
+      // Cosmetic unlock (title or frame). Auto-equip if nothing is equipped yet.
+      const id = String(action.value);
+      if (action.kind === 'title') {
+        return { ...state, season, cosmetics: {
+          ...state.cosmetics,
+          titles: state.cosmetics.titles.includes(id) ? state.cosmetics.titles : [...state.cosmetics.titles, id],
+          equippedTitle: state.cosmetics.equippedTitle ?? id,
+        } };
+      }
+      return { ...state, season, cosmetics: {
+        ...state.cosmetics,
+        frames: state.cosmetics.frames.includes(id) ? state.cosmetics.frames : [...state.cosmetics.frames, id],
+        equippedFrame: state.cosmetics.equippedFrame ?? id,
+      } };
+    }
+    case 'EQUIP_COSMETIC':
+      return { ...state, cosmetics: {
+        ...state.cosmetics,
+        ...(action.slot === 'title' ? { equippedTitle: action.id } : { equippedFrame: action.id }),
+      } };
     case 'SET_COMPETITIONS':
       return { ...state, competitions: action.competitions };
     case 'SET_FINISHED_COMPETITIONS':
@@ -1570,7 +1622,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       && state.claimedContestIds.length === 0
       && state.duelsCreated === 0
       && state.quests.claimedIds.length === 0
-      && !state.quests.chestClaimed;
+      && !state.quests.chestClaimed
+      && state.season.claimedTiers.length === 0
+      && state.cosmetics.titles.length === 0
+      && state.cosmetics.frames.length === 0;
     if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
@@ -1586,9 +1641,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         claimedContestIds: state.claimedContestIds,
         duelsCreated: state.duelsCreated,
         quests: state.quests,
+        season: state.season,
+        cosmetics: state.cosmetics,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated, state.quests]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated, state.quests, state.season, state.cosmetics]);
 
   // Tier sync. Lifetime XP maps directly onto a fixed 10-level ladder (see
   // assignLeague), so whenever XP changes — or the stored tier/division is stale

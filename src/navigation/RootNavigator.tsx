@@ -16,6 +16,7 @@ import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { LearnScreen } from '../screens/LearnScreen';
 import { LessonScreen } from '../screens/LessonScreen';
 import { QuestsScreen } from '../screens/QuestsScreen';
+import { SeasonScreen } from '../screens/SeasonScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
 import { PayoutSetupScreen } from '../screens/PayoutSetupScreen';
 import { NewsDetailScreen } from '../screens/NewsDetailScreen';
@@ -43,6 +44,7 @@ export type RootStackParamList = {
   Learn: undefined;
   Lesson: { lessonId: string };
   Quests: undefined;
+  Season: undefined;
   Activity: undefined;
   PayoutSetup: undefined;
   NewsDetail: { article: NewsArticle };
@@ -94,6 +96,7 @@ export function RootNavigator() {
       <Stack.Screen name="Learn" component={LearnScreen} />
       <Stack.Screen name="Lesson" component={LessonScreen} />
       <Stack.Screen name="Quests" component={QuestsScreen} />
+      <Stack.Screen name="Season" component={SeasonScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
       <Stack.Screen name="PayoutSetup" component={PayoutSetupScreen} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />

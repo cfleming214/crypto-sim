@@ -205,6 +205,22 @@ export interface AppState {
     claimedIds: string[];
     chestClaimed: boolean;
   };
+  // Season Pass — `id` is the current 28-day window; `baselineXp` is lifetime XP
+  // at season start (seasonXp = user.xp − baselineXp); `claimedTiers` are the
+  // tier numbers already collected this season. Reset on a new season (cosmetics
+  // are kept). Persisted in the gamification.v1 blob.
+  season: {
+    id: number | null;
+    baselineXp: number;
+    claimedTiers: number[];
+  };
+  // Unlocked + equipped cosmetics (titles, avatar frames). Persist across seasons.
+  cosmetics: {
+    titles: string[];
+    frames: string[];
+    equippedTitle: string | null;
+    equippedFrame: string | null;
+  };
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

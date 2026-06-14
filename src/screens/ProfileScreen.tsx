@@ -14,7 +14,8 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles } from 'lucide-react-native';
+import { frameColor, titleLabel, FRAMES } from '../data/season';
 import { ACADEMY } from '../data/academy';
 import { useCoachmarkSettings } from '../components/coachmarks/CoachmarkProvider';
 import { Lightbulb } from 'lucide-react-native';
@@ -381,9 +382,14 @@ export function ProfileScreen() {
     >
       {/* Identity */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="xl" uri={state.user.avatarUri} status="online" style={{ backgroundColor: state.user.avatarColor }} />
+        <Avatar initials={state.user.handle.slice(0, 2).toUpperCase() || '??'} size="xl" uri={state.user.avatarUri} status="online" frame={frameColor(state.cosmetics.equippedFrame) ?? undefined} style={{ backgroundColor: state.user.avatarColor }} />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }}>@{state.user.handle}</Text>
+            {titleLabel(state.cosmetics.equippedTitle) && (
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.accent }}>· {titleLabel(state.cosmetics.equippedTitle)}</Text>
+            )}
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
             <LeagueBadge league={state.user.league} division={state.user.division} />
             <Text style={{ fontSize: 12, color: colors.ink3 }}>
@@ -395,6 +401,38 @@ export function ProfileScreen() {
         </View>
         <Button testID="profile-edit-btn" variant="ghost" size="sm" onPress={() => setEditVisible(true)}>Edit</Button>
       </View>
+
+      {/* Cosmetics — equip unlocked titles + avatar frames (tap to toggle) */}
+      {(state.cosmetics.titles.length > 0 || state.cosmetics.frames.length > 0) && (
+        <Card variant="tinted" style={{ gap: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Cosmetics</Text>
+          {state.cosmetics.titles.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {state.cosmetics.titles.map(id => {
+                const active = state.cosmetics.equippedTitle === id;
+                return (
+                  <Chip key={id} variant={active ? 'accent' : 'default'} onPress={() => dispatch({ type: 'EQUIP_COSMETIC', slot: 'title', id: active ? null : id })}>
+                    {titleLabel(id)}
+                  </Chip>
+                );
+              })}
+            </View>
+          )}
+          {state.cosmetics.frames.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {state.cosmetics.frames.map(id => {
+                const f = FRAMES.find(x => x.id === id);
+                const active = state.cosmetics.equippedFrame === id;
+                return (
+                  <Chip key={id} variant={active ? 'accent' : 'default'} dot dotColor={f?.color} onPress={() => dispatch({ type: 'EQUIP_COSMETIC', slot: 'frame', id: active ? null : id })}>
+                    {f?.label} frame
+                  </Chip>
+                );
+              })}
+            </View>
+          )}
+        </Card>
+      )}
 
       {/* Stat grid */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.hairline }}>
@@ -529,6 +567,18 @@ export function ProfileScreen() {
                 </Text>
                 <Text style={{ color: colors.ink3 }}>›</Text>
               </View>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => nav.navigate('Season')}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Sparkles color={colors.accent} size={18} strokeWidth={1.9} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Season Pass</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
             </View>
           </CardSection>
         </TouchableOpacity>

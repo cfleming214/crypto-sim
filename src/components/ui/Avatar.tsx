@@ -17,12 +17,14 @@ interface AvatarProps {
   style?: ViewStyle;
   /** Render a small colored presence dot at the bottom-right when set. */
   status?: AvatarStatus;
+  /** Cosmetic frame color — draws a colored ring around the avatar. */
+  frame?: string;
 }
 
 const sizeMap: Record<AvatarSize, number> = { sm: 28, default: 36, lg: 52, xl: 64 };
 const fontSizeMap: Record<AvatarSize, number> = { sm: 11, default: 14, lg: 18, xl: 22 };
 
-export function Avatar({ initials = '?', size = 'default', square, brand, uri, style, status }: AvatarProps) {
+export function Avatar({ initials = '?', size = 'default', square, brand, uri, style, status, frame }: AvatarProps) {
   const { colors } = useTheme();
   const dim = sizeMap[size];
   const br = square ? 10 : dim / 2;
@@ -33,7 +35,7 @@ export function Avatar({ initials = '?', size = 'default', square, brand, uri, s
   const bgOverride = (style as { backgroundColor?: string } | undefined)?.backgroundColor;
 
   const inner = uri ? (
-    <View style={{ width: dim, height: dim, borderRadius: br, overflow: 'hidden' }}>
+    <View style={{ width: dim, height: dim, borderRadius: br, overflow: 'hidden', borderWidth: frame ? 2.5 : 0, borderColor: frame }}>
       <Image source={{ uri }} style={{ width: dim, height: dim }} />
     </View>
   ) : (
@@ -43,8 +45,8 @@ export function Avatar({ initials = '?', size = 'default', square, brand, uri, s
         height: dim,
         borderRadius: br,
         backgroundColor: bgOverride ?? (brand ? colors.brand : colors.surface2),
-        borderWidth: 1,
-        borderColor: colors.hairline,
+        borderWidth: frame ? 2.5 : 1,
+        borderColor: frame ?? colors.hairline,
         alignItems: 'center',
         justifyContent: 'center',
       }}
