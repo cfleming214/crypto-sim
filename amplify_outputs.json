@@ -1579,6 +1579,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "weeklyXp": {
+              "name": "weeklyXp",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
             "contestsWon": {
               "name": "contestsWon",
               "isArray": false,
