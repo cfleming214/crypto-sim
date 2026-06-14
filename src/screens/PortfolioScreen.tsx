@@ -9,6 +9,7 @@ import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { RiskMeter } from '../components/ui/RiskMeter';
 import { CoinGlyph, Avatar } from '../components/ui/Avatar';
+import { PressableScale } from '../components/ui/PressableScale';
 import { AreaChart } from '../components/charts/AreaChart';
 import type { ChartMarker } from '../components/charts/CandleChart';
 import { DonutChart } from '../components/charts/DonutChart';
@@ -509,11 +510,10 @@ export function PortfolioScreen() {
           {portfolioOptions.map(opt => {
             const active = opt.id === state.activePortfolioId;
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={opt.id}
                 testID={`portfolio-selector-${opt.id}`}
                 onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
-                activeOpacity={0.75}
                 style={{
                   paddingVertical: 6,
                   paddingHorizontal: 12,
@@ -530,7 +530,7 @@ export function PortfolioScreen() {
                 }}>
                   {opt.label}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </ScrollView>

@@ -5,6 +5,8 @@ import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
+import { PressableScale } from '../components/ui/PressableScale';
+import { FadeInUp } from '../components/ui/FadeInUp';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
@@ -380,7 +382,8 @@ export function MarketsScreen() {
             ? `${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol} · $${(held.units * a.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             : '';
           return (
-          <TouchableOpacity key={a.symbol} testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
+          <FadeInUp key={a.symbol} index={Math.min(i, 8)}>
+          <PressableScale testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)}>
             <CardSection last={i === sorted.length - 1}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <CoinGlyph symbol={a.symbol} />
@@ -421,7 +424,8 @@ export function MarketsScreen() {
                 </View>
               </View>
             </CardSection>
-          </TouchableOpacity>
+          </PressableScale>
+          </FadeInUp>
           );
         })}
       </Card>

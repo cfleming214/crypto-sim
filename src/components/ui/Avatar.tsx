@@ -112,6 +112,10 @@ export function CoinGlyph({ symbol, size = 36, style }: CoinGlyphProps) {
           height: size,
           borderRadius: size / 2,
           backgroundColor: c.bg,
+          // Subtle colored ring so each coin badge reads as its own brand color
+          // instead of a flat tint.
+          borderWidth: 1,
+          borderColor: `${c.color}55`,
           alignItems: 'center',
           justifyContent: 'center',
         },

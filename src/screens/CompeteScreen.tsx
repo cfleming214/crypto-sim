@@ -5,6 +5,7 @@ import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
+import { PressableScale } from '../components/ui/PressableScale';
 import { Avatar } from '../components/ui/Avatar';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { AuthWall } from '../components/AuthWall';
@@ -545,7 +546,7 @@ export function CompeteScreen() {
         return (
         <Wrapper {...wrapperProps}>
           {listComps.map(comp => (
-            <TouchableOpacity
+            <PressableScale
               key={comp.id}
               testID={`compete-card-${comp.id}`}
               onPress={() => {
@@ -559,7 +560,6 @@ export function CompeteScreen() {
                   handleJoin(comp);
                 }
               }}
-              activeOpacity={0.85}
             >
               <Card variant="compact" style={{ gap: 6 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -596,7 +596,7 @@ export function CompeteScreen() {
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
                 </View>
               </Card>
-            </TouchableOpacity>
+            </PressableScale>
           ))}
         </Wrapper>
         );

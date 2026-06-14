@@ -1,18 +1,35 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { PortfolioScreen } from '../screens/PortfolioScreen';
 import { MarketsScreen } from '../screens/MarketsScreen';
 import { CompeteScreen } from '../screens/CompeteScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NewsScreen } from '../screens/NewsScreen';
-import { Home, BarChart2, Trophy, User, Bell, Search, Newspaper } from 'lucide-react-native';
+import { Home, BarChart2, Trophy, User, Bell, Search, Newspaper, LucideIcon } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator();
+
+// Tab icon that springs up slightly when its tab becomes active — a small,
+// frequent-but-pleasant cue. Skipped under Reduce Motion.
+function TabIcon({ Icon, color, focused }: { Icon: LucideIcon; color: string; focused: boolean }) {
+  const reduced = useReducedMotion();
+  const scale = useRef(new Animated.Value(focused ? 1.12 : 1)).current;
+  useEffect(() => {
+    if (reduced) { scale.setValue(focused ? 1.12 : 1); return; }
+    Animated.spring(scale, { toValue: focused ? 1.12 : 1, useNativeDriver: true, speed: 40, bounciness: 12 }).start();
+  }, [focused, reduced, scale]);
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Icon color={color} size={22} strokeWidth={1.75} />
+    </Animated.View>
+  );
+}
 
 function BellButton() {
   const { colors } = useTheme();
@@ -62,23 +79,23 @@ export function TabNavigator() {
       <Tab.Screen
         name="Home"
         component={PortfolioScreen}
-        options={{ tabBarIcon: ({ color }) => <Home color={color} size={22} strokeWidth={1.75} /> }}
+        options={{ tabBarIcon: ({ color, focused }) => <TabIcon Icon={Home} color={color} focused={focused} /> }}
       />
       <Tab.Screen
         name="Markets"
         component={MarketsScreen}
-        options={{ tabBarIcon: ({ color }) => <BarChart2 color={color} size={22} strokeWidth={1.75} /> }}
+        options={{ tabBarIcon: ({ color, focused }) => <TabIcon Icon={BarChart2} color={color} focused={focused} /> }}
       />
       <Tab.Screen
         name="News"
         component={NewsScreen}
-        options={{ tabBarIcon: ({ color }) => <Newspaper color={color} size={22} strokeWidth={1.75} /> }}
+        options={{ tabBarIcon: ({ color, focused }) => <TabIcon Icon={Newspaper} color={color} focused={focused} /> }}
       />
       <Tab.Screen
         name="Compete"
         component={CompeteScreen}
         options={{
-          tabBarIcon: ({ color }) => <Trophy color={color} size={22} strokeWidth={1.75} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Trophy} color={color} focused={focused} />,
           headerShown: false,
           tabBarBadge: hasCompeteDot ? '' : undefined,
           tabBarBadgeStyle: { minWidth: 8, height: 8, borderRadius: 4, fontSize: 0, top: 2, right: 2 },
@@ -88,7 +105,7 @@ export function TabNavigator() {
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarIcon: ({ color }) => <User color={color} size={22} strokeWidth={1.75} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon Icon={User} color={color} focused={focused} />,
           tabBarBadge: hasProfileDot ? '' : undefined,
           tabBarBadgeStyle: { minWidth: 8, height: 8, borderRadius: 4, fontSize: 0, top: 2, right: 2 },
         }}
