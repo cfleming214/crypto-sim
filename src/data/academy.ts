@@ -4,6 +4,9 @@
 //
 // Visuals are lightweight enums the LessonScreen maps to existing components.
 
+import type { LucideIcon } from 'lucide-react-native';
+import { Coins, LineChart, ShieldCheck, Smartphone } from 'lucide-react-native';
+
 export type LessonVisual = 'candles' | 'chart' | 'risk' | 'feargreed' | 'leagues';
 
 export interface LessonSection {
@@ -40,6 +43,15 @@ export interface Lesson {
 }
 
 export const ACADEMY_CATEGORIES = ['Crypto basics', 'Reading the market', 'Risk & strategy', 'Using the app'] as const;
+
+// Per-category lucide icon for the Academy UI. Colors come from the theme's
+// categoryColors map (keyed by the same category name) — see theme/tokens.ts.
+export const CATEGORY_META: Record<string, { icon: LucideIcon }> = {
+  'Crypto basics':      { icon: Coins },
+  'Reading the market': { icon: LineChart },
+  'Risk & strategy':    { icon: ShieldCheck },
+  'Using the app':      { icon: Smartphone },
+};
 
 export const ACADEMY: Lesson[] = [
   // ── Crypto basics ──────────────────────────────────────────────────────────

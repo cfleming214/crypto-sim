@@ -5,9 +5,11 @@ import { useTheme } from '../../theme/ThemeContext';
 interface ProgressBarProps {
   step: number;
   total: number;
+  /** Color for the filled segments. Defaults to ink. */
+  color?: string;
 }
 
-export function ProgressBar({ step, total }: ProgressBarProps) {
+export function ProgressBar({ step, total, color }: ProgressBarProps) {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -18,7 +20,7 @@ export function ProgressBar({ step, total }: ProgressBarProps) {
             flex: 1,
             height: 3,
             borderRadius: 2,
-            backgroundColor: i < step ? colors.ink : colors.surface2,
+            backgroundColor: i < step ? (color ?? colors.ink) : colors.surface2,
           }}
         />
       ))}

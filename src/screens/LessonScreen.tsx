@@ -5,15 +5,17 @@ import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { FadeInUp } from '../components/ui/FadeInUp';
 import { Quiz } from '../components/ui/Quiz';
 import { RiskMeter } from '../components/ui/RiskMeter';
 import { CandleChart } from '../components/charts/CandleChart';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
+import { categoryColors, categoryColorsDark } from '../theme/tokens';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/ui/Toast';
 import { ACADEMY, lessonById, type LessonVisual, type TryIt } from '../data/academy';
-import { Sparkles } from 'lucide-react-native';
+import { Sparkles, GraduationCap } from 'lucide-react-native';
 
 // Render **bold** spans inline.
 function RichText({ text, color }: { text: string; color: string }) {
@@ -65,7 +67,7 @@ function Visual({ kind }: { kind: LessonVisual }) {
 type Step = { type: 'section'; index: number } | { type: 'try' } | { type: 'quiz' };
 
 export function LessonScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const { state, dispatch } = useApp();
@@ -113,13 +115,21 @@ export function LessonScreen() {
   }
 
   const cur = steps[i];
+  const cat = (isDark ? categoryColorsDark : categoryColors)[lesson.category] ?? { color: colors.brand, soft: colors.surface2, grad: [colors.brand, colors.brand] as [string, string] };
   const advance = () => setI(n => Math.min(n + 1, steps.length - 1));
 
   const completeLesson = () => {
     const wasDone = state.academyCompleted.includes(lesson.id);
     dispatch({ type: 'COMPLETE_LESSON', lessonId: lesson.id, xp: lesson.xp, total: ACADEMY.length });
     if (!wasDone) {
-      show({ title: `Lesson complete · +${lesson.xp} XP`, subtitle: lesson.title, icon: Sparkles, variant: 'up' });
+      // Distinct moment when this completion finishes the whole curriculum.
+      const completedAfter = new Set(state.academyCompleted).add(lesson.id);
+      const graduating = completedAfter.size >= ACADEMY.length;
+      if (graduating) {
+        show({ title: '🎓 You graduated!', subtitle: 'All lessons complete — nice work.', icon: GraduationCap, variant: 'up' });
+      } else {
+        show({ title: `Lesson complete · +${lesson.xp} XP`, subtitle: lesson.title, icon: Sparkles, variant: 'up' });
+      }
       celebrate();
     }
     nav.goBack();
@@ -133,32 +143,37 @@ export function LessonScreen() {
   return (
     <ScreenShell eyebrow={`${lesson.emoji}  ${lesson.category}`} title={lesson.title} scrollable={false} style={{ flex: 1 }}>
       <View style={{ flex: 1, paddingHorizontal: 20, gap: 16 }}>
-        <ProgressBar step={i + 1} total={steps.length} />
+        <ProgressBar step={i + 1} total={steps.length} color={cat.color} />
 
         <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-          {cur.type === 'section' && (() => {
-            const s = lesson.sections[cur.index];
-            return (
-              <View style={{ gap: 14 }}>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 }}>{s.heading}</Text>
-                {s.visual && <Visual kind={s.visual} />}
-                <RichText text={s.body} color={colors.ink2} />
-              </View>
-            );
-          })()}
+          {/* key={i} replays the entrance each time the step changes */}
+          <FadeInUp key={i}>
+            {cur.type === 'section' && (() => {
+              const s = lesson.sections[cur.index];
+              return (
+                <View style={{ gap: 14 }}>
+                  <Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 }}>{s.heading}</Text>
+                  {s.visual && <Visual kind={s.visual} />}
+                  <RichText text={s.body} color={colors.ink2} />
+                </View>
+              );
+            })()}
 
-          {cur.type === 'try' && lesson.tryIt && (
-            <Card variant="tinted" style={{ gap: 12 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, textTransform: 'uppercase', letterSpacing: 0.5 }}>Try it</Text>
-              <Text style={{ fontSize: 15, color: colors.ink, lineHeight: 22 }}>{lesson.tryIt.hint}</Text>
-              <Button variant="brand" onPress={openTryIt}>{lesson.tryIt.cta}</Button>
-              {tryDone && (
-                <Text style={{ fontSize: 12, color: colors.up, fontWeight: '700' }}>✓ Nice — you did it!</Text>
-              )}
-            </Card>
-          )}
+            {cur.type === 'try' && lesson.tryIt && (
+              <Card variant="tinted" style={{ gap: 12, borderColor: `${cat.color}55` }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: cat.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>Try it</Text>
+                <Text style={{ fontSize: 15, color: colors.ink, lineHeight: 22 }}>{lesson.tryIt.hint}</Text>
+                <Button variant="accent" onPress={openTryIt}>{lesson.tryIt.cta}</Button>
+                {tryDone && (
+                  <FadeInUp distance={4}>
+                    <Text style={{ fontSize: 12, color: colors.up, fontWeight: '700' }}>✓ Nice — you did it!</Text>
+                  </FadeInUp>
+                )}
+              </Card>
+            )}
 
-          {cur.type === 'quiz' && <Quiz questions={lesson.quiz} onComplete={completeLesson} />}
+            {cur.type === 'quiz' && <Quiz questions={lesson.quiz} onComplete={completeLesson} />}
+          </FadeInUp>
         </ScrollView>
 
         {/* Footer controls (the quiz renders its own continue button) */}

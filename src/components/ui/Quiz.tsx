@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Card } from './Card';
 import { Button } from './Button';
+import { PressableScale } from './PressableScale';
+import { FadeInUp } from './FadeInUp';
 import { useTheme } from '../../theme/ThemeContext';
 import { Check, X } from 'lucide-react-native';
 import type { QuizQuestion } from '../../data/academy';
@@ -38,10 +40,9 @@ export function Quiz({ questions, onComplete }: { questions: QuizQuestion[]; onC
           const bg = showCorrect ? `${colors.up}1A` : showWrong ? `${colors.down}1A` : colors.surface;
           const border = showCorrect ? colors.up : showWrong ? colors.down : colors.hairline;
           return (
-            <TouchableOpacity
+            <PressableScale
               key={i}
               disabled={answered}
-              activeOpacity={0.8}
               onPress={() => setPicked(i)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -51,22 +52,21 @@ export function Quiz({ questions, onComplete }: { questions: QuizQuestion[]; onC
               <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.ink }}>{opt}</Text>
               {showCorrect && <Check color={colors.up} size={18} strokeWidth={2.5} />}
               {showWrong && <X color={colors.down} size={18} strokeWidth={2.5} />}
-            </TouchableOpacity>
+            </PressableScale>
           );
         })}
       </View>
 
       {answered && (
-        <Card variant="tinted">
-          <Text style={{ fontSize: 12, fontWeight: '700', color: picked === q.correctIndex ? colors.up : colors.warn }}>
-            {picked === q.correctIndex ? 'Correct!' : 'Not quite.'}
-          </Text>
-          <Text style={{ fontSize: 13, color: colors.ink2, marginTop: 4, lineHeight: 20 }}>{q.explain}</Text>
-        </Card>
-      )}
-
-      {answered && (
-        <Button variant="brand" onPress={next}>{last ? 'Finish lesson' : 'Next question'}</Button>
+        <FadeInUp distance={6} style={{ gap: 12 }}>
+          <Card variant="tinted">
+            <Text style={{ fontSize: 12, fontWeight: '700', color: picked === q.correctIndex ? colors.up : colors.warn }}>
+              {picked === q.correctIndex ? 'Correct!' : 'Not quite.'}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.ink2, marginTop: 4, lineHeight: 20 }}>{q.explain}</Text>
+          </Card>
+          <Button variant="brand" onPress={next}>{last ? 'Finish lesson' : 'Next question'}</Button>
+        </FadeInUp>
       )}
     </View>
   );
