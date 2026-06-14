@@ -1,9 +1,10 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
+import { Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/tokens';
+import { PressableScale } from './PressableScale';
 
-type ButtonVariant = 'brand' | 'up' | 'down' | 'ghost' | 'surface';
+type ButtonVariant = 'brand' | 'up' | 'down' | 'ghost' | 'surface' | 'accent';
 type ButtonSize = 'default' | 'sm';
 
 interface ButtonProps {
@@ -39,6 +40,7 @@ export function Button({
     down: colors.down,
     ghost: 'transparent',
     surface: colors.surface2,
+    accent: colors.accent,
   };
 
   const textColorMap: Record<ButtonVariant, string> = {
@@ -47,6 +49,7 @@ export function Button({
     down: '#FFFFFF',
     ghost: colors.ink,
     surface: colors.ink,
+    accent: '#FFFFFF',
   };
 
   const borderMap: Record<ButtonVariant, string> = {
@@ -55,13 +58,14 @@ export function Button({
     down: colors.down,
     ghost: colors.hairlineStrong,
     surface: colors.hairline,
+    accent: colors.accent,
   };
 
   const pad = size === 'sm' ? { paddingVertical: 8, paddingHorizontal: 14 } : { paddingVertical: 13, paddingHorizontal: 18 };
   const textSize = size === 'sm' ? 12 : 14;
 
   return (
-    <TouchableOpacity
+    <PressableScale
       testID={testID}
       onPress={onPress}
       disabled={disabled || loading}
@@ -76,7 +80,6 @@ export function Button({
         },
         style,
       ]}
-      activeOpacity={0.75}
     >
       {loading ? (
         <ActivityIndicator size="small" color={textColorMap[variant]} />
@@ -85,7 +88,7 @@ export function Button({
           {children}
         </Text>
       )}
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 

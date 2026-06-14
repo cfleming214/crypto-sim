@@ -12,6 +12,7 @@ export interface Colors {
   brand: string;
   brandOn: string;
   accent: string;
+  accentSoft: string;
   up: string;
   upSoft: string;
   down: string;
@@ -34,6 +35,7 @@ export const lightColors: Colors = {
   brand: '#1B1B1B',
   brandOn: '#FAFAF7',
   accent: '#2E63E8',
+  accentSoft: '#E7EDFD',
   up: '#15803D',
   upSoft: '#E5F2EC',
   down: '#B5322E',
@@ -56,6 +58,7 @@ export const darkColors: Colors = {
   brand: '#F5F4EF',
   brandOn: '#0A0A0B',
   accent: '#6B8FFF',
+  accentSoft: 'rgba(107,143,255,0.14)',
   up: '#3DD68C',
   upSoft: 'rgba(61,214,140,0.12)',
   down: '#FF6F61',
@@ -130,4 +133,35 @@ export const coinColorsDark: Record<string, { bg: string; color: string }> = {
   AVAX: { bg: 'rgba(232,65,66,0.18)', color: '#F08A8B' },
   LINK: { bg: 'rgba(42,90,218,0.20)', color: '#7C9BF0' },
   DOT:  { bg: 'rgba(230,0,122,0.18)', color: '#F06FB0' },
+};
+
+// Bold per-category palette for the Academy (keyed by ACADEMY_CATEGORIES). Each
+// entry: a primary `color`, a `soft` tinted background, and a `grad` pair for
+// gradient surfaces. Theme-aware — consumers pick the map via `isDark`, same
+// pattern as coinColors/coinColorsDark.
+export interface CategoryColor { color: string; soft: string; grad: [string, string] }
+
+export const categoryColors: Record<string, CategoryColor> = {
+  'Crypto basics':      { color: '#4F46E5', soft: '#ECEBFB', grad: ['#6366F1', '#4F46E5'] }, // indigo
+  'Reading the market': { color: '#0E9488', soft: '#E2F4F1', grad: ['#14B8A6', '#0E9488'] }, // teal
+  'Risk & strategy':    { color: '#D97706', soft: '#FBEFDD', grad: ['#F59E0B', '#D97706'] }, // amber
+  'Using the app':      { color: '#7C3AED', soft: '#F1E9FC', grad: ['#8B5CF6', '#7C3AED'] }, // violet
+};
+
+export const categoryColorsDark: Record<string, CategoryColor> = {
+  'Crypto basics':      { color: '#8B92F8', soft: 'rgba(129,140,248,0.16)', grad: ['#818CF8', '#6366F1'] },
+  'Reading the market': { color: '#3FD9C8', soft: 'rgba(45,212,191,0.16)',  grad: ['#2DD4BF', '#14B8A6'] },
+  'Risk & strategy':    { color: '#F2B45C', soft: 'rgba(245,158,11,0.16)',  grad: ['#FBBF24', '#F59E0B'] },
+  'Using the app':      { color: '#A78BFA', soft: 'rgba(167,139,250,0.16)', grad: ['#A78BFA', '#8B5CF6'] },
+};
+
+// Hero gradients for prominent surfaces (summary cards, featured banners).
+export const gradients: Record<string, [string, string]> = {
+  brandHero:   ['#2E63E8', '#4F46E5'],
+  successHero: ['#15803D', '#0E9488'],
+};
+
+export const gradientsDark: Record<string, [string, string]> = {
+  brandHero:   ['#6B8FFF', '#818CF8'],
+  successHero: ['#3DD68C', '#2DD4BF'],
 };

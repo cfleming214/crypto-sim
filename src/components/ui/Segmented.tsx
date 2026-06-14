@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, ViewStyle } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/tokens';
+import { PressableScale } from './PressableScale';
 
 interface SegmentedProps {
   options: string[];
@@ -30,7 +31,7 @@ export function Segmented({ options, value, onChange, variant = 'pill', style }:
         {options.map(opt => {
           const active = opt === value;
           return (
-            <TouchableOpacity key={opt} onPress={() => onChange(opt)} style={{ paddingVertical: 10, position: 'relative' }}>
+            <PressableScale key={opt} onPress={() => onChange(opt)} style={{ paddingVertical: 10, position: 'relative' }}>
               <Text style={{ fontSize: 13, fontWeight: '600', color: active ? colors.ink : colors.ink3 }}>{opt}</Text>
               {active && (
                 <View
@@ -44,7 +45,7 @@ export function Segmented({ options, value, onChange, variant = 'pill', style }:
                   }}
                 />
               )}
-            </TouchableOpacity>
+            </PressableScale>
           );
         })}
       </View>
@@ -67,7 +68,7 @@ export function Segmented({ options, value, onChange, variant = 'pill', style }:
       {options.map(opt => {
         const active = opt === value;
         return (
-          <TouchableOpacity
+          <PressableScale
             key={opt}
             onPress={() => onChange(opt)}
             style={[
@@ -87,7 +88,7 @@ export function Segmented({ options, value, onChange, variant = 'pill', style }:
             ]}
           >
             <Text style={{ fontSize: 12, fontWeight: '600', color: active ? colors.ink : colors.ink3, whiteSpace: 'nowrap' } as any}>{opt}</Text>
-          </TouchableOpacity>
+          </PressableScale>
         );
       })}
     </View>

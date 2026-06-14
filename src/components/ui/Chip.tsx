@@ -2,8 +2,9 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius, fontSize } from '../../theme/tokens';
+import { PressableScale } from './PressableScale';
 
-type ChipVariant = 'default' | 'brand' | 'up' | 'down' | 'warn' | 'outline';
+type ChipVariant = 'default' | 'brand' | 'up' | 'down' | 'warn' | 'outline' | 'accent';
 
 interface ChipProps {
   variant?: ChipVariant;
@@ -11,9 +12,11 @@ interface ChipProps {
   style?: ViewStyle;
   dot?: boolean;
   dotColor?: string;
+  /** When set, the chip becomes a press-scaling tappable. */
+  onPress?: () => void;
 }
 
-export function Chip({ variant = 'default', children, style, dot, dotColor }: ChipProps) {
+export function Chip({ variant = 'default', children, style, dot, dotColor, onPress }: ChipProps) {
   const { colors } = useTheme();
 
   const bgMap: Record<ChipVariant, string> = {
@@ -23,6 +26,7 @@ export function Chip({ variant = 'default', children, style, dot, dotColor }: Ch
     down: colors.downSoft,
     warn: colors.warnSoft,
     outline: 'transparent',
+    accent: colors.accentSoft,
   };
 
   const textColorMap: Record<ChipVariant, string> = {
@@ -32,6 +36,7 @@ export function Chip({ variant = 'default', children, style, dot, dotColor }: Ch
     down: colors.down,
     warn: colors.warn,
     outline: colors.ink2,
+    accent: colors.accent,
   };
 
   const borderMap: Record<ChipVariant, string | undefined> = {
@@ -41,20 +46,11 @@ export function Chip({ variant = 'default', children, style, dot, dotColor }: Ch
     down: undefined,
     warn: undefined,
     outline: colors.hairlineStrong,
+    accent: undefined,
   };
 
-  return (
-    <View
-      style={[
-        styles.base,
-        {
-          backgroundColor: bgMap[variant],
-          borderWidth: variant === 'outline' ? 1 : 0,
-          borderColor: borderMap[variant],
-        },
-        style,
-      ]}
-    >
+  const body = (
+    <>
       {dot && (
         <View
           style={{
@@ -66,8 +62,23 @@ export function Chip({ variant = 'default', children, style, dot, dotColor }: Ch
         />
       )}
       <Text style={[styles.text, { color: textColorMap[variant] }]}>{children}</Text>
-    </View>
+    </>
   );
+
+  const chipStyle = [
+    styles.base,
+    {
+      backgroundColor: bgMap[variant],
+      borderWidth: variant === 'outline' ? 1 : 0,
+      borderColor: borderMap[variant],
+    },
+    style,
+  ];
+
+  if (onPress) {
+    return <PressableScale onPress={onPress} style={chipStyle}>{body}</PressableScale>;
+  }
+  return <View style={chipStyle}>{body}</View>;
 }
 
 const styles = StyleSheet.create({
