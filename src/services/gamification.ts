@@ -229,6 +229,14 @@ export function seasonEndsAt(now: number): number {
   return seasonStartAt(now) + SEASON_MS;
 }
 
+// Weekly League settle boundary — 7-day windows from the same anchor. Used for
+// the "league resets in …" countdown (the settle-season Lambda runs ~weekly).
+const WEEK_MS = 7 * DAY_MS;
+export function weekEndsAt(now: number): number {
+  const since = now - SEASON_ANCHOR;
+  return SEASON_ANCHOR + (Math.floor(since / WEEK_MS) + 1) * WEEK_MS;
+}
+
 // ---------------------------------------------------------------------------
 // Tier ladder (Phase 9). Players climb 10 levels across 5 tiers, 2 levels each:
 // Bronze 1, Bronze 2, Silver 1, … Platinum 2. XP is spent per level — clearing a

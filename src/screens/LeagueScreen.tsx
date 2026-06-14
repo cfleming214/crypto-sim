@@ -9,7 +9,14 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
+import { weekEndsAt } from '../services/gamification';
 import { Filter } from 'lucide-react-native';
+
+function fmtDays(ms: number): string {
+  const d = Math.floor(ms / 86_400_000);
+  const h = Math.floor((ms % 86_400_000) / 3_600_000);
+  return d > 0 ? `${d}d ${h}h` : `${h}h`;
+}
 
 const DIVISION_PLAYERS = [
   { rank: 1,  handle: '@orca',      name: 'Diana K.',    pnl: '+71.4%', xpRaw: 12840, trend: 'up',   tag: 'promo' },
@@ -99,30 +106,31 @@ export function LeagueScreen() {
   const div = state.user.division > 0 ? String(state.user.division) : '';
   const divisionLabel = `${league} ${div}`.trim();
 
-  // "Your division" pulls live entries from the most recently joined
-  // competition's leaderboard (subscribed real-time by AppContext).
-  // Hide blocked users from every ranking. Leaderboard entries only carry a
-  // handle, so match on that (BlockedUser stores both owner + handle).
-  const isBlockedHandle = (handle: string) =>
-    state.blockedUsers.some(b => b.handle === handle);
+  const notBlocked = (t: LeaderboardRow) =>
+    !state.blockedUsers.some(b => b.owner === t.owner || b.handle === t.handle);
 
-  const liveCompId = state.joinedTournamentIds[state.joinedTournamentIds.length - 1];
-  const liveEntries = (liveCompId ? state.leaderboard[liveCompId] ?? [] : [])
-    .filter(e => !isBlockedHandle(e.handle));
-  const livePlayers = liveEntries.map(e => ({
-    rank: e.rank,
-    handle: e.handle.startsWith('@') ? e.handle : `@${e.handle}`,
-    name: e.handle,
-    pnl: `${e.pnlPct >= 0 ? '+' : ''}${e.pnlPct.toFixed(1)}%`,
-    xpRaw: Math.max(0, Math.round(e.bankroll)),
-    trend: e.pnlPct >= 0 ? 'up' : 'down',
-    tag: e.handle === state.user.handle ? 'you' : null,
+  // Weekly League — your cohort is everyone in YOUR league tier on the global
+  // board, ranked by XP earned this week (weeklyXp). Top PROMO promote, bottom
+  // RELEGATE relegate at the weekly settle.
+  const PROMO = 5, RELEGATE = 5;
+  const myGlobalIdx = globalTraders.findIndex(t => t.handle === state.user.handle);
+  const myWeeklyXp = myGlobalIdx >= 0 ? globalTraders[myGlobalIdx].weeklyXp : 0;
+  const weeklyCohort = globalTraders
+    .filter(t => (t.league ?? 'Bronze') === state.user.league)
+    .filter(notBlocked)
+    .sort((a, b) => b.weeklyXp - a.weeklyXp);
+  const weeklyPlayers = weeklyCohort.map((t, idx) => ({
+    rank: idx + 1,
+    handle: `@${t.handle}`,
+    name: t.handle,
+    pnl: `${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%`,
+    xpRaw: t.weeklyXp,
+    trend: idx < PROMO ? 'up' : (idx >= weeklyCohort.length - RELEGATE ? 'down' : 'flat'),
+    tag: t.handle === state.user.handle ? 'you' : (idx < PROMO ? 'promo' : null),
   }));
 
   // Global leaderboard rows, already server-ranked by lifetime XP desc.
-  const globalPlayers = globalTraders
-    .filter(t => !state.blockedUsers.some(b => b.owner === t.owner || b.handle === t.handle))
-    .map((t, idx) => ({
+  const globalPlayers = globalTraders.filter(notBlocked).map((t, idx) => ({
     rank: idx + 1,
     handle: `@${t.handle}`,
     name: t.handle,
@@ -134,18 +142,19 @@ export function LeagueScreen() {
 
   const players = tab === 'Friends' ? []
     : tab === 'Global' ? globalPlayers
-    : (livePlayers.length > 0 ? livePlayers : DIVISION_PLAYERS);
+    : (weeklyPlayers.length > 0 ? weeklyPlayers : DIVISION_PLAYERS);
 
-  const liveYouEntry = liveEntries.find(e => e.handle === state.user.handle);
-  const myGlobalIdx = globalTraders.findIndex(t => t.handle === state.user.handle);
+  const myWeeklyRank = weeklyPlayers.find(p => p.tag === 'you')?.rank ?? 0;
   const userRank = tab === 'Global' ? (myGlobalIdx >= 0 ? myGlobalIdx + 1 : 0)
     : tab === 'Friends' ? 0
-    : (liveYouEntry?.rank ?? 8);
+    : (myWeeklyRank || 8);
   const totalPlayers = tab === 'Global' ? globalTraders.length
     : tab === 'Friends' ? 0
-    : (liveEntries.length > 0 ? liveEntries.length : 30);
-  const promoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 0 : 5;
-  const demoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 0 : 5;
+    : (weeklyCohort.length > 0 ? weeklyCohort.length : 30);
+  const promoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 0 : PROMO;
+  const demoteCount = tab === 'Global' ? 0 : tab === 'Friends' ? 0 : RELEGATE;
+  // Show weekly XP for the "you" row in the division tab, lifetime elsewhere.
+  const displayUserXp = tab === 'Your division' ? myWeeklyXp : state.user.xp;
 
   return (
     <ScreenShell
@@ -158,7 +167,7 @@ export function LeagueScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              {tab === 'Global' ? 'Global ranking' : `Promotes in 2 · ends Sunday`}
+              {tab === 'Global' ? 'Global ranking' : `Resets in ${fmtDays(weekEndsAt(Date.now()) - Date.now())} · ranked by weekly XP`}
             </Text>
             <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, marginTop: 4 }}>
               {totalPlayers.toLocaleString()} players{promoteCount > 0 ? ` · top ${promoteCount} promote` : ''}
@@ -232,7 +241,7 @@ export function LeagueScreen() {
               {...p}
               last={i === players.length - 1}
               userHandle={state.user.handle}
-              userXp={state.user.xp}
+              userXp={displayUserXp}
               userPnlPct={pnlPct}
               userAvatarUri={state.user.avatarUri}
               userAvatarColor={state.user.avatarColor}

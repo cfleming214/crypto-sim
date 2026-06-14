@@ -64,13 +64,13 @@ export const handler = async (): Promise<void> => {
 
   // 2. Value every visible profile and read its lifetime XP + contests won.
   type Ranked = {
-    owner: string; handle: string; xp: number; contestsWon: number; value: number; pnlPct: number;
+    owner: string; handle: string; xp: number; weeklyXp: number; contestsWon: number; value: number; pnlPct: number;
     league?: string; avatarKey?: string; avatarColor?: string; lastActiveAt?: string;
   };
   const ranked: Ranked[] = [];
   for await (const row of scanAll(profileTable)) {
     const p = unmarshall(row) as {
-      owner?: string; handle?: string; xp?: number; contestsWon?: number; cash?: number; holdingsJson?: string;
+      owner?: string; handle?: string; xp?: number; seasonStartXp?: number; contestsWon?: number; cash?: number; holdingsJson?: string;
       league?: string; avatarKey?: string; avatarColor?: string; leaderboardVisible?: boolean; lastActiveAt?: string;
     };
     if (p.leaderboardVisible === false) continue; // opted out (null/undefined = visible)
@@ -84,8 +84,11 @@ export const handler = async (): Promise<void> => {
     const value = (p.cash ?? 0) + holdingsValue;
     const pnlPct = ((value - STARTING_BANKROLL) / STARTING_BANKROLL) * 100;
     const contestsWon = Math.max(winsByOwner[p.owner] ?? 0, p.contestsWon ?? 0);
+    // XP earned this season-week. seasonStartXp is the baseline the settle-season
+    // Lambda stamps each week; if it's missing, treat weekly XP as 0.
+    const weeklyXp = Math.max(0, (p.xp ?? 0) - (p.seasonStartXp ?? (p.xp ?? 0)));
     ranked.push({
-      owner: p.owner, handle: p.handle, xp: p.xp ?? 0, contestsWon, value, pnlPct,
+      owner: p.owner, handle: p.handle, xp: p.xp ?? 0, weeklyXp, contestsWon, value, pnlPct,
       league: p.league, avatarKey: p.avatarKey, avatarColor: p.avatarColor, lastActiveAt: p.lastActiveAt,
     });
   }
@@ -137,6 +140,7 @@ export const handler = async (): Promise<void> => {
         owner: r.owner,
         handle: r.handle,
         xp: r.xp,
+        weeklyXp: r.weeklyXp,
         contestsWon: r.contestsWon,
         winsRank: winsRankByOwner[r.owner] ?? (i + 1),
         value: r.value,

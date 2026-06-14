@@ -246,6 +246,7 @@ const schema = a.schema({
     owner:       a.string().required(),  // Cognito sub — self-highlight + block filter
     handle:      a.string().required(),
     xp:          a.integer(),            // lifetime XP — the primary ranking metric
+    weeklyXp:    a.integer(),            // XP earned this season-week (xp − seasonStartXp) — drives Weekly Leagues
     contestsWon: a.integer(),            // lifetime contests won (secondary metric)
     winsRank:    a.integer(),            // rank by contestsWon across all users
     value:       a.float(),              // live-priced bankroll = cash + Σ holdings×price (secondary stat)

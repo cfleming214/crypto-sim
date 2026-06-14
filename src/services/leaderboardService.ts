@@ -24,6 +24,7 @@ export interface LeaderboardRow {
   owner: string;       // Cognito sub (may be "sub::username") — for self-highlight + block filter
   handle: string;
   xp: number;          // lifetime XP — the primary ranking metric
+  weeklyXp: number;    // XP earned this season-week — Weekly League ranking metric
   contestsWon: number; // lifetime contests won (secondary metric)
   winsRank: number;    // rank by contestsWon across all users
   value: number;       // live-priced portfolio value (secondary stat)
@@ -41,6 +42,7 @@ function mapRow(d: any): LeaderboardRow {
     owner: d.owner ?? '',
     handle: d.handle ?? '',
     xp: typeof d.xp === 'number' ? d.xp : 0,
+    weeklyXp: typeof d.weeklyXp === 'number' ? d.weeklyXp : 0,
     contestsWon: typeof d.contestsWon === 'number' ? d.contestsWon : 0,
     winsRank: typeof d.winsRank === 'number' ? d.winsRank : 999,
     value: typeof d.value === 'number' ? d.value : 0,
