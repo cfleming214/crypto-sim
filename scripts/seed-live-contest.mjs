@@ -433,11 +433,17 @@ async function main() {
         if (!DRY) await ddb.send(new DeleteItemCommand({ TableName: tables.UserProfile, Key: marshall({ id: dupId }) }));
         dupsRemoved++;
       }
+      // Lifetime XP + a realistic slice of it earned "this week" so the Weekly
+      // League board (ranked by weeklyXp = xp − seasonStartXp) isn't all zeros
+      // for freshly-seeded bots. settle-season will reset the baseline weekly.
+      const botXp = randi(500, 8000);
+      const botWeeklyXp = randi(50, Math.min(2000, botXp));
       await put(tables.UserProfile, {
         __typename: 'UserProfile',
         id: reuseId,
         handle: bot.handle,
-        xp: randi(500, 8000),
+        xp: botXp,
+        seasonStartXp: botXp - botWeeklyXp,
         league: bot.league,
         division: randi(1, 2),
         streak: randi(0, 12),
