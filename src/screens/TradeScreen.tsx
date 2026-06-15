@@ -263,6 +263,127 @@ function PriceAlertSheet({ visible, symbol, currentPrice, onClose }: {
   );
 }
 
+// Add a per-coin auto-trigger: a SELL stop-loss (sell the whole position when
+// price falls a chosen % below entry) or a BUY stop (buy $X when price falls to
+// a target). One of each per coin; both auto-execute on the price tick.
+function TriggerSheet({ visible, symbol, currentPrice, avgCost, units, onClose }: {
+  visible: boolean; symbol: string; currentPrice: number; avgCost: number; units: number; onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const { dispatch } = useApp();
+  const holds = units > 0;
+  const [side, setSide] = useState<'sell' | 'buy'>(holds ? 'sell' : 'buy');
+  const [pct, setPct] = useState(10);
+  const [buyPriceStr, setBuyPriceStr] = useState('');
+  const [buyAmtStr, setBuyAmtStr] = useState('100');
+
+  // Reset to a sensible default each open (sell if they hold it, else buy).
+  useEffect(() => { if (visible) setSide(holds ? 'sell' : 'buy'); }, [visible, holds]);
+
+  const sellPrice = avgCost * (1 - pct / 100);
+  const buyPrice = parseFloat(buyPriceStr) || 0;
+  const buyAmt = parseFloat(buyAmtStr) || 0;
+
+  const handleSet = () => {
+    if (side === 'sell') {
+      if (!holds) return;
+      dispatch({ type: 'SET_STOP_LOSS', symbol, pct });
+      onClose();
+      Alert.alert('Stop-loss set', `${symbol} will auto-sell if it falls ${pct}% (≈$${sellPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}).`);
+    } else {
+      if (!(buyPrice > 0) || !(buyAmt > 0)) return;
+      dispatch({ type: 'SET_BUY_STOP', symbol, price: buyPrice, amount: buyAmt });
+      onClose();
+      Alert.alert('Buy trigger set', `Will buy $${buyAmt.toLocaleString()} of ${symbol} when it falls to $${buyPrice.toLocaleString()}.`);
+    }
+  };
+
+  const inputBox = { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 };
+  const canSet = side === 'sell' ? holds : (buyPrice > 0 && buyAmt > 0);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Add a trigger</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+              {symbol} · ${currentPrice.toLocaleString('en-US', { maximumFractionDigits: currentPrice < 0.01 ? 8 : 2 })}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+            <X color={colors.ink} size={22} strokeWidth={1.75} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, gap: 16 }}>
+          {/* Side toggle */}
+          <View style={{ flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: 10, padding: 3 }}>
+            {(['sell', 'buy'] as const).map(s => (
+              <TouchableOpacity
+                key={s}
+                style={{ flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 8, backgroundColor: side === s ? colors.surface : 'transparent' }}
+                onPress={() => setSide(s)}
+              >
+                <Text style={{ fontWeight: '600', fontSize: 13, color: side === s ? (s === 'sell' ? colors.down : colors.up) : colors.ink3 }}>
+                  {s === 'sell' ? '↓ Stop-loss (sell)' : '↓ Buy the dip'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {side === 'sell' ? (
+            !holds ? (
+              <Text style={{ fontSize: 13, color: colors.ink3, lineHeight: 19 }}>
+                You don't hold {symbol}. Buy some first — a stop-loss sells a position you already own.
+              </Text>
+            ) : (
+              <>
+                <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Sell if it drops</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {[5, 10, 15, 20].map(p => (
+                    <TouchableOpacity
+                      key={p}
+                      onPress={() => setPct(p)}
+                      style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 1, backgroundColor: pct === p ? colors.down : colors.surface2, borderColor: pct === p ? colors.down : colors.hairline }}
+                    >
+                      <Text style={{ fontWeight: '700', fontSize: 14, color: pct === p ? '#FFFFFF' : colors.ink }}>{p}%</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                  Sells all {units < 1 ? units.toFixed(4) : units.toFixed(2)} {symbol} at ≈${sellPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })} (entry ${avgCost.toLocaleString('en-US', { maximumFractionDigits: 2 })}).
+                </Text>
+              </>
+            )
+          ) : (
+            <>
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Buy when price falls to</Text>
+                <View style={inputBox}>
+                  <Text style={{ fontSize: 16, color: colors.ink3 }}>$</Text>
+                  <TextInput value={buyPriceStr} onChangeText={setBuyPriceStr} placeholder={currentPrice.toFixed(currentPrice < 0.01 ? 6 : 2)} placeholderTextColor={colors.ink3} keyboardType="decimal-pad" style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.ink, marginLeft: 4 }} />
+                </View>
+              </View>
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Amount to buy (USD)</Text>
+                <View style={inputBox}>
+                  <Text style={{ fontSize: 16, color: colors.ink3 }}>$</Text>
+                  <TextInput value={buyAmtStr} onChangeText={setBuyAmtStr} placeholder="100" placeholderTextColor={colors.ink3} keyboardType="decimal-pad" style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.ink, marginLeft: 4 }} />
+                </View>
+              </View>
+            </>
+          )}
+
+          <Button variant={side === 'sell' ? 'down' : 'up'} onPress={handleSet} disabled={!canSet}>
+            {side === 'sell' ? `Set ${pct}% stop-loss` : 'Set buy trigger'}
+          </Button>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 function MoreSheet({ visible, symbol, currentPrice, onClose, onSetAlert }: {
   visible: boolean; symbol: string; currentPrice: number; onClose: () => void; onSetAlert: () => void;
 }) {
@@ -357,6 +478,7 @@ export function TradeScreen() {
   const [confetti, setConfetti] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
+  const [triggerOpen, setTriggerOpen] = useState(false);
   const [fetchedCandles, setFetchedCandles] = useState<OhlcCandle[]>([]);
 
   const toggleIndicator = (ind: Indicator) => {
@@ -726,6 +848,68 @@ export function TradeScreen() {
             );
           })()}
 
+          {/* Active triggers — every stop-loss + buy-stop across coins, plus an
+              "add" for the current coin. Auto-execute on the price tick. */}
+          {(() => {
+            const sells = Object.entries(state.stopLosses).map(([sym, pct]) => {
+              const h = state.holdings.find(x => x.symbol === sym);
+              const c = getCoin(sym);
+              const triggerPrice = h ? h.avgCost * (1 - pct / 100) : null;
+              return { sym, pct, triggerPrice, livePrice: c?.price };
+            });
+            const buys = Object.entries(state.buyStops).map(([sym, bs]) => ({ sym, ...bs }));
+            const hasAny = sells.length > 0 || buys.length > 0;
+            return (
+              <Card variant="noPad" style={{ marginTop: 4 }}>
+                <CardSection last={!hasAny}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Shield color={colors.ink} size={16} strokeWidth={1.9} />
+                      <Text style={{ fontWeight: '700', fontSize: 14, color: colors.ink }}>Auto triggers</Text>
+                    </View>
+                    <Button testID="trade-add-trigger-btn" variant="surface" size="sm" onPress={() => setTriggerOpen(true)}>+ Add</Button>
+                  </View>
+                </CardSection>
+                {sells.map((s, i) => (
+                  <CardSection key={`sl-${s.sym}`} last={i === sells.length - 1 && buys.length === 0}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Chip variant="down">SELL</Chip>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>{s.sym} stop-loss · −{s.pct}%</Text>
+                        <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>
+                          Sells all at ≈${(s.triggerPrice ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                          {s.livePrice ? ` · now $${s.livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : ''}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => dispatch({ type: 'SET_STOP_LOSS', symbol: s.sym, pct: 0 })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <X color={colors.ink3} size={18} strokeWidth={2} />
+                      </TouchableOpacity>
+                    </View>
+                  </CardSection>
+                ))}
+                {buys.map((b, i) => (
+                  <CardSection key={`bs-${b.sym}`} last={i === buys.length - 1}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Chip variant="up">BUY</Chip>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>{b.sym} buy · ${b.amount.toLocaleString()}</Text>
+                        <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>When price falls to ${b.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => dispatch({ type: 'CLEAR_BUY_STOP', symbol: b.sym })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <X color={colors.ink3} size={18} strokeWidth={2} />
+                      </TouchableOpacity>
+                    </View>
+                  </CardSection>
+                ))}
+                {!hasAny && (
+                  <CardSection last>
+                    <Text style={{ fontSize: 12, color: colors.ink3 }}>No active triggers. Add a stop-loss or a buy-the-dip order.</Text>
+                  </CardSection>
+                )}
+              </Card>
+            );
+          })()}
+
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
             <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
             <View ref={buyCoachRef} style={{ flex: 1 }} collapsable={false}>
@@ -754,6 +938,14 @@ export function TradeScreen() {
         symbol={symbol}
         currentPrice={price}
         onClose={() => setAlertOpen(false)}
+      />
+      <TriggerSheet
+        visible={triggerOpen}
+        symbol={symbol}
+        currentPrice={price}
+        avgCost={state.holdings.find(h => h.symbol === symbol)?.avgCost ?? price}
+        units={state.holdings.find(h => h.symbol === symbol)?.units ?? 0}
+        onClose={() => setTriggerOpen(false)}
       />
     </>
   );

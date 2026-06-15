@@ -106,10 +106,16 @@ export function EventWatcher() {
     for (const t of state.trades) {
       if (seenTrades.current.has(t.id)) continue;
       seenTrades.current.add(t.id);
-      if (!t.id.startsWith('LMT-')) continue;  // background limit fills only
+      // Background auto-fills only: limit orders, stop-losses, buy-stops. Manual
+      // trades show their own success screen; reward events aren't fills.
+      const kind = t.id.startsWith('LMT-') ? 'Limit order filled'
+        : t.id.startsWith('STP-') ? 'Stop-loss triggered'
+        : t.id.startsWith('BYS-') ? 'Buy trigger filled'
+        : null;
+      if (!kind) continue;
       const body = `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.units.toFixed(4)} ${t.symbol} at $${t.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-      show({ title: 'Limit order filled', subtitle: body, icon: Clock, variant: t.side === 'buy' ? 'up' : 'warn' });
-      notifyNow('Limit order filled', body);
+      show({ title: kind, subtitle: body, icon: Clock, variant: t.side === 'buy' ? 'up' : 'warn' });
+      notifyNow(kind, body);
     }
   }, [state.trades]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -162,7 +162,12 @@ export interface AppState {
   pendingOrders: PendingOrder[];
   watchlist: string[];
   riskScore: number;
+  // Sell-stop per coin: % below entry (avgCost) at which the WHOLE position
+  // auto-sells. Keyed by symbol, one per coin. Drives risk score + coach nudges.
   stopLosses: Record<string, number>;
+  // Buy-stop per coin: auto-buy `amount` dollars when price falls to `price`.
+  // Keyed by symbol, one per coin. The buy-side counterpart to stopLosses.
+  buyStops: Record<string, { price: number; amount: number }>;
   priceAlerts: PriceAlert[];
   triggeredAlerts: PriceAlert[];
   coachNudges: CoachNudge[];

@@ -198,6 +198,7 @@ const INITIAL_STATE: AppState = {
   watchlist: ['BTC', 'ETH'],
   riskScore: 100,
   stopLosses: {},
+  buyStops: {},
   priceAlerts: [],
   triggeredAlerts: [],
   coachNudges: [],
@@ -227,7 +228,7 @@ type Action =
   | { type: 'UPDATE_PRICES'; prices: PriceData[] }
   | { type: 'SET_COINS'; coins: Coin[] }
   | { type: 'LOAD_PROFILE'; profile: Partial<AppState> }
-  | { type: 'HYDRATE_OFFLINE'; portfolio: Partial<Pick<AppState, 'cash' | 'holdings' | 'trades' | 'watchlist' | 'stopLosses'>> }
+  | { type: 'HYDRATE_OFFLINE'; portfolio: Partial<Pick<AppState, 'cash' | 'holdings' | 'trades' | 'watchlist' | 'stopLosses' | 'buyStops'>> }
   | { type: 'SEED_STARTER' }
   | { type: 'BUY'; symbol: string; amount: number }
   | { type: 'SELL'; symbol: string; amount: number }
@@ -238,6 +239,8 @@ type Action =
   | { type: 'PROMOTE_LEAGUE'; league: string; division: number }
   | { type: 'SET_TRADE_SYMBOL'; symbol: string }
   | { type: 'SET_STOP_LOSS'; symbol: string; pct: number }
+  | { type: 'SET_BUY_STOP'; symbol: string; price: number; amount: number }
+  | { type: 'CLEAR_BUY_STOP'; symbol: string }
   | { type: 'REBALANCE' }
   | { type: 'COPY_ALLOCATION'; allocation: { symbol: string; pct: number }[] }
   | { type: 'SET_COMPETITIONS'; competitions: Competition[] }
@@ -362,6 +365,62 @@ function reducer(state: AppState, action: Action): AppState {
         newState = { ...newState, pendingOrders: newState.pendingOrders.filter(o => o.id !== order.id) };
       }
 
+      // Auto-fire stop-losses: when a held coin falls to avgCost×(1−pct/100),
+      // market-sell the WHOLE position. Trade id 'STP-' so EventWatcher toasts it.
+      let stopsChanged = false;
+      for (const [sym, pct] of Object.entries(newState.stopLosses)) {
+        const coin = newState.coins.find(c => c.symbol === sym);
+        const h = newState.holdings.find(x => x.symbol === sym);
+        if (!coin || !h || !(pct > 0)) continue;
+        if (coin.price > h.avgCost * (1 - pct / 100)) continue;
+        const proceeds = h.units * coin.price;
+        const pnl = realizedPnl(h.avgCost, h.units, coin.price);
+        const xpEarned = sellXp(pnl, proceeds);
+        const trade: Trade = {
+          id: `STP-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol: sym, side: 'sell', amount: proceeds, units: h.units,
+          price: coin.price, timestamp: Date.now(), xpEarned, slippage: 0, realizedPnl: pnl,
+        };
+        const nextStops = { ...newState.stopLosses }; delete nextStops[sym];
+        newState = {
+          ...newState,
+          cash: newState.cash + proceeds,
+          holdings: newState.holdings.filter(x => x.symbol !== sym),
+          trades: [trade, ...newState.trades],
+          stopLosses: nextStops,
+          user: { ...newState.user, xp: newState.user.xp + xpEarned },
+        };
+        stopsChanged = true;
+      }
+
+      // Auto-fire buy-stops: when a coin falls to the target, market-buy `amount`
+      // dollars. Trade id 'BYS-' so EventWatcher toasts it.
+      for (const [sym, bs] of Object.entries(newState.buyStops)) {
+        const coin = newState.coins.find(c => c.symbol === sym);
+        if (!coin || sym === 'USDC' || coin.price > bs.price || newState.cash < bs.amount) continue;
+        const units = bs.amount / coin.price;
+        const existing = newState.holdings.find(x => x.symbol === sym);
+        const holdings = existing
+          ? newState.holdings.map(x => x.symbol === sym
+              ? { ...x, units: x.units + units, avgCost: (x.avgCost * x.units + bs.amount) / (x.units + units) }
+              : x)
+          : [...newState.holdings, { symbol: sym, units, avgCost: coin.price }];
+        const trade: Trade = {
+          id: `BYS-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          symbol: sym, side: 'buy', amount: bs.amount, units,
+          price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0,
+        };
+        const nextBuys = { ...newState.buyStops }; delete nextBuys[sym];
+        newState = {
+          ...newState,
+          cash: newState.cash - bs.amount,
+          holdings,
+          trades: [trade, ...newState.trades],
+          buyStops: nextBuys,
+          user: { ...newState.user, xp: newState.user.xp + 25 },
+        };
+      }
+
       // Evaluate price alerts
       const nowMs = Date.now();
       const stillActive: PriceAlert[] = [];
@@ -387,7 +446,12 @@ function reducer(state: AppState, action: Action): AppState {
         const coin = newState.coins.find(c => c.symbol === h.symbol);
         return sum + (coin ? coin.price * h.units : 0);
       }, 0);
-      return { ...newState, bankroll: newState.cash + holdingsValue };
+      const tickedBankroll = newState.cash + holdingsValue;
+      // A fired stop-loss removed a position → refresh the risk score against it.
+      const tickedRisk = stopsChanged
+        ? computeRiskScore(newState.holdings, newState.cash, tickedBankroll, newState.coins, newState.stopLosses)
+        : newState.riskScore;
+      return { ...newState, bankroll: tickedBankroll, riskScore: tickedRisk };
     }
     case 'UPDATE_PRICES': {
       const coins = state.coins.map(coin => {
@@ -513,6 +577,7 @@ function reducer(state: AppState, action: Action): AppState {
         trades:     Array.isArray(p.trades) ? p.trades : state.trades,
         watchlist:  Array.isArray(p.watchlist) ? p.watchlist : state.watchlist,
         stopLosses: p.stopLosses ?? state.stopLosses,
+        buyStops:   p.buyStops ?? state.buyStops,
         bankroll:   cash + holdingsValue,
       };
     }
@@ -634,6 +699,16 @@ function reducer(state: AppState, action: Action): AppState {
         stopLosses: newStopLosses,
         riskScore: computeRiskScore(state.holdings, state.cash, state.bankroll, state.coins, newStopLosses),
       };
+    }
+    case 'SET_BUY_STOP': {
+      if (!(action.price > 0) || !(action.amount > 0)) return state;
+      return { ...state, buyStops: { ...state.buyStops, [action.symbol]: { price: action.price, amount: action.amount } } };
+    }
+    case 'CLEAR_BUY_STOP': {
+      if (!state.buyStops[action.symbol]) return state;
+      const next = { ...state.buyStops };
+      delete next[action.symbol];
+      return { ...state, buyStops: next };
     }
     case 'REBALANCE': {
       // Plan via the shared pure planner (src/services/rebalance.ts) so the
@@ -1584,9 +1659,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       trades:     state.trades,
       watchlist:  state.watchlist,
       stopLosses: state.stopLosses,
+      buyStops:   state.buyStops,
     });
     AsyncStorage.setItem(OFFLINE_PORTFOLIO_KEY, payload).catch(() => {});
-  }, [authStatus, state.cash, state.holdings, state.trades, state.watchlist, state.stopLosses]);
+  }, [authStatus, state.cash, state.holdings, state.trades, state.watchlist, state.stopLosses, state.buyStops]);
 
   // Gamification (daily-claim) persistence — hydrate once on mount, regardless
   // of auth. For signed-in users the cloud LOAD_PROFILE runs later and sets the
