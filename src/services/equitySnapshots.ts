@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchOhlc } from './priceService';
+import { STARTING_CASH } from '../constants/featureFlags';
 import type { Holding } from '../store/types';
 
 // ---------------------------------------------------------------------------
@@ -70,12 +71,30 @@ export function downsampleForCloud(points: EquityPoint[], now: number): EquityPo
   return out;
 }
 
+// Strip spurious "$100k dip" points. A snapshot can be recorded while bankroll
+// is still the INITIAL_STATE placeholder (exactly STARTING_CASH) during the
+// launch window before the real profile loads — an artifact that shows as a dip
+// to $100k between real points. Real balances are computed (cash + Σ units×price)
+// and are essentially never EXACTLY STARTING_CASH, so once an account has any
+// point that isn't exactly STARTING_CASH (i.e. it has moved off 100k), every
+// remaining exact-STARTING_CASH point except the earliest (the legit account-
+// creation origin) is the placeholder artifact and is dropped. A genuinely fresh
+// all-cash account (every point exactly STARTING_CASH) is left untouched.
+function sanitizeSnapshots(points: EquityPoint[]): EquityPoint[] {
+  if (points.length < 2) return points;
+  const movedOff = points.some(p => p.v !== STARTING_CASH);
+  if (!movedOff) return points;
+  let earliestT = Infinity;
+  for (const p of points) if (p.t < earliestT) earliestT = p.t;
+  return points.filter(p => p.v !== STARTING_CASH || p.t === earliestT);
+}
+
 export async function loadSnapshots(portfolioId: string): Promise<EquityPoint[]> {
   try {
     const raw = await AsyncStorage.getItem(KEY(portfolioId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? sanitizeSnapshots(parsed) : [];
   } catch {
     return [];
   }
@@ -123,7 +142,9 @@ export async function mergeSnapshots(portfolioId: string, incoming: EquityPoint[
     existing[existing.length - 1]?.t ?? 0,
     incoming[incoming.length - 1]?.t ?? 0,
   ) || Date.now();
-  const merged = downsample([...existing, ...incoming], now);
+  // Sanitize the combined set: `incoming` (e.g. the cloud backup) may carry a
+  // placeholder $100k point that `existing` was already cleaned of on load.
+  const merged = sanitizeSnapshots(downsample([...existing, ...incoming], now));
   await saveSnapshots(portfolioId, merged);
   return merged;
 }

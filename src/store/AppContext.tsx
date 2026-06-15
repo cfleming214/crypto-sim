@@ -1215,6 +1215,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const { status: authStatus } = useAuth();
   const authRef = useRef(authStatus);            // latest auth status for timer/AppState callbacks
   authRef.current = authStatus;
+  const profileLoadedRef = useRef(false);        // mirror of profileLoaded for the ref-closure capture timer
+  profileLoadedRef.current = profileLoaded;
 
   // Wrap dispatch so any state-mutating action that should persist to the
   // cloud sets lastActionRef — the save effect below picks it up. Includes
@@ -1347,6 +1349,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const capture = async () => {
       const s = stateRef.current;
       if (!(s.bankroll > 0)) return;
+      // Don't record the INITIAL_STATE $100k placeholder before real data has
+      // loaded — that produces a spurious dip-to-$100k on the equity chart.
+      // Authenticated: wait for the cloud profile; guest: wait for local hydrate.
+      const ready = (authRef.current === 'authenticated' && profileLoadedRef.current)
+        || (authRef.current === 'unauthenticated' && offlineHydratedRef.current);
+      if (!ready) return;
       const series = await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
       if (s.activePortfolioId === 'main' && Date.now() - lastCloudFlushRef.current >= CLOUD_FLUSH_MS) {
         flushEquityToCloud(series);
@@ -1368,6 +1376,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (seededOriginRef.current) return;
     if (!(state.bankroll > 0)) return;
+    // Wait until the real balance is loaded — otherwise this seeds the chart with
+    // the INITIAL_STATE $100k placeholder (the dip-to-$100k bug). Re-runs when
+    // profileLoaded/hydration flips, so it still fires exactly once when ready.
+    const ready = (authStatus === 'authenticated' && profileLoaded)
+      || (authStatus === 'unauthenticated' && offlineHydratedRef.current);
+    if (!ready) return;
     const portfolioId = state.activePortfolioId;
     const isFreshProfile = !state.trades.some(t => !t.id.startsWith('SEED-'));
     seededOriginRef.current = true;
@@ -1383,7 +1397,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // data and the Live/1H windows never accumulate points.
       await appendSnapshot(portfolioId, { t: Date.now(), v: state.bankroll });
     })();
-  }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt]);
+  }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt, profileLoaded, authStatus]);
 
   // Re-anchor the equity graph on RESET_DEMO. A reset means "fresh $100K
   // portfolio starting now", so we wipe the old curve and seed a new origin at
