@@ -25,6 +25,7 @@ import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
 import { SplashLogo } from '../components/SplashLogo';
 import { OnboardingWalkthrough } from '../screens/OnboardingWalkthrough';
+import { OldWalkthroughScreen } from '../screens/OldWalkthroughScreen';
 import type { NewsArticle } from '../services/newsService';
 import { useAuth } from '../store/AuthContext';
 import { useApp } from '../store/AppContext';
@@ -40,6 +41,7 @@ export type RootStackParamList = {
   CopyTrade: { traderId: string };
   TopTraders: undefined;
   PublicProfile: { handle: string };
+  OldWalkthrough: undefined;
   Replay: { eraId?: string };
   Predict: undefined;
   Notifications: undefined;
@@ -93,6 +95,7 @@ export function RootNavigator() {
       <Stack.Screen name="CopyTrade" component={CopyTradeScreen} />
       <Stack.Screen name="TopTraders" component={TopTradersScreen} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+      <Stack.Screen name="OldWalkthrough" component={OldWalkthroughScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
