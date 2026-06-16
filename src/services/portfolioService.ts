@@ -161,9 +161,14 @@ async function loadJoinedCompetitions(client: any): Promise<string[]> {
   try {
     const ownerId = await getCurrentOwnerId();
     const { data } = await client.models.CompetitionEntry.list();
-    return (data as any[])
+    // De-dupe by competitionId: a user can end up with more than one entry row
+    // for the same contest (e.g. leaving without deleting the cloud entry, then
+    // rejoining). Two ids would render two identical selector pills that both
+    // highlight, with a colliding React key. One id per joined contest.
+    const ids = (data as any[])
       .filter(e => e.isActive !== false && ownedByMe(e, ownerId))
       .map(e => e.competitionId);
+    return [...new Set(ids)];
   } catch {
     return [];
   }

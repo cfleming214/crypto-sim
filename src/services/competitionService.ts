@@ -279,6 +279,24 @@ export async function leaveCompetition(entryId: string): Promise<void> {
   }
 }
 
+// Delete ALL of this user's entries for a competition. Used when leaving from a
+// screen that doesn't carry the entry id, and doubles as a cleanup for the
+// duplicate-entry case (leaving used to leave the cloud row behind, so a
+// rejoin stacked a second one). Owner-auth means only rows the user owns delete.
+export async function leaveCompetitionForUser(competitionId: string, handle: string): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    const { data } = await client.models.CompetitionEntry.list({
+      filter: { competitionId: { eq: competitionId } },
+    });
+    const mine = (data as any[]).filter(e => e.handle === handle);
+    await Promise.all(mine.map(e => client.models.CompetitionEntry.delete({ id: e.id }).catch(() => {})));
+  } catch (e) {
+    console.warn('leaveCompetitionForUser failed:', e);
+  }
+}
+
 export async function fetchCompetitionLeaderboard(
   competitionId: string,
 ): Promise<CompetitionEntry[]> {

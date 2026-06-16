@@ -3,6 +3,7 @@ import { useApp } from '../store/AppContext';
 import {
   joinCompetition as joinCloud,
   leaveCompetition as leaveCloud,
+  leaveCompetitionForUser as leaveCloudByComp,
   fetchCompetitionLeaderboard,
   fetchCompetitions,
   fetchFinishedCompetitions,
@@ -51,8 +52,12 @@ export function useCompetitions() {
 
   const leave = useCallback(async (competitionId: string, entryId?: string) => {
     dispatch({ type: 'LEAVE_TOURNAMENT', tournamentId: competitionId });
+    // Delete the cloud entry too. With an explicit id, delete that row; without
+    // one, remove ALL of the user's entries for the contest (also cleans up any
+    // duplicate rows a past leave-without-delete left behind).
     if (entryId) await leaveCloud(entryId);
-  }, [dispatch]);
+    else await leaveCloudByComp(competitionId, state.user.handle);
+  }, [dispatch, state.user.handle]);
 
   // Manual re-fetch for pull-to-refresh. Only replaces the list when the fetch
   // returns rows, so a transient network error doesn't wipe the contests already

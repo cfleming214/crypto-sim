@@ -525,6 +525,10 @@ function reducer(state: AppState, action: Action): AppState {
       // loaded holdings. activeTournament is a UI-only summary; we clear it
       // because there's no cloud source of truth for it yet.
       const merged = { ...state, ...action.profile };
+      // Defensive: the joined list must hold each contest id at most once, or
+      // the portfolio selector renders duplicate pills (same id → both
+      // highlight, colliding key). De-dupe whatever the cloud load produced.
+      if (merged.joinedTournamentIds) merged.joinedTournamentIds = [...new Set(merged.joinedTournamentIds)];
       // Heal any stranded USDC position by folding it back into cash before we
       // derive anything from holdings/cash (bankroll, nudges, risk all depend
       // on these). The corrected values persist on the next saveProfile.
