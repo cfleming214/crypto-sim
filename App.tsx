@@ -12,6 +12,7 @@ import { AchievementWatcher } from './src/components/AchievementWatcher';
 import { QuestWatcher } from './src/components/QuestWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
 import { PredictionWatcher } from './src/components/PredictionWatcher';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
 
@@ -24,6 +25,7 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
       <SafeAreaProvider>
         <AuthProvider>
           <AppProvider>
@@ -43,6 +45,7 @@ export default function App() {
           </AppProvider>
         </AuthProvider>
       </SafeAreaProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }

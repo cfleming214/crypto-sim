@@ -803,13 +803,20 @@ export function OnboardingWalkthrough() {
       >
         {SLIDES.map((Slide, i) => (
           <SafeAreaView key={i} style={{ width }} edges={['top', 'bottom']}>
-            <ScrollView
-              contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 190, flexGrow: 1 }}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              <Slide active={index === i} />
-            </ScrollView>
+            {/* Only mount the current slide and its neighbours — keeps the
+                initial mount light and isolates any single slide. The fixed
+                width keeps paging offsets correct for the unmounted ones. */}
+            {Math.abs(i - index) <= 1 ? (
+              <ScrollView
+                contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 190, flexGrow: 1 }}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
+                <Slide active={index === i} />
+              </ScrollView>
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
           </SafeAreaView>
         ))}
       </ScrollView>

@@ -76,9 +76,17 @@ export function RootNavigator() {
     const t = setTimeout(() => setMinSplash(false), 1400);
     return () => clearTimeout(t);
   }, []);
+  // Hard timeout so the splash can NEVER hang forever: if auth/onboarding hasn't
+  // resolved within 6s (e.g. a network/session stall), proceed anyway as a guest
+  // rather than leaving the user stuck on the logo.
+  const [splashTimedOut, setSplashTimedOut] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setSplashTimedOut(true), 6000);
+    return () => clearTimeout(t);
+  }, []);
   // Hold the splash until auth AND the onboarding flag are resolved (both finish
   // during the 1.4s splash), so a returning user never flashes the walkthrough.
-  if (status === 'loading' || minSplash || !state.onboardingChecked) return <SplashLogo />;
+  if (!splashTimedOut && (status === 'loading' || minSplash || !state.onboardingChecked)) return <SplashLogo />;
 
   // First run → the 7-slide feature walkthrough; it flips `hasOnboarded` when
   // finished (Start Trading / Skip), which re-renders this into the main app.
