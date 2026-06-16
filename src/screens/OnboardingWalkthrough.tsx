@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   LineChart, Trophy, Copy, ChevronLeft, GraduationCap,
   Flame, TrendingUp, TrendingDown, Zap, Gem, Check, Target,
+  Repeat, Brain, Shield,
 } from 'lucide-react-native';
 import { useApp } from '../store/AppContext';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -623,7 +624,140 @@ function SlidePrediction({ active }: { active: boolean }) {
   );
 }
 
-const SLIDES = [SlideWelcome, SlidePortfolio, SlideMarkets, SlideTrade, SlideAcademy, SlideCompete, SlidePrediction, SlideCopyTrade];
+function SlideRisk({ active }: { active: boolean }) {
+  const Trigger = ({ delay, accent, tag, Icon, label, detail }: { delay: number; accent: string; tag: string; Icon: typeof Shield; label: string; detail: string }) => (
+    <Reveal active={active} delay={delay}>
+      <View style={[uiCard(), { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }]}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${accent}1A`, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon color={accent} size={20} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: C.text, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+          <Text style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>{detail}</Text>
+        </View>
+        <View style={{ backgroundColor: `${accent}1A`, borderWidth: 1, borderColor: `${accent}66`, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Text style={{ color: accent, fontSize: 11, fontWeight: '800' }}>{tag}</Text>
+        </View>
+      </View>
+    </Reveal>
+  );
+  return (
+    <View style={{ flex: 1 }}>
+      <SlideHead active={active} eyebrow="Risk tools" title="Trade with a safety net" sub="Set auto stop-losses and buy-the-dip triggers — they fire for you while the app runs." />
+      <Trigger delay={480} accent={C.down} tag="SELL" Icon={Shield} label="BTC stop-loss · −10%" detail="Auto-sells your position at ≈ $57,600" />
+      <Trigger delay={640} accent={C.green} tag="BUY" Icon={TrendingDown} label="ETH buy the dip · $500" detail="Buys automatically if price falls to $3,100" />
+      <Reveal active={active} delay={1280} from="scale">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: `${C.green}44`, borderRadius: 14, padding: 14, marginTop: 2 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.glow, alignItems: 'center', justifyContent: 'center' }}>
+            <Check color={C.green} size={18} strokeWidth={3} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.text, fontSize: 14, fontWeight: '700' }}>Stop-loss triggered</Text>
+            <Text style={{ color: C.muted, fontSize: 12, marginTop: 1 }}>Sold 0.42 BTC at $57,600 — loss capped, hands-free.</Text>
+          </View>
+        </View>
+      </Reveal>
+    </View>
+  );
+}
+
+function SlideDaily({ active }: { active: boolean }) {
+  const claim = useCountUp(0, 250, active, 1000, 900);
+  const quests = [
+    { Icon: Repeat, title: 'Make 3 trades', sub: '2 of 3 done', xp: 60, done: false },
+    { Icon: Brain, title: 'Make a price prediction', sub: 'Complete', xp: 40, done: true },
+    { Icon: GraduationCap, title: 'Finish an Academy lesson', sub: '0 of 1 done', xp: 50, done: false },
+  ];
+  return (
+    <View style={{ flex: 1 }}>
+      <SlideHead active={active} eyebrow="Daily rewards" title="Show up, stack rewards" sub="Claim a daily bonus, keep your streak alive, and clear quests for XP every single day." />
+      <Reveal active={active} delay={480}>
+        <LinearGradient colors={['#172414', '#0f1c0f']} style={{ borderRadius: 16, borderWidth: 1, borderColor: `${C.green}44`, padding: 16, marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(255,159,64,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+              <Flame color="#FF9F40" size={24} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.text, fontSize: 16, fontWeight: '700' }}>7-day streak</Text>
+              <Text style={{ color: C.muted, fontSize: 12, marginTop: 1 }}>Come back daily to grow your bonus</Text>
+            </View>
+            <View style={{ backgroundColor: C.green, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9 }}>
+              <Text style={{ color: '#04130a', fontWeight: '800', fontSize: 13 }}>Claim +{Math.round(claim)}</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </Reveal>
+      <Reveal active={active} delay={640}>
+        <Text style={{ color: C.muted, fontSize: 12, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Today's quests</Text>
+        <View style={uiCard()}>
+          {quests.map((q, i) => (
+            <View key={q.title} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.border }}>
+              <ListRow
+                active={active} delay={760 + i * 160}
+                left={<View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.glow, alignItems: 'center', justifyContent: 'center' }}><q.Icon color={C.green} size={17} strokeWidth={2} /></View>}
+                title={q.title} sub={q.sub}
+                right={q.done
+                  ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Check color={C.green} size={15} strokeWidth={3} /><Text style={{ color: C.green, fontSize: 11, fontWeight: '700' }}>Done</Text></View>
+                  : <View style={{ backgroundColor: C.glow, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}><Text style={{ color: C.green, fontSize: 11, fontWeight: '700' }}>+{q.xp} XP</Text></View>
+                }
+              />
+            </View>
+          ))}
+        </View>
+      </Reveal>
+    </View>
+  );
+}
+
+function SlideReplay({ active }: { active: boolean }) {
+  const eras = [
+    { title: 'Crypto Winter 2022', sub: 'LUNA · FTX collapse', tag: '−65%', down: true },
+    { title: 'COVID Crash', sub: '5 days · March 2020', tag: '−50%', down: true },
+    { title: '2017 ICO Boom', sub: 'Jul → Dec 2017', tag: '+420%', down: false },
+  ];
+  return (
+    <View style={{ flex: 1 }}>
+      <SlideHead active={active} eyebrow="Time machine" title="Replay crypto history" sub="Trade real past markets at your own speed — the 2021 bull run, the FTX crash, and more." />
+      <Reveal active={active} delay={480}>
+        <View style={uiCard()}>
+          <View style={{ padding: 16, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.text, fontSize: 16, fontWeight: '700' }}>The 2021 Bull Run</Text>
+              <Text style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>Nov 2020 → May 2021 · BTC $13K → $64K</Text>
+            </View>
+            <View style={{ backgroundColor: C.glow, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <Text style={{ color: C.green, fontSize: 11, fontWeight: '800' }}>+393% BTC</Text>
+            </View>
+          </View>
+          <MiniChart active={active} delay={760} height={92} data={[13000, 15500, 18000, 24000, 29000, 33000, 40000, 47000, 42000, 55000, 58000, 61500, 64000]} />
+        </View>
+      </Reveal>
+      <Reveal active={active} delay={640}>
+        <View style={[uiCard(), { marginTop: 12 }]}>
+          {eras.map((e, i) => (
+            <View key={e.title} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.border }}>
+              <ListRow
+                active={active} delay={820 + i * 160}
+                left={
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: e.down ? `${C.down}1A` : C.glow, alignItems: 'center', justifyContent: 'center' }}>
+                    {e.down ? <TrendingDown color={C.down} size={17} /> : <TrendingUp color={C.green} size={17} />}
+                  </View>
+                }
+                title={e.title} sub={e.sub}
+                right={<Text style={{ color: e.down ? C.down : C.green, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{e.tag}</Text>}
+              />
+            </View>
+          ))}
+        </View>
+      </Reveal>
+    </View>
+  );
+}
+
+const SLIDES = [
+  SlideWelcome, SlidePortfolio, SlideMarkets, SlideTrade, SlideRisk,
+  SlideAcademy, SlideDaily, SlideCompete, SlidePrediction, SlideReplay, SlideCopyTrade,
+];
 
 // ── Root carousel ────────────────────────────────────────────────────────────
 
