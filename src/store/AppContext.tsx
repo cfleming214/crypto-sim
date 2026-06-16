@@ -1196,8 +1196,18 @@ function reducer(state: AppState, action: Action): AppState {
         riskScore: computeRiskScore(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses),
       };
     }
-    case 'SET_LEADERBOARD':
-      return { ...state, leaderboard: { ...state.leaderboard, [action.competitionId]: action.entries } };
+    case 'SET_LEADERBOARD': {
+      // De-dupe by handle: a player can hold more than one CompetitionEntry for a
+      // contest (leaving used to drop only the local slice, never the cloud row,
+      // so a rejoin stacked a second entry), which listed their username twice.
+      // Collapse to one row per handle, keeping the richest (highest bankroll).
+      const byHandle = new Map<string, CompetitionEntry>();
+      for (const e of action.entries) {
+        const prev = byHandle.get(e.handle);
+        if (!prev || e.bankroll > prev.bankroll) byHandle.set(e.handle, e);
+      }
+      return { ...state, leaderboard: { ...state.leaderboard, [action.competitionId]: [...byHandle.values()] } };
+    }
     case 'ADD_PRICE_ALERT': {
       const alert: PriceAlert = {
         id: `ALT-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
@@ -1814,6 +1824,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const unsubs: (() => void)[] = [];
     state.joinedTournamentIds.forEach(competitionId => {
       subscribeToLeaderboard(competitionId, entries => {
+        // Ignore empty snapshots. observeQuery emits a partial/empty local-cache
+        // snapshot before it syncs from the cloud; dispatching it would wipe the
+        // populated list (the names vanish). refreshLeaderboard applies the same
+        // guard — a contest with real entries never legitimately reads as empty.
+        if (entries.length === 0) return;
         dispatch({ type: 'SET_LEADERBOARD', competitionId, entries });
       }).then(unsub => unsubs.push(unsub));
     });
