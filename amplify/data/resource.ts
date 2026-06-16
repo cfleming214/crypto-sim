@@ -149,6 +149,52 @@ const schema = a.schema({
     allow.owner(),
   ]),
 
+  // ── Replay contests ───────────────────────────────────────────────────────
+  // A competitive 7-day replay of a real historical window for a single coin.
+  // Fully separate from the live Competition tables/Lambdas so replay trading
+  // never touches live ranking. The current price is a deterministic function of
+  // elapsed real time over `pricesJson` (real 1-minute closes) — every client and
+  // the tick-replay-leaderboard Lambda compute it identically, so the leaderboard
+  // is fair. The seed script writes these (createdBy 'replay-seed').
+  ReplayContest: a.model({
+    eventId: a.string().required(),       // e.g. 'bull-run-2021'
+    eventTitle: a.string().required(),
+    coin: a.string().required(),          // the single tradeable coin, e.g. 'BTC'
+    weekIndex: a.integer(),               // which 7-day window of the era
+    histStartIso: a.string().required(),  // ISO date of prices[0] — drives the date label
+    startAt: a.string().required(),       // ISO real-clock start of the contest
+    endAt: a.string().required(),         // ISO (startAt + 7 days)
+    status: a.string().required(),        // 'open' | 'live' | 'finished'
+    intervalMs: a.integer(),              // ms per price step (60000 = 1 minute)
+    pricesJson: a.string().required(),    // JSON array of ~10,080 real minute closes (~80KB)
+    maxPlayers: a.integer(),
+    prizeXp: a.integer(),
+    lockAfterStart: a.boolean(),
+    entryCount: a.integer(),
+    createdBy: a.string(),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+    allow.owner(),
+  ]),
+
+  // A player's portfolio within a replay contest. Mirrors CompetitionEntry but
+  // in a separate table so replay activity never appears in live contest ranking.
+  ReplayEntry: a.model({
+    replayContestId: a.string().required(),
+    handle: a.string().required(),
+    bankroll: a.float(),
+    pnlPct: a.float(),
+    rank: a.integer(),
+    joinedAt: a.string().required(),
+    isActive: a.boolean(),
+    cash: a.float(),
+    holdingsJson: a.string(),
+    tradesJson: a.string(),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+    allow.owner(),
+  ]),
+
   Mirror: a.model({
     leaderId: a.string().required(),   // owner (userId) of the trader being copied
     followerId: a.string().required(), // userId of the copier

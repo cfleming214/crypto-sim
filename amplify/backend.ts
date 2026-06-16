@@ -16,6 +16,8 @@ import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
+import { tickReplayLeaderboard } from './functions/tick-replay-leaderboard/resource.js';
+import { closeReplayContest } from './functions/close-replay-contest/resource.js';
 import { priceWatch } from './functions/price-watch/resource.js';
 import { notificationDispatcher } from './functions/notification-dispatcher/resource.js';
 import { stripeConnect } from './functions/stripe-connect/resource.js';
@@ -41,6 +43,8 @@ const backend = defineBackend({
   executeTrade,
   runMirror,
   settleSeason,
+  tickReplayLeaderboard,
+  closeReplayContest,
   priceWatch,
   notificationDispatcher,
   stripeConnect,
@@ -69,6 +73,10 @@ const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 // Device push tokens — read by the notification-sending Lambdas; write access
 // is for flipping dead tokens (DeviceNotRegistered) to active:false.
 const pushDeviceTable    = backend.data.resources.tables['PushDevice'];
+// Replay contests — fully separate tables so replay activity never touches live
+// contest/global ranking.
+const replayContestTable = backend.data.resources.tables['ReplayContest'];
+const replayEntryTable   = backend.data.resources.tables['ReplayEntry'];
 
 // --- tickPrices: every minute, refresh Token live prices from CoinGecko once
 // for the whole user base (so devices read prices from our backend, not the
@@ -215,6 +223,38 @@ seasonFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 new Rule(Stack.of(seasonFn), 'SettleSeasonRule', {
   schedule: Schedule.rate(Duration.days(7)),
   targets: [new LambdaFunction(seasonFn)],
+});
+
+// --- tickReplayLeaderboard: runs every 5 minutes ---
+// Reprices each active ReplayEntry against its contest's DETERMINISTIC current
+// price (from the contest's own pricesJson + elapsed time — no Token table) and
+// re-ranks within each replay contest. No tokenTable grant = proof it can't
+// affect live ranking.
+const replayTickFn = backend.tickReplayLeaderboard.resources.lambda;
+replayContestTable.grantReadData(replayTickFn);
+replayEntryTable.grantReadWriteData(replayTickFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+replayTickFn.addEnvironment('REPLAY_CONTEST_TABLE_NAME', replayContestTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+replayTickFn.addEnvironment('REPLAY_ENTRY_TABLE_NAME', replayEntryTable.tableName);
+
+new Rule(Stack.of(replayTickFn), 'TickReplayLeaderboardRule', {
+  schedule: Schedule.rate(Duration.minutes(5)),
+  targets: [new LambdaFunction(replayTickFn)],
+});
+
+// --- closeReplayContest: runs every 10 minutes ---
+const closeReplayFn = backend.closeReplayContest.resources.lambda;
+replayContestTable.grantReadWriteData(closeReplayFn);
+replayEntryTable.grantReadWriteData(closeReplayFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeReplayFn.addEnvironment('REPLAY_CONTEST_TABLE_NAME', replayContestTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeReplayFn.addEnvironment('REPLAY_ENTRY_TABLE_NAME', replayEntryTable.tableName);
+
+new Rule(Stack.of(closeReplayFn), 'CloseReplayContestRule', {
+  schedule: Schedule.rate(Duration.minutes(10)),
+  targets: [new LambdaFunction(closeReplayFn)],
 });
 
 // --- priceWatch: every minute, evaluate persisted alerts/limit orders against

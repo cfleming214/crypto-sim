@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser } from './types';
+import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser, ReplayMeta, ReplayContestSummary } from './types';
+import { replayPriceAt } from '../services/replayPricing';
 import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence } from '../services/portfolioService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
+import { saveReplayEntry, loadReplayEntries, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
@@ -221,6 +223,10 @@ const INITIAL_STATE: AppState = {
   blockedUsers: [],
   activePortfolioId: 'main',
   portfolios: {},
+  joinedReplayIds: [],
+  replayMeta: {},
+  replayPrices: {},
+  replayContests: [],
 };
 
 type Action =
@@ -264,6 +270,10 @@ type Action =
   | { type: 'SET_CLOUD_NUDGES'; nudges: CoachNudge[] }
   | { type: 'SWITCH_PORTFOLIO'; portfolioId: string }
   | { type: 'INIT_CONTEST_PORTFOLIO'; competitionId: string; slice?: PortfolioSlice }
+  | { type: 'JOIN_REPLAY'; replayContestId: string; meta: ReplayMeta }
+  | { type: 'INIT_REPLAY_PORTFOLIO'; replayContestId: string; meta: ReplayMeta; slice?: PortfolioSlice }
+  | { type: 'LEAVE_REPLAY'; replayContestId: string }
+  | { type: 'SET_REPLAY_CONTESTS'; contests: ReplayContestSummary[] }
   | { type: 'CLEAR_USER_DATA' }
   | { type: 'SET_GLOBAL_STATS'; stats: { totalMarketCap: number; change24h: number } }
   | { type: 'SET_FEAR_GREED'; reading: { value: number; label: string } }
@@ -296,13 +306,55 @@ function tickPrices(coins: Coin[]): Coin[] {
   });
 }
 
+// True when the active portfolio is a joined replay contest.
+function isReplayActive(state: AppState): boolean {
+  return !!state.replayMeta[state.activePortfolioId];
+}
+
+// Authoritative price for a symbol in the CURRENT context: when a replay is the
+// active portfolio, its event coin is priced at the deterministic minute close;
+// everything else falls through to live `state.coins`.
+function priceFor(symbol: string, state: AppState): number {
+  const id = state.activePortfolioId;
+  const meta = state.replayMeta[id];
+  if (meta && symbol === meta.coin) return state.replayPrices[id] ?? meta.prices[0] ?? 0;
+  return state.coins.find(c => c.symbol === symbol)?.price ?? 0;
+}
+
+// A coins array with the active replay's event coin overridden to its replay
+// price — pass this anywhere a reducer values holdings (bankroll, risk, nudges)
+// so a replay portfolio is valued at historical, not live, prices. Returns the
+// untouched `state.coins` when no replay is active (no allocation cost).
+function activeCoins(state: AppState): Coin[] {
+  const id = state.activePortfolioId;
+  const meta = state.replayMeta[id];
+  if (!meta) return state.coins;
+  const px = state.replayPrices[id] ?? meta.prices[0] ?? 0;
+  return state.coins.map(c => (c.symbol === meta.coin ? { ...c, price: px } : c));
+}
+
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'TICK_PRICES': {
       const coins = tickPrices(state.coins);
 
+      // Advance the deterministic price of every joined replay contest from
+      // elapsed real time — this is what makes a replay portfolio's value move.
+      const nowTick = Date.now();
+      const nextReplayPrices: Record<string, number> = {};
+      for (const rid of state.joinedReplayIds) {
+        const m = state.replayMeta[rid];
+        if (m) nextReplayPrices[rid] = replayPriceAt(m, nowTick);
+      }
+      let newState = { ...state, coins, replayPrices: nextReplayPrices };
+
+      // Background auto-fills (limit orders / stop-losses / buy-stops / alerts)
+      // pertain to LIVE trading only — never run them against a replay portfolio's
+      // historical prices.
+      let stopsChanged = false;
+      const replayActive = isReplayActive(state);
+      if (!replayActive) {
       // Auto-fill triggered limit orders
-      let newState = { ...state, coins };
       for (const order of state.pendingOrders) {
         const coin = coins.find(c => c.symbol === order.symbol);
         if (!coin) continue;
@@ -367,7 +419,6 @@ function reducer(state: AppState, action: Action): AppState {
 
       // Auto-fire stop-losses: when a held coin falls to avgCost×(1−pct/100),
       // market-sell the WHOLE position. Trade id 'STP-' so EventWatcher toasts it.
-      let stopsChanged = false;
       for (const [sym, pct] of Object.entries(newState.stopLosses)) {
         const coin = newState.coins.find(c => c.symbol === sym);
         const h = newState.holdings.find(x => x.symbol === sym);
@@ -441,15 +492,19 @@ function reducer(state: AppState, action: Action): AppState {
           triggeredAlerts: [...justTriggered, ...newState.triggeredAlerts],
         };
       }
+      } // end live-only auto-fills (skipped while a replay portfolio is active)
 
+      // Value the active portfolio's holdings — replay-aware: a replay portfolio
+      // values its event coin at the current historical price, not the live one.
+      const valCoins = activeCoins(newState);
       const holdingsValue = newState.holdings.reduce((sum, h) => {
-        const coin = newState.coins.find(c => c.symbol === h.symbol);
+        const coin = valCoins.find(c => c.symbol === h.symbol);
         return sum + (coin ? coin.price * h.units : 0);
       }, 0);
       const tickedBankroll = newState.cash + holdingsValue;
       // A fired stop-loss removed a position → refresh the risk score against it.
       const tickedRisk = stopsChanged
-        ? computeRiskScore(newState.holdings, newState.cash, tickedBankroll, newState.coins, newState.stopLosses)
+        ? computeRiskScore(newState.holdings, newState.cash, tickedBankroll, valCoins, newState.stopLosses)
         : newState.riskScore;
       return { ...newState, bankroll: tickedBankroll, riskScore: tickedRisk };
     }
@@ -594,7 +649,13 @@ function reducer(state: AppState, action: Action): AppState {
       // USDC is the cash anchor — "buying" it would just move spendable cash
       // into a holding that can't be spent or tapped. Reject it outright.
       if (action.symbol === 'USDC') return state;
-      const coin = state.coins.find(c => c.symbol === action.symbol);
+      // A replay portfolio may only trade its single event coin.
+      const buyReplay = state.replayMeta[state.activePortfolioId];
+      if (buyReplay && action.symbol !== buyReplay.coin) return state;
+      // Replay-aware prices: when a replay portfolio is active, its event coin is
+      // valued at the deterministic historical minute price, not the live price.
+      const coins = activeCoins(state);
+      const coin = coins.find(c => c.symbol === action.symbol);
       if (!coin || state.cash < action.amount) return state;
       const units = action.amount / coin.price;
       const existing = state.holdings.find(h => h.symbol === action.symbol);
@@ -612,10 +673,10 @@ function reducer(state: AppState, action: Action): AppState {
       };
       const newCash = state.cash - action.amount;
       const newBankroll = newCash + holdings.reduce((s, h) => {
-        const c = state.coins.find(x => x.symbol === h.symbol);
+        const c = coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
-      const newNudges = computeCoachNudges(holdings, newCash, newBankroll, state.coins, state.stopLosses, state.trades.length + 1, state.fearGreed);
+      const newNudges = computeCoachNudges(holdings, newCash, newBankroll, coins, state.stopLosses, state.trades.length + 1, state.fearGreed);
       return {
         ...state,
         cash: newCash,
@@ -623,14 +684,17 @@ function reducer(state: AppState, action: Action): AppState {
         holdings,
         trades: [trade, ...state.trades],
         user: { ...state.user, xp: state.user.xp + 25 },
-        riskScore: computeRiskScore(holdings, newCash, newBankroll, state.coins, state.stopLosses),
+        riskScore: computeRiskScore(holdings, newCash, newBankroll, coins, state.stopLosses),
         coachNudges: newNudges,
         // dismissedNudgeIds preserved — a dismissed conc-BTC stays dismissed
         // even if the BTC concentration is still flagged after this trade.
       };
     }
     case 'SELL': {
-      const coin = state.coins.find(c => c.symbol === action.symbol);
+      const sellReplay = state.replayMeta[state.activePortfolioId];
+      if (sellReplay && action.symbol !== sellReplay.coin) return state;
+      const coins = activeCoins(state);
+      const coin = coins.find(c => c.symbol === action.symbol);
       const holding = state.holdings.find(h => h.symbol === action.symbol);
       if (!coin || !holding) return state;
       const unitsToSell = Math.min(action.amount / coin.price, holding.units);
@@ -648,12 +712,12 @@ function reducer(state: AppState, action: Action): AppState {
       };
       const newCashSell = state.cash + proceeds;
       const newBankrollSell = newCashSell + holdings.reduce((s, h) => {
-        const c = state.coins.find(x => x.symbol === h.symbol);
+        const c = coins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
       const newStopLosses = { ...state.stopLosses };
       if (unitsToSell >= holding.units) delete newStopLosses[action.symbol];
-      const sellNudges = computeCoachNudges(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses, state.trades.length + 1, state.fearGreed);
+      const sellNudges = computeCoachNudges(holdings, newCashSell, newBankrollSell, coins, newStopLosses, state.trades.length + 1, state.fearGreed);
       return {
         ...state,
         cash: newCashSell,
@@ -662,7 +726,7 @@ function reducer(state: AppState, action: Action): AppState {
         trades: [trade, ...state.trades],
         stopLosses: newStopLosses,
         user: { ...state.user, xp: state.user.xp + sellXpEarned },
-        riskScore: computeRiskScore(holdings, newCashSell, newBankrollSell, state.coins, newStopLosses),
+        riskScore: computeRiskScore(holdings, newCashSell, newBankrollSell, coins, newStopLosses),
         coachNudges: sellNudges,
         // dismissedNudgeIds preserved — see BUY for rationale.
       };
@@ -1141,6 +1205,55 @@ function reducer(state: AppState, action: Action): AppState {
         portfolios: { ...state.portfolios, [action.competitionId]: slice },
       };
     }
+    case 'SET_REPLAY_CONTESTS':
+      return { ...state, replayContests: action.contests };
+    case 'JOIN_REPLAY': {
+      const id = action.replayContestId;
+      if (state.joinedReplayIds.includes(id)) return state;
+      // Spawn a fresh $100K portfolio (reuses the portfolios map so the selector
+      // pill + equity capture work) and stash the replay config + opening price.
+      return {
+        ...state,
+        joinedReplayIds: [...state.joinedReplayIds, id],
+        portfolios: state.portfolios[id] ? state.portfolios : { ...state.portfolios, [id]: { cash: STARTING_CASH, holdings: [], trades: [] } },
+        replayMeta: { ...state.replayMeta, [id]: action.meta },
+        replayPrices: { ...state.replayPrices, [id]: replayPriceAt(action.meta, Date.now()) },
+      };
+    }
+    case 'INIT_REPLAY_PORTFOLIO': {
+      // Login restore from a ReplayEntry row + its ReplayContest config.
+      const id = action.replayContestId;
+      const slice = action.slice ?? { cash: STARTING_CASH, holdings: [], trades: [] };
+      return {
+        ...state,
+        joinedReplayIds: state.joinedReplayIds.includes(id) ? state.joinedReplayIds : [...state.joinedReplayIds, id],
+        portfolios: { ...state.portfolios, [id]: slice },
+        replayMeta: { ...state.replayMeta, [id]: action.meta },
+        replayPrices: { ...state.replayPrices, [id]: replayPriceAt(action.meta, Date.now()) },
+      };
+    }
+    case 'LEAVE_REPLAY': {
+      const id = action.replayContestId;
+      const { [id]: _removedSlice, ...remainingPortfolios } = state.portfolios;
+      const { [id]: _removedMeta, ...remainingMeta } = state.replayMeta;
+      const { [id]: _removedPrice, ...remainingPrices } = state.replayPrices;
+      let nextActive = state.activePortfolioId;
+      let nextCash = state.cash, nextHoldings = state.holdings, nextTrades = state.trades;
+      if (state.activePortfolioId === id) {
+        nextActive = 'main';
+        const main = remainingPortfolios['main'] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
+        nextCash = main.cash; nextHoldings = main.holdings; nextTrades = main.trades;
+      }
+      return {
+        ...state,
+        joinedReplayIds: state.joinedReplayIds.filter(x => x !== id),
+        portfolios: remainingPortfolios,
+        replayMeta: remainingMeta,
+        replayPrices: remainingPrices,
+        activePortfolioId: nextActive,
+        cash: nextCash, holdings: nextHoldings, trades: nextTrades,
+      };
+    }
     case 'CLEAR_USER_DATA': {
       // Reset every per-user field back to INITIAL_STATE so a new user
       // signing in doesn't inherit the previous user's portfolios,
@@ -1151,6 +1264,7 @@ function reducer(state: AppState, action: Action): AppState {
         coins:        state.coins,
         competitions: state.competitions,
         finishedCompetitions: state.finishedCompetitions,
+        replayContests: state.replayContests,   // shared global list, like competitions
         // Blocked users are per-device, not per-account — a sign-out shouldn't
         // un-hide traders this device chose to block. Preserved across the wipe;
         // only account deletion purges the 'blocked.v1' store.
@@ -1176,8 +1290,13 @@ function reducer(state: AppState, action: Action): AppState {
       // coins back into cash, same as LOAD_PROFILE).
       const { holdings: targetHoldings, cash: targetCash } = healHoldings(rawTarget.holdings, rawTarget.cash, state.coins);
       const target = { ...rawTarget, holdings: targetHoldings, cash: targetCash };
+      // If switching INTO a replay, value its event coin at the historical price.
+      const targetMeta = state.replayMeta[action.portfolioId];
+      const switchCoins = targetMeta
+        ? state.coins.map(c => (c.symbol === targetMeta.coin ? { ...c, price: replayPriceAt(targetMeta, Date.now()) } : c))
+        : state.coins;
       const holdingsValue = target.holdings.reduce((s, h) => {
-        const c = state.coins.find(x => x.symbol === h.symbol);
+        const c = switchCoins.find(x => x.symbol === h.symbol);
         return s + (c ? c.price * h.units : 0);
       }, 0);
       return {
@@ -1192,8 +1311,8 @@ function reducer(state: AppState, action: Action): AppState {
         // relevant. dismissedNudgeIds preserved across switches — nudge ids
         // are symbolic (e.g. conc-BTC), so a dismiss on one portfolio still
         // suppresses the same condition if it surfaces on another.
-        coachNudges: computeCoachNudges(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses, target.trades.length, state.fearGreed),
-        riskScore: computeRiskScore(target.holdings, target.cash, target.cash + holdingsValue, state.coins, state.stopLosses),
+        coachNudges: computeCoachNudges(target.holdings, target.cash, target.cash + holdingsValue, switchCoins, state.stopLosses, target.trades.length, state.fearGreed),
+        riskScore: computeRiskScore(target.holdings, target.cash, target.cash + holdingsValue, switchCoins, state.stopLosses),
       };
     }
     case 'SET_LEADERBOARD': {
@@ -1327,29 +1446,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Persist the outgoing portfolio before switching, so the snapshot lands
     // in the right source (UserProfile for 'main', CompetitionEntry otherwise).
     if (action.type === 'SWITCH_PORTFOLIO' && authStatus === 'authenticated' && action.portfolioId !== state.activePortfolioId) {
-      if (state.activePortfolioId === 'main') {
-        saveProfile(state);
-      } else {
-        const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
-        saveContestPortfolio(
-          state.activePortfolioId,
-          { cash: state.cash, holdings: state.holdings, trades: state.trades },
-          state.bankroll,
-          pnlPct,
-        );
-      }
-      // Heal the contest we're switching INTO: push its true bankroll to the
-      // cloud entry now, before any trade. A freshly-joined contest reports
-      // $100K / 0% — correcting any entry that was (historically) enrolled at
-      // the user's personal balance instead of STARTING_CASH.
+      const outId = state.activePortfolioId;
+      const outSlice = { cash: state.cash, holdings: state.holdings, trades: state.trades };
+      const outPnl = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
+      if (outId === 'main') saveProfile(state);
+      else if (state.replayMeta[outId]) saveReplayEntry(outId, outSlice, state.bankroll, outPnl);
+      else saveContestPortfolio(outId, outSlice, state.bankroll, outPnl);
+      // Heal the contest/replay we're switching INTO: push its true bankroll to
+      // the cloud entry now, before any trade (a fresh join reports $100K / 0%).
       if (action.portfolioId !== 'main') {
+        const inMeta = state.replayMeta[action.portfolioId];
+        const inPrice = inMeta ? replayPriceAt(inMeta, Date.now()) : 0;
         const incoming = state.portfolios[action.portfolioId] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
         const inBankroll = incoming.cash + incoming.holdings.reduce((s, h) => {
+          if (inMeta && h.symbol === inMeta.coin) return s + inPrice * h.units;
           const c = state.coins.find(x => x.symbol === h.symbol);
           return s + (c ? c.price * h.units : 0);
         }, 0);
         const inPnl = ((inBankroll - STARTING_CASH) / STARTING_CASH) * 100;
-        saveContestPortfolio(action.portfolioId, incoming, inBankroll, inPnl);
+        if (inMeta) saveReplayEntry(action.portfolioId, incoming, inBankroll, inPnl);
+        else saveContestPortfolio(action.portfolioId, incoming, inBankroll, inPnl);
       }
     }
     if (SAVE_ACTIONS.includes(action.type)) {
@@ -1615,11 +1731,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetchFinishedCompetitions().then(competitions => {
       if (competitions.length) dispatch({ type: 'SET_FINISHED_COMPETITIONS', competitions });
     });
+    fetchReplayContests().then(contests => {
+      if (contests.length) dispatch({ type: 'SET_REPLAY_CONTESTS', contests });
+    });
 
     // Restore per-contest portfolios from CompetitionEntry rows
     loadContestPortfolios().then(stash => {
       for (const [competitionId, slice] of Object.entries(stash)) {
         dispatch({ type: 'INIT_CONTEST_PORTFOLIO', competitionId, slice });
+      }
+    });
+
+    // Restore joined replay portfolios from ReplayEntry rows (each joined to its
+    // ReplayContest config so the deterministic price can be computed locally).
+    loadReplayEntries().then(rows => {
+      for (const r of rows) {
+        dispatch({ type: 'INIT_REPLAY_PORTFOLIO', replayContestId: r.id, meta: r.meta, slice: r.slice });
       }
     });
 
@@ -1835,6 +1962,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => unsubs.forEach(u => u());
   }, [authStatus, state.joinedTournamentIds]);
 
+  // Auth-gated leaderboard subscriptions for joined REPLAY contests (ReplayEntry).
+  // Reuses the same SET_LEADERBOARD map (replay ids never collide with contest ids).
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    const unsubs: (() => void)[] = [];
+    state.joinedReplayIds.forEach(replayContestId => {
+      subscribeToReplayLeaderboard(replayContestId, entries => {
+        if (entries.length === 0) return;
+        dispatch({ type: 'SET_LEADERBOARD', competitionId: replayContestId, entries });
+      }).then(unsub => unsubs.push(unsub));
+    });
+    return () => unsubs.forEach(u => u());
+  }, [authStatus, state.joinedReplayIds]);
+
   // Sync portfolio to cloud after each trade
   useEffect(() => {
     const action = lastActionRef.current;
@@ -1860,16 +2001,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
-      saveContestPortfolio(
-        state.activePortfolioId,
-        { cash: state.cash, holdings: state.holdings, trades: state.trades },
-        state.bankroll,
-        pnlPct,
-      );
+      const slice = { cash: state.cash, holdings: state.holdings, trades: state.trades };
+      // Replay portfolios persist to ReplayEntry (separate table); contests to
+      // CompetitionEntry. The tradesJson carries the ledger, so no saveTrade.
+      if (state.replayMeta[state.activePortfolioId]) {
+        saveReplayEntry(state.activePortfolioId, slice, state.bankroll, pnlPct);
+      } else {
+        saveContestPortfolio(state.activePortfolioId, slice, state.bankroll, pnlPct);
+      }
     }
   }, [saveTick, authStatus, profileLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getCoin = (symbol: string) => state.coins.find(c => c.symbol === symbol);
+  // Replay-aware: when a replay portfolio is active, its event coin reports the
+  // current historical price (so the holdings list / donut value it correctly).
+  const getCoin = (symbol: string) => {
+    const c = state.coins.find(x => x.symbol === symbol);
+    const meta = state.replayMeta[state.activePortfolioId];
+    if (c && meta && symbol === meta.coin) {
+      return { ...c, price: state.replayPrices[state.activePortfolioId] ?? meta.prices[0] ?? c.price };
+    }
+    return c;
+  };
 
   const getHolding = (symbol: string) => {
     const h = state.holdings.find(h => h.symbol === symbol);

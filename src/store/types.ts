@@ -126,6 +126,36 @@ export interface PortfolioSlice {
   trades: Trade[];
 }
 
+// A joined replay contest's immutable config, kept in state so the deterministic
+// price can be computed locally each tick. `prices` is the real 1-minute close
+// series; the current price is prices[floor((now-startAt)/intervalMs)].
+export interface ReplayMeta {
+  coin: string;
+  histStartIso: string;   // ISO date of prices[0] — drives the "(Month D, YYYY)" label
+  startAt: number;        // ms epoch the contest clock starts (real time)
+  endAt: number;          // startAt + 7 days
+  intervalMs: number;     // ms per step (60000)
+  prices: number[];       // real minute closes, oldest → newest
+}
+
+// Lightweight replay-contest row for the Compete browse list (no heavy pricesJson).
+export interface ReplayContestSummary {
+  id: string;
+  eventId: string;
+  eventTitle: string;
+  coin: string;
+  weekIndex: number;
+  histStartIso: string;
+  startAt: number;
+  endAt: number;
+  status: 'open' | 'live' | 'finished';
+  intervalMs: number;
+  maxPlayers: number;
+  prizeXp: number;
+  lockAfterStart: boolean;
+  entryCount: number;
+}
+
 export interface AppState {
   user: {
     handle: string;
@@ -152,6 +182,13 @@ export interface AppState {
   // stashed in `portfolios` until switched back to.
   activePortfolioId: string;
   portfolios: Record<string, PortfolioSlice>;
+  // Replay contests the user has joined. The portfolio slice lives in
+  // `portfolios[replayContestId]` (so the selector pill + equity capture work);
+  // these hold the replay-specific config + deterministic current price.
+  joinedReplayIds: string[];
+  replayMeta: Record<string, ReplayMeta>;
+  replayPrices: Record<string, number>;   // authoritative minute-close price per joined replay
+  replayContests: ReplayContestSummary[]; // browsable list for the Compete → Replay tab
   activeTournament: Tournament | null;
   competitions: Competition[];
   // Ended contests, moved server-side into the FinishedCompetition table. Shown

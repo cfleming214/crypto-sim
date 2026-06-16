@@ -11,6 +11,8 @@ import { ShakeText } from './ShakeText';
 interface ScreenShellProps {
   eyebrow?: string;
   title?: string;
+  /** Optional line rendered centered just under the title (e.g. a replay's date). */
+  subtitle?: string;
   rightActions?: React.ReactNode;
   children?: React.ReactNode;
   scrollable?: boolean;
@@ -32,6 +34,7 @@ interface ScreenShellProps {
 export function ScreenShell({
   eyebrow,
   title,
+  subtitle,
   rightActions,
   children,
   scrollable = true,
@@ -89,6 +92,12 @@ export function ScreenShell({
           {rightActions && <View style={styles.rightActions}>{rightActions}</View>}
         </View>
       )}
+
+      {subtitle ? (
+        <Text style={{ textAlign: 'center', color: brand ? `${colors.brandOn}CC` : colors.ink3, fontSize: 13, fontWeight: '600', marginTop: -6, marginBottom: 4, fontVariant: ['tabular-nums'] }}>
+          {subtitle}
+        </Text>
+      ) : null}
 
       {scrollable ? (
         <ScrollView

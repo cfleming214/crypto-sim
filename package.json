@@ -73,6 +73,7 @@
     "test:e2e:cleanup": "node scripts/cleanup-test-data.mjs",
     "test:e2e:lint": "node scripts/lint-e2e.mjs",
     "fetch:replay": "node scripts/fetch-replay-data.mjs",
+    "seed:replays": "node scripts/seed-replay-contests.mjs",
     "seed:tokens": "node scripts/seed-tokens.mjs",
     "seed:contests": "node scripts/seed-live-contest.mjs",
     "seed:contests:clean": "node scripts/seed-contests-clean.mjs",

@@ -16,6 +16,7 @@ import { levelForXp } from '../services/gamification';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
+import { useReplayContests } from '../hooks/useReplayContests';
 import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
@@ -67,6 +68,19 @@ export function CompeteScreen() {
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const { getLive, isJoined, join, timeRemaining, refresh } = useCompetitions();
+  const { join: joinReplay, isJoined: isReplayJoined } = useReplayContests();
+  // Enter a replay contest: join it (creates the $100K portfolio + cloud entry)
+  // if needed, then switch into its portfolio and jump to the Portfolio tab.
+  const openReplay = async (id: string) => {
+    const summary = state.replayContests.find(c => c.id === id);
+    if (summary && (summary.status === 'finished' || Date.now() >= summary.endAt)) return;
+    if (!isReplayJoined(id)) {
+      const ok = await joinReplay(id);
+      if (!ok) { Alert.alert('Could not join', 'This replay is no longer available.'); return; }
+    }
+    dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: id });
+    nav.navigate('MainTabs', { screen: 'Portfolio' });
+  };
   const { emailVerified, status, userId, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
@@ -528,7 +542,57 @@ export function CompeteScreen() {
         })}
       </ScrollView>
 
-      {listComps.length === 0 ? (
+      {contestTab === 'Replay' ? (() => {
+        const replays = state.replayContests.filter(r => r.status !== 'finished').sort((a, b) => a.startAt - b.startAt);
+        if (replays.length === 0) {
+          return (
+            <Card variant="tinted">
+              <Text style={{ color: colors.ink3, fontSize: 13 }}>No replay contests right now — check back soon.</Text>
+            </Card>
+          );
+        }
+        return (
+          <View style={{ gap: 10 }}>
+            {replays.map(r => {
+              const joined = isReplayJoined(r.id);
+              const starts = r.startAt > Date.now();
+              const dateLabel = new Date(r.histStartIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              return (
+                <PressableScale key={r.id} testID={`replay-card-${r.id}`} onPress={() => openReplay(r.id)}>
+                  <Card variant="compact" style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Replay · {r.coin}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {r.status === 'live' && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.down }} />
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>Live</Text>
+                          </View>
+                        )}
+                        {joined && <Chip variant="brand" style={{ paddingVertical: 1, paddingHorizontal: 5 }}>Joined</Chip>}
+                      </View>
+                    </View>
+                    <Text style={{ fontWeight: '600', color: colors.ink }}>{r.eventTitle}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
+                      <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                        {starts ? `Starts ${startsInLabel(r.startAt)}` : '7-day replay'} · from {dateLabel}
+                        {r.lockAfterStart ? (starts ? ' · 🔒 locks at start' : ' · 🔒 locked') : ''}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
+                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{r.entryCount.toLocaleString()} / {r.maxPlayers.toLocaleString()} players</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{r.prizeXp.toLocaleString()} XP</Text>
+                    </View>
+                  </Card>
+                </PressableScale>
+              );
+            })}
+          </View>
+        );
+      })() : listComps.length === 0 ? (
         <Card variant="tinted">
           <Text style={{ color: colors.ink3, fontSize: 13 }}>
             No {contestTab === 'All' ? '' : `${contestTab.toLowerCase()} `}contests right now — check back soon.

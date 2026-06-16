@@ -485,7 +485,10 @@ export function TradeScreen() {
     setActiveIndicators(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
   };
 
-  const symbol = state.tradeSymbol;
+  // A replay portfolio can only trade its single event coin — force it and hide
+  // the picker below. getCoin is replay-aware, so `coin.price` is the historical price.
+  const replayActiveMeta = state.replayMeta[state.activePortfolioId];
+  const symbol = replayActiveMeta ? replayActiveMeta.coin : state.tradeSymbol;
   const watchlisted = state.watchlist.includes(symbol);
   const coin = getCoin(symbol);
 
@@ -706,24 +709,27 @@ export function TradeScreen() {
         <View style={{ flex: 1, gap: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 8 }}>
           {/* Coin selector. flexGrow:0 stops the horizontal ScrollView from
               stretching to fill the flex:1 column (which left a big gap between
-              the chips and the price); it now hugs the chips' height. */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, flexGrow: 0 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
-              {state.coins.filter(c => c.symbol !== 'USDC').map(c => (
-                <TouchableOpacity
-                  key={c.symbol}
-                  onPress={() => dispatch({ type: 'SET_TRADE_SYMBOL', symbol: c.symbol })}
-                >
-                  <Chip
-                    variant={c.symbol === symbol ? 'brand' : 'outline'}
-                    style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
+              the chips and the price); it now hugs the chips' height. Hidden in a
+              replay — only the event coin trades. */}
+          {!replayActiveMeta && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, flexGrow: 0 }}>
+              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
+                {state.coins.filter(c => c.symbol !== 'USDC').map(c => (
+                  <TouchableOpacity
+                    key={c.symbol}
+                    onPress={() => dispatch({ type: 'SET_TRADE_SYMBOL', symbol: c.symbol })}
                   >
-                    {c.symbol}
-                  </Chip>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+                    <Chip
+                      variant={c.symbol === symbol ? 'brand' : 'outline'}
+                      style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
+                    >
+                      {c.symbol}
+                    </Chip>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
 
           {/* Price (below the coin selectors) — jitters on each price update */}
           <View>
