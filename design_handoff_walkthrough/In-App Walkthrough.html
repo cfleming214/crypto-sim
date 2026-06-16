@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto Comp — In-App Walkthrough</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c0a;--surface:#0f1410;--card:#131a14;--border:#1e2820;
+  --grn:#2BF06A;--grn2:#13D257;--glow:rgba(43,240,106,0.16);
+  --txt:#e8ede9;--mut:#7a887c;--red:#FF4D6A;
+  --font:'Geist',system-ui,sans-serif;
+}
+html,body{
+  height:100%;
+  background:radial-gradient(ellipse 140% 60% at 50% -5%,rgba(43,240,106,.11),transparent 55%),#050807;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font);-webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+
+/* ── Phone ── */
+.phone{
+  width:390px;height:844px;background:var(--bg);
+  border-radius:54px;border:9px solid #18211a;
+  box-shadow:0 0 0 1.5px #0c120e,0 80px 160px rgba(0,0,0,.9),
+             inset 0 0 0 1px rgba(255,255,255,.04);
+  position:relative;overflow:hidden;transform-origin:center;
+}
+.phone::before{
+  content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  width:118px;height:34px;background:#07100a;border-radius:18px;z-index:200;
+}
+
+/* ── Status bar ── */
+.sbar{
+  position:absolute;top:0;left:0;right:0;height:56px;
+  display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 28px 9px;z-index:150;font-size:13px;font-weight:600;
+  color:var(--txt);pointer-events:none;
+}
+.sbar-icons{display:flex;gap:5px;align-items:center;}
+
+/* ── Track & slides ── */
+.track{
+  position:absolute;top:0;left:0;bottom:0;
+  display:flex;width:700%;
+  will-change:transform;
+  transition:transform .42s cubic-bezier(.4,0,.2,1);
+}
+.slide{width:calc(100%/7);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;}
+
+/* ── Nav overlay ── */
+.nav{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:18px 28px 42px;
+  display:flex;flex-direction:column;align-items:center;gap:13px;
+  z-index:100;
+}
+.nav::before{
+  content:'';position:absolute;inset:-70px 0 0 0;
+  background:linear-gradient(0deg,var(--bg) 52%,transparent);
+  pointer-events:none;
+}
+.dots{display:flex;gap:7px;align-items:center;position:relative;z-index:1;}
+.dot{
+  width:6px;height:6px;border-radius:3px;
+  background:rgba(255,255,255,.18);
+  transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+.dot.on{width:26px;background:var(--grn);}
+.btn-next{
+  width:100%;height:52px;
+  background:linear-gradient(180deg,#2BF06A,#13D257);
+  border:none;border-radius:15px;
+  font-family:var(--font);font-size:16px;font-weight:700;
+  color:#03120a;cursor:pointer;letter-spacing:-.02em;
+  box-shadow:0 4px 28px rgba(43,240,106,.32);
+  transition:transform .1s,filter .1s;
+  position:relative;z-index:1;
+}
+.btn-row{display:flex;gap:10px;position:relative;z-index:1;width:100%;}
+.btn-back{
+  height:52px;width:52px;flex-shrink:0;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+  border-radius:15px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .15s;
+}
+.btn-back:active{background:rgba(255,255,255,.14);}
+.btn-back svg{width:20px;height:20px;stroke:var(--txt);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;}
+.btn-back.hidden{opacity:0;pointer-events:none;}
+.btn-skip{
+  background:none;border:none;font-family:var(--font);
+  font-size:14px;color:var(--mut);cursor:pointer;padding:4px;
+  position:relative;z-index:1;transition:opacity .2s;
+}
+
+/* ── Shared content ── */
+.scontent{flex:1;padding:64px 24px 172px;display:flex;flex-direction:column;gap:14px;}
+.ew{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--grn);}
+.ttl{font-size:25px;font-weight:700;letter-spacing:-.03em;line-height:1.2;color:var(--txt);}
+.sub{font-size:14px;color:var(--mut);line-height:1.55;}
+.ui-card{background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;}
+.up{color:var(--grn);}.dn{color:var(--red);}
+
+/* ── Slide 1 ── */
+.s1{
+  background:var(--bg);align-items:center;justify-content:center;
+  padding:100px 28px 180px;gap:0;
+}
+.s1::after{
+  content:'';position:absolute;top:28%;left:50%;transform:translate(-50%,-50%);
+  width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(43,240,106,.13),transparent 70%);
+  pointer-events:none;
+}
+.s1-icon{width:90px;height:90px;margin-bottom:26px;position:relative;z-index:1;}
+.s1-name{font-size:30px;font-weight:700;letter-spacing:-.04em;color:var(--txt);text-align:center;margin-bottom:8px;position:relative;z-index:1;}
+.s1-name span{font-weight:500;opacity:.85;}
+.s1-tag{font-size:21px;font-weight:700;letter-spacing:-.02em;color:var(--grn);text-align:center;margin-bottom:34px;position:relative;z-index:1;}
+.s1-feats{display:flex;flex-direction:column;gap:10px;width:100%;position:relative;z-index:1;}
+.s1-feat{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--border);border-radius:13px;padding:13px 15px;}
+.s1-ic{width:34px;height:34px;border-radius:9px;background:var(--glow);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--grn);}
+.s1-ft{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+.s1-fl{font-size:13.5px;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.s1-fs{font-size:12px;color:var(--mut);}
+
+/* ── Slide 2: Portfolio ── */
+.portfolio-top{padding:18px 18px 10px;}
+.p-lbl{font-size:11px;color:var(--mut);margin-bottom:3px;}
+.p-num{font-size:30px;font-weight:700;letter-spacing:-.04em;color:var(--txt);font-variant-numeric:tabular-nums;}
+.p-chg{font-size:13px;font-weight:600;color:var(--grn);margin-top:3px;}
+.chart-wrap{height:96px;position:relative;overflow:hidden;}
+.chart-wrap svg{width:100%;height:100%;display:block;}
+.holdings{display:flex;flex-direction:column;}
+.hrow{display:flex;align-items:center;gap:11px;padding:10px 18px;border-top:1px solid var(--border);}
+.cglyph{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.hinfo{flex:1;}
+.hsym{font-size:14px;font-weight:600;color:var(--txt);}
+.hunits{font-size:11px;color:var(--mut);margin-top:1px;}
+.hval{text-align:right;}
+.hprice{font-size:14px;font-weight:600;color:var(--txt);font-variant-numeric:tabular-nums;}
+.hchg{font-size:11px;margin-top:1px;font-variant-numeric:tabular-nums;}
+
+/* ── Slide 3: Markets ── */
+.mstats{display:flex;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.mstat{flex:1;padding:13px 14px;}
+.mstat+.mstat{border-left:1px solid var(--border);}
+.mstat-lbl{font-size:11px;color:var(--mut);}
+.mstat-val{font-size:17px;font-weight:700;color:var(--txt);margin-top:2px;}
+.mstat-chg{font-size:11px;margin-top:1px;}
+.coin-list{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.crow{display:flex;align-items:center;gap:11px;padding:11px 15px;}
+.crow+.crow{border-top:1px solid var(--border);}
+.cinfo{flex:1;}
+.csym{font-size:14px;font-weight:600;color:var(--txt);}
+.cname{font-size:11px;color:var(--mut);margin-top:1px;}
+.cright{text-align:right;}
+.cprice{font-size:14px;font-weight:600;color:var(--txt);font-variant-numeric:tabular-nums;}
+.cchg{font-size:11px;font-weight:600;margin-top:1px;font-variant-numeric:tabular-nums;}
+
+/* ── Slide 4: Trade ── */
+.tprice{display:flex;flex-direction:column;gap:4px;}
+.tprice-ticker{font-size:13px;color:var(--mut);font-weight:500;}
+.tprice-num{font-size:34px;font-weight:700;letter-spacing:-.04em;color:var(--txt);font-variant-numeric:tabular-nums;}
+.tprice-row{display:flex;align-items:center;gap:8px;}
+.chip-up{background:rgba(43,240,106,.14);color:var(--grn);font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;}
+.cchart{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;height:108px;}
+.cchart svg{width:100%;height:100%;display:block;}
+.opanel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px;display:flex;flex-direction:column;gap:11px;position:relative;overflow:hidden;}
+.otabs{display:flex;background:rgba(255,255,255,.06);border-radius:9px;padding:3px;gap:2px;}
+.otab{flex:1;text-align:center;padding:7px;font-size:13px;font-weight:600;border-radius:7px;color:var(--mut);}
+.otab.on{background:var(--surface);color:var(--txt);}
+.orow{display:flex;justify-content:space-between;align-items:center;}
+.olbl{font-size:13px;color:var(--mut);}
+.oval{font-size:13px;font-weight:600;color:var(--txt);font-variant-numeric:tabular-nums;}
+.tbuy{
+  height:46px;border:none;border-radius:12px;width:100%;
+  background:rgba(43,240,106,.18);color:var(--grn);
+  border:1px solid rgba(43,240,106,.28);
+  font-family:var(--font);font-size:15px;font-weight:700;cursor:default;
+}
+.tsuccess{
+  position:absolute;inset:0;background:rgba(8,12,10,.94);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  border-radius:14px;
+}
+.sc-ring{width:56px;height:56px;border-radius:50%;border:2px solid var(--grn);background:rgba(43,240,106,.12);display:flex;align-items:center;justify-content:center;}
+.sc-ring svg{width:26px;height:26px;}
+.sc-lbl{font-size:16px;font-weight:700;color:var(--txt);}
+.sc-sub{font-size:12px;color:var(--mut);}
+/* tsuccess hidden below panel by default via transform */
+.tsuccess{transform:translateY(110%);}
+
+/* ── Slide 5: Compete ── */
+.xpcard{background:var(--grn);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;}
+.xp-league{font-size:11px;font-weight:600;color:rgba(4,19,10,.6);letter-spacing:.1em;text-transform:uppercase;}
+.xp-val{font-size:26px;font-weight:700;color:#04130a;letter-spacing:-.03em;}
+.xp-track{height:7px;background:rgba(4,19,10,.15);border-radius:99px;overflow:hidden;}
+.xp-fill{height:100%;background:rgba(4,19,10,.45);border-radius:99px;width:0;}
+.xp-rankrow{display:flex;justify-content:space-between;align-items:center;}
+.xp-rlbl{font-size:12px;color:rgba(4,19,10,.6);}
+.xp-rval{font-size:15px;font-weight:700;color:#04130a;font-variant-numeric:tabular-nums;}
+.bcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
+.blive{display:flex;align-items:center;gap:6px;}
+.bldot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:shimmer 1.4s ease infinite;}
+.bllbl{font-size:11px;font-weight:600;color:var(--red);letter-spacing:.08em;}
+.bname{font-size:18px;font-weight:700;color:var(--txt);}
+.bsub{font-size:12px;color:var(--mut);}
+.bstats{display:flex;justify-content:space-between;margin-top:4px;}
+.bstat-lbl{font-size:11px;color:var(--mut);}
+.bstat-val{font-size:14px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums;}
+.pbadge{
+  align-self:flex-start;
+  background:linear-gradient(135deg,rgba(255,200,50,.14),rgba(255,200,50,.04));
+  border:1px solid rgba(255,200,50,.22);border-radius:12px;
+  padding:11px 14px;display:flex;align-items:center;gap:11px;
+}
+.pbadge-ico{font-size:22px;}
+.pbadge-lbl{font-size:12px;color:var(--mut);}
+.pbadge-val{font-size:19px;font-weight:700;color:#FFD93D;letter-spacing:-.02em;}
+
+/* ── Slide 6: Copy Trade ── */
+.trow{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;}
+.tav{width:42px;height:42px;border-radius:50%;background:rgba(98,104,143,.2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--txt);flex-shrink:0;}
+.tname{font-size:15px;font-weight:700;color:var(--txt);}
+.tmeta{font-size:12px;color:var(--mut);margin-top:2px;}
+.diam{margin-left:auto;background:rgba(43,240,106,.12);color:var(--grn);font-size:11px;font-weight:700;padding:4px 9px;border-radius:99px;border:1px solid rgba(43,240,106,.2);}
+.tstats{display:flex;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.tstat{flex:1;padding:12px;display:flex;flex-direction:column;align-items:center;}
+.tstat+.tstat{border-left:1px solid var(--border);}
+.tstat-lbl{font-size:11px;color:var(--mut);}
+.tstat-val{font-size:16px;font-weight:700;margin-top:2px;}
+.pnlchart{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;height:88px;}
+.pnlchart svg{width:100%;height:100%;display:block;}
+.mbtn{
+  width:100%;height:50px;border:none;border-radius:14px;
+  background:linear-gradient(180deg,#2BF06A,#13D257);
+  font-family:var(--font);font-size:16px;font-weight:700;
+  color:#04130a;cursor:default;letter-spacing:-.02em;
+}
+
+/* ── Keyframes kept for live-dot and mirror-btn ── */
+/* ── Slide 5: Learn / Academy ── */
+.ac-hero{background:linear-gradient(135deg,#172414,#0f1c0f);border:1px solid rgba(43,240,106,.22);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.ac-hero-row{display:flex;align-items:center;gap:12px;}
+.ac-ic{width:42px;height:42px;border-radius:12px;background:rgba(43,240,106,.15);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.ac-hero-lbl{font-size:15px;font-weight:700;color:var(--txt);}
+.ac-hero-sub{font-size:12px;color:var(--mut);margin-top:2px;}
+.ac-bar-track{height:6px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;}
+.ac-bar-fill{height:100%;background:var(--grn);border-radius:99px;width:0;}
+.ac-lessons{border-radius:14px;}
+.ac-lic{width:34px;height:34px;border-radius:10px;background:rgba(43,240,106,.1);border:1px solid rgba(43,240,106,.2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.ac-lic.done{background:rgba(43,240,106,.18);border-color:transparent;font-size:13px;font-weight:700;color:var(--grn);}
+.ac-xp{font-size:12px;font-weight:700;color:var(--grn);background:rgba(43,240,106,.12);padding:3px 8px;border-radius:6px;white-space:nowrap;}
+.ac-done{font-size:11px;font-weight:700;color:var(--grn);background:rgba(43,240,106,.14);padding:3px 9px;border-radius:99px;}
+.ac-badges-row{display:flex;gap:8px;}
+.ac-badge{width:50px;height:50px;border-radius:14px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;}
+.ac-badge.on{background:rgba(43,240,106,.1);border-color:rgba(43,240,106,.2);}
+.ac-badge.off{filter:grayscale(.9);opacity:.4;}
+/* ── Coming soon banner ── */
+.coming-soon{display:flex;align-items:center;gap:10px;background:rgba(255,200,50,.07);border:1px solid rgba(255,200,50,.22);border-radius:12px;padding:11px 14px;}
+.cs-dot{width:8px;height:8px;border-radius:50%;background:#FFD93D;animation:shimmer 1.4s ease infinite;flex-shrink:0;}
+.cs-txt{flex:1;}
+.cs-main{font-size:13px;font-weight:700;color:#FFD93D;}
+.cs-hint{font-size:11px;color:rgba(255,200,50,.65);margin-top:1px;}
+@keyframes shimmer{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes glowPulse{0%,100%{box-shadow:0 4px 28px rgba(43,240,106,.32)}50%{box-shadow:0 4px 52px rgba(43,240,106,.7),0 0 28px rgba(43,240,106,.25)}}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <div class="sbar">
+    <span>9:41</span>
+    <div class="sbar-icons">
+      <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="5" width="3" height="7" rx="1" opacity=".4"/><rect x="4.5" y="3.5" width="3" height="8.5" rx="1" opacity=".6"/><rect x="9" y="1.5" width="3" height="10.5" rx="1" opacity=".8"/><rect x="13.5" y="0" width="3.5" height="12" rx="1"/></svg>
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M8 9.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" fill="currentColor"/><path d="M4.8 6.9a4.5 4.5 0 0 1 6.4 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".7"/><path d="M2 4.1a8.2 8.2 0 0 1 12 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".4"/></svg>
+      <svg width="26" height="13" viewBox="0 0 26 13" fill="none"><rect x=".5" y=".5" width="22" height="12" rx="3.5" stroke="currentColor" stroke-opacity=".4"/><rect x="2" y="2" width="17" height="9" rx="2" fill="currentColor"/><path d="M24 4.5v4a2 2 0 0 0 0-4Z" fill="currentColor" fill-opacity=".4"/></svg>
+    </div>
+  </div>
+
+  <div class="track" id="track">
+    <!-- SLIDE 1 — Welcome -->
+    <div class="slide s1" id="s0">
+      <div class="s1-icon" id="appicon"></div>
+      <div class="s1-name"><span>Crypto</span> Comp</div>
+      <div class="s1-tag">Trade. Compete. Win.</div>
+      <div class="s1-feats">
+        <div class="s1-feat">
+          <div class="s1-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <div class="s1-ft"><div class="s1-fl">Paper-trade on live prices</div><div class="s1-fs">Real market data, zero risk</div></div>
+        </div>
+        <div class="s1-feat">
+          <div class="s1-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg></div>
+          <div class="s1-ft"><div class="s1-fl">Compete in live tournaments</div><div class="s1-fs">Daily sprints, weekly brackets &amp; 1v1s</div></div>
+        </div>
+        <div class="s1-feat">
+          <div class="s1-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
+          <div class="s1-ft"><div class="s1-fl">Mirror top traders' moves</div><div class="s1-fs">Copy trades in real time</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2 — Portfolio -->
+    <div class="slide s2" id="s1">
+      <div class="scontent">
+        <div class="ew">Portfolio</div>
+        <div class="ttl">Track your P&amp;L in real time</div>
+        <div class="sub">See holdings, performance, and your overall return — all in one glance.</div>
+        <div class="ui-card">
+          <div class="portfolio-top">
+            <div class="p-lbl">Total value</div>
+            <div class="p-num" id="pnum">$12,847.32</div>
+            <div class="p-chg">↑ +$2,847.32 · 28.47%</div>
+          </div>
+          <div class="chart-wrap">
+            <svg viewBox="0 0 350 96" preserveAspectRatio="none">
+              <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2BF06A" stop-opacity=".38"/><stop offset="100%" stop-color="#2BF06A" stop-opacity=".02"/></linearGradient></defs>
+              <path d="M0 82 L28 76 L56 79 L84 66 L112 60 L140 67 L168 50 L196 41 L224 34 L252 38 L280 22 L308 14 L336 10 L350 6 L350 96 L0 96Z" fill="url(#ag)"/>
+              <path d="M0 82 L28 76 L56 79 L84 66 L112 60 L140 67 L168 50 L196 41 L224 34 L252 38 L280 22 L308 14 L336 10 L350 6" fill="none" stroke="#2BF06A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="holdings">
+            <div class="hrow"><div class="cglyph" style="background:rgba(247,147,26,.15);color:#F7A03A">₿</div><div class="hinfo"><div class="hsym">BTC</div><div class="hunits">0.0691 BTC</div></div><div class="hval"><div class="hprice">$6,512.40</div><div class="hchg up">+4.2%</div></div></div>
+            <div class="hrow"><div class="cglyph" style="background:rgba(98,104,143,.15);color:#8FA2D8">Ξ</div><div class="hinfo"><div class="hsym">ETH</div><div class="hunits">0.842 ETH</div></div><div class="hval"><div class="hprice">$2,957.10</div><div class="hchg up">+1.8%</div></div></div>
+            <div class="hrow"><div class="cglyph" style="background:rgba(20,241,149,.1);color:#5BE9A8">◎</div><div class="hinfo"><div class="hsym">SOL</div><div class="hunits">6.30 SOL</div></div><div class="hval"><div class="hprice">$1,353.42</div><div class="hchg dn">−2.1%</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3 — Markets -->
+    <div class="slide s3" id="s2">
+      <div class="scontent">
+        <div class="ew">Markets</div>
+        <div class="ttl">Stay ahead of every move</div>
+        <div class="sub">Real-time prices, market caps, and trending movers across the whole crypto market.</div>
+        <div class="mstats">
+          <div class="mstat"><div class="mstat-lbl">Total market cap</div><div class="mstat-val">$3.42T</div><div class="mstat-chg up">+2.1% today</div></div>
+          <div class="mstat"><div class="mstat-lbl">Fear &amp; Greed</div><div class="mstat-val">64</div><div class="mstat-chg" style="color:#D4A017">Greed</div></div>
+        </div>
+        <div class="coin-list">
+          <div class="crow"><div class="cglyph" style="background:rgba(247,147,26,.15);color:#F7A03A;width:32px;height:32px;border-radius:50%;flex-shrink:0">₿</div><div class="cinfo"><div class="csym">BTC</div><div class="cname">Bitcoin · $1.86T</div></div><div class="cright"><div class="cprice">$94,237</div><div class="cchg up">+2.3%</div></div></div>
+          <div class="crow"><div class="cglyph" style="background:rgba(98,104,143,.15);color:#8FA2D8;width:32px;height:32px;border-radius:50%;flex-shrink:0">Ξ</div><div class="cinfo"><div class="csym">ETH</div><div class="cname">Ethereum · $422B</div></div><div class="cright"><div class="cprice">$3,512</div><div class="cchg up">+1.8%</div></div></div>
+          <div class="crow"><div class="cglyph" style="background:rgba(20,241,149,.1);color:#5BE9A8;width:32px;height:32px;border-radius:50%;flex-shrink:0">◎</div><div class="cinfo"><div class="csym">SOL</div><div class="cname">Solana · $98B</div></div><div class="cright"><div class="cprice">$214.83</div><div class="cchg dn">−2.1%</div></div></div>
+          <div class="crow"><div class="cglyph" style="background:rgba(200,160,50,.15);color:#D4A017;width:32px;height:32px;border-radius:50%;flex-shrink:0;font-size:11px">D</div><div class="cinfo"><div class="csym">DOGE</div><div class="cname">Dogecoin · $27B</div></div><div class="cright"><div class="cprice">$0.1847</div><div class="cchg up">+5.4%</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4 — Trade -->
+    <div class="slide s4" id="s3">
+      <div class="scontent">
+        <div class="ew">Trade</div>
+        <div class="ttl">Buy or sell in seconds</div>
+        <div class="sub">Pick any asset, set your size, and execute — all with simulated funds.</div>
+        <div class="tprice">
+          <div class="tprice-ticker">BTC / USD</div>
+          <div class="tprice-num">$94,237.00</div>
+          <div class="tprice-row"><span class="chip-up">↑ +2.34%</span><span style="font-size:12px;color:var(--mut)">24h</span></div>
+        </div>
+        <div class="cchart">
+          <svg viewBox="0 0 330 108" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2BF06A" stop-opacity=".35"/>
+                <stop offset="100%" stop-color="#2BF06A" stop-opacity=".02"/>
+              </linearGradient>
+            </defs>
+            <path d="M0 88 L22 80 L44 84 L66 72 L88 65 L110 70 L132 55 L154 46 L176 38 L198 43 L220 28 L242 22 L264 14 L286 10 L308 16 L330 6 L330 108 L0 108Z" fill="url(#tg)"/>
+            <path d="M0 88 L22 80 L44 84 L66 72 L88 65 L110 70 L132 55 L154 46 L176 38 L198 43 L220 28 L242 22 L264 14 L286 10 L308 16 L330 6" fill="none" stroke="#2BF06A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="opanel">
+          <div class="otabs"><div class="otab on">Buy</div><div class="otab">Sell</div><div class="otab">Limit</div></div>
+          <div class="orow"><span class="olbl">Amount</span><span class="oval">$1,000.00</span></div>
+          <div class="orow"><span class="olbl">Est. received</span><span class="oval">0.01061 BTC</span></div>
+          <button class="tbuy">Buy BTC</button>
+          <div class="tsuccess">
+            <div class="sc-ring"><svg viewBox="0 0 26 26" fill="none" stroke="#2BF06A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l5.5 6L21 7"/></svg></div>
+            <div class="sc-lbl">Order Filled</div>
+            <div class="sc-sub">Bought 0.01061 BTC · $1,000</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5 — Learn -->
+    <div class="slide s-learn" id="s4">
+      <div class="scontent">
+        <div class="ew">Academy</div>
+        <div class="ttl">Learn crypto, earn XP</div>
+        <div class="sub">Bite-sized lessons on crypto, charts &amp; strategy — each one earns XP and levels you up.</div>
+        <div class="ac-hero">
+          <div class="ac-hero-row">
+            <div class="ac-ic">🎓</div>
+            <div style="flex:1"><div class="ac-hero-lbl">Crypto Academy</div><div class="ac-hero-sub">14 lessons · up to 580 XP</div></div>
+          </div>
+          <div class="ac-bar-track"><div class="ac-bar-fill" id="acbar"></div></div>
+        </div>
+        <div class="ac-lessons coin-list">
+          <div class="crow"><div class="ac-lic">🪙</div><div class="cinfo"><div class="csym">What is crypto?</div><div class="cname">2 min · Crypto basics</div></div><div class="ac-xp">+40 XP</div></div>
+          <div class="crow"><div class="ac-lic">🕯️</div><div class="cinfo"><div class="csym">Reading candlestick charts</div><div class="cname">3 min · Reading the market</div></div><div class="ac-xp">+50 XP</div></div>
+          <div class="crow"><div class="ac-lic done">✓</div><div class="cinfo"><div class="csym">Fear &amp; Greed sentiment</div><div class="cname">2 min · Reading the market</div></div><div class="ac-done">Done</div></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:13px;font-weight:600;color:var(--txt)">Achievements</span>
+          <span style="font-size:12px;color:var(--mut)">Unlock as you play</span>
+        </div>
+        <div class="ac-badges-row">
+          <div class="ac-badge on">🔥</div>
+          <div class="ac-badge on">📈</div>
+          <div class="ac-badge on">🏆</div>
+          <div class="ac-badge off">⚡</div>
+          <div class="ac-badge off">💎</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6 — Compete -->
+    <div class="slide s5" id="s5">
+      <div class="scontent">
+        <div class="ew">Compete</div>
+        <div class="ttl">Climb the ranks, earn XP.</div>
+        <div class="sub">Join daily tournaments, build your XP, and reach Diamond league.</div>
+        <div class="xpcard">
+          <div class="xp-league">Gold II · Day 12 of 30</div>
+          <div class="xp-val">3,240 <span style="font-size:14px;font-weight:400;opacity:.6">/ 6,000 XP</span></div>
+          <div class="xp-track"><div class="xp-fill" id="xpfill"></div></div>
+          <div class="xp-rankrow"><span class="xp-rlbl">Your global rank</span><span class="xp-rval" id="ranknum">#—</span></div>
+        </div>
+        <div class="bcard">
+          <div class="blive"><div class="bldot"></div><div class="bllbl">Live · 4h 12m left</div></div>
+          <div class="bname">Weekend Warriors</div>
+          <div class="bsub">$10K bankroll · 1,284 players</div>
+          <div class="bstats">
+            <div><div class="bstat-lbl">Your rank</div><div class="bstat-val" style="color:var(--grn)">#23</div></div>
+            <div><div class="bstat-lbl">Top prize</div><div class="bstat-val" style="color:#FFD93D">5,000 XP</div></div>
+            <div><div class="bstat-lbl">P&amp;L</div><div class="bstat-val up">+18.4%</div></div>
+          </div>
+        </div>
+        <div class="pbadge"><div class="pbadge-ico">🏆</div><div><div class="pbadge-lbl">Weekly prize pool</div><div class="pbadge-val">25,000 XP</div></div></div>
+        <div class="coming-soon"><div class="cs-dot"></div><div class="cs-txt"><div class="cs-main">💰 Real money prizes — coming soon</div><div class="cs-hint">Cash tournaments are on the roadmap</div></div></div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7 — Copy Trade -->
+    <div class="slide s6" id="s6">
+      <div class="scontent">
+        <div class="ew">Copy Trade</div>
+        <div class="ttl">Mirror top traders automatically</div>
+        <div class="sub">Follow expert traders and clone their positions in real time — no research needed.</div>
+        <div class="trow"><div class="tav">MO</div><div style="flex:1"><div class="tname">@moonshot</div><div class="tmeta">388 trades · 68% win rate</div></div><div class="diam">Diamond</div></div>
+        <div class="tstats">
+          <div class="tstat"><div class="tstat-lbl">All-time P&amp;L</div><div class="tstat-val up">+147.8%</div></div>
+          <div class="tstat"><div class="tstat-lbl">Win rate</div><div class="tstat-val up">68%</div></div>
+          <div class="tstat"><div class="tstat-lbl">Trades</div><div class="tstat-val">388</div></div>
+        </div>
+        <div class="pnlchart">
+          <svg viewBox="0 0 350 88" preserveAspectRatio="none">
+            <defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2BF06A" stop-opacity=".34"/><stop offset="100%" stop-color="#2BF06A" stop-opacity=".02"/></linearGradient></defs>
+            <path d="M0 76 L30 70 L60 72 L90 62 L120 55 L150 60 L180 46 L210 38 L240 30 L270 22 L300 16 L330 10 L350 6 L350 88 L0 88Z" fill="url(#pg)"/>
+            <path d="M0 76 L30 70 L60 72 L90 62 L120 55 L150 60 L180 46 L210 38 L240 30 L270 22 L300 16 L330 10 L350 6" fill="none" stroke="#2BF06A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <button class="mbtn" id="mbtn">Start Mirroring · $2,000</button>
+      </div>
+    </div>
+  </div><!-- /track -->
+
+    <div class="nav">
+      <div class="dots" id="dots"></div>
+      <div class="btn-row">
+        <button class="btn-back hidden" id="btnBack" aria-label="Back">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="btn-next" id="btnNext" style="flex:1">Get Started</button>
+      </div>
+      <button class="btn-skip" id="btnSkip">Skip intro</button>
+    </div>
+</div>
+
+<script>
+/* ── App icon SVG ── */
+(function(){
+  function sq(size,n){
+    const h=size/2,c=size/2,steps=96;let d='';
+    for(let i=0;i<=steps;i++){
+      const t=(i/steps)*Math.PI*2,ct=Math.cos(t),st=Math.sin(t);
+      const x=c+Math.sign(ct)*h*Math.pow(Math.abs(ct),2/n);
+      const y=c+Math.sign(st)*h*Math.pow(Math.abs(st),2/n);
+      d+=(i===0?'M':'L')+x.toFixed(2)+' '+y.toFixed(2);
+    }
+    return d+'Z';
+  }
+  const S=sq(120,4.2),u='wi';
+  const OUTER='M72 30 H14 V70 a6 6 0 0 0 6 6 H68',INNER='M38 52 H94 V92 a6 6 0 0 1 -6 6 H40';
+  const T=17.5,H=13.5,J='stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="8"';
+  const GT='translate(60 60) scale(0.84) translate(-54 -64)';
+  document.getElementById('appicon').innerHTML=`<svg width="90" height="90" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:block" overflow="hidden">
+<defs>
+<clipPath id="${u}-c"><path d="${S}"/></clipPath>
+<linearGradient id="${u}-g" x1=".12" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#86FFCB"/><stop offset=".45" stop-color="#2BF06A"/><stop offset="1" stop-color="#11D156"/></linearGradient>
+<linearGradient id="${u}-sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".4" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<linearGradient id="${u}-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c2722"/><stop offset=".55" stop-color="#0e1411"/><stop offset="1" stop-color="#080b09"/></linearGradient>
+<radialGradient id="${u}-a" cx=".5" cy=".56" r=".62"><stop offset="0" stop-color="#3dff92" stop-opacity=".3"/><stop offset="1" stop-color="#1bd06a" stop-opacity="0"/></radialGradient>
+<linearGradient id="${u}-t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".08"/><stop offset=".34" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#${u}-c)">
+<path d="${S}" fill="url(#${u}-bg)"/>
+<path d="${S}" fill="url(#${u}-a)"/>
+<path d="${S}" fill="url(#${u}-t)"/>
+<g transform="${GT}">
+<path d="${OUTER}" fill="none" stroke="url(#${u}-g)" stroke-width="${T}" ${J}/>
+<path d="${OUTER}" fill="none" stroke="url(#${u}-sh)" stroke-width="${T}" ${J} opacity=".6"/>
+<path d="${OUTER}" fill="none" stroke="#0a0e0b" stroke-width="${H}" ${J}/>
+<path d="${INNER}" fill="none" stroke="url(#${u}-g)" stroke-width="${T}" ${J}/>
+<path d="${INNER}" fill="none" stroke="url(#${u}-sh)" stroke-width="${T}" ${J} opacity=".6"/>
+<path d="${INNER}" fill="none" stroke="#0a0e0b" stroke-width="${H}" ${J}/>
+</g></g></svg>`;
+})();
+
+/* ── Viewport scaling ── */
+const phone = document.getElementById('phone');
+function scalePhone(){
+  const s = Math.min(1, Math.min(window.innerWidth/420, window.innerHeight/900));
+  phone.style.transform = 'scale('+s+')';
+}
+scalePhone();
+window.addEventListener('resize', scalePhone);
+
+/* ── Animation engine ── */
+// td = ease duration ms, te = easing string
+const EASE = 'cubic-bezier(.4,0,.2,1)';
+const BOUNCE = 'cubic-bezier(.34,1.3,.64,1)';
+
+// Per-slide animation blueprints
+// sel: querySelector string (within slide), d: delay ms
+// op: from-opacity (default 0), t: from-transform
+// special: 'reveal'|'bounce'|'tap'
+const ANIMS = {
+  0:[
+    {sel:'.s1-icon',  d:0,    op:0, t:'scale(.5)'},
+    {sel:'.s1-name',  d:280,  op:0, t:'translateY(18px)'},
+    {sel:'.s1-tag',   d:440,  op:0, t:'translateY(18px)'},
+    {sel:'.s1-feat:nth-child(1)', d:640,  op:0, t:'translateY(18px)'},
+    {sel:'.s1-feat:nth-child(2)', d:820,  op:0, t:'translateY(18px)'},
+    {sel:'.s1-feat:nth-child(3)', d:1000, op:0, t:'translateY(18px)'},
+  ],
+  1:[
+    {sel:'.ew',   d:80,   op:0, t:'translateY(16px)'},
+    {sel:'.ttl',  d:200,  op:0, t:'translateY(16px)'},
+    {sel:'.sub',  d:320,  op:0, t:'translateY(16px)'},
+    {sel:'.ui-card', d:460, op:0, t:'translateY(14px)'},
+    {sel:'.chart-wrap', d:860, special:'reveal', dur:1500},
+    {sel:'.hrow:nth-child(1)', d:1560, op:0, t:'translateX(26px)'},
+    {sel:'.hrow:nth-child(2)', d:1740, op:0, t:'translateX(26px)'},
+    {sel:'.hrow:nth-child(3)', d:1920, op:0, t:'translateX(26px)'},
+  ],
+  2:[
+    {sel:'.ew',   d:80,  op:0, t:'translateY(16px)'},
+    {sel:'.ttl',  d:200, op:0, t:'translateY(16px)'},
+    {sel:'.sub',  d:320, op:0, t:'translateY(16px)'},
+    {sel:'.mstats', d:480, op:0, t:'translateY(14px)'},
+    {sel:'.coin-list', d:660, op:0},
+    {sel:'.crow:nth-child(1)', d:760,  op:0, t:'translateX(26px)'},
+    {sel:'.crow:nth-child(2)', d:940,  op:0, t:'translateX(26px)'},
+    {sel:'.crow:nth-child(3)', d:1120, op:0, t:'translateX(26px)'},
+    {sel:'.crow:nth-child(4)', d:1300, op:0, t:'translateX(26px)'},
+  ],
+  3:[
+    {sel:'.ew',    d:80,   op:0, t:'translateY(16px)'},
+    {sel:'.ttl',   d:200,  op:0, t:'translateY(16px)'},
+    {sel:'.sub',   d:320,  op:0, t:'translateY(16px)'},
+    {sel:'.tprice', d:480,  op:0, t:'translateY(14px)'},
+    {sel:'.cchart', d:740,  special:'reveal', dur:1200},
+    {sel:'.opanel', d:1080, op:0, t:'translateY(14px)'},
+    {sel:'.tbuy',   d:1820, special:'tap'},
+    {sel:'.tsuccess', d:2360, special:'slideUp'},
+  ],
+  4:[
+    {sel:'.ew',         d:80,   op:0, t:'translateY(16px)'},
+    {sel:'.ttl',        d:200,  op:0, t:'translateY(16px)'},
+    {sel:'.sub',        d:320,  op:0, t:'translateY(16px)'},
+    {sel:'.ac-hero',    d:480,  op:0, t:'translateY(14px)'},
+    {sel:'.ac-lessons', d:660,  op:0},
+    {sel:'.crow:nth-child(1)', d:760,  op:0, t:'translateX(22px)'},
+    {sel:'.crow:nth-child(2)', d:920,  op:0, t:'translateX(22px)'},
+    {sel:'.crow:nth-child(3)', d:1080, op:0, t:'translateX(22px)'},
+    {sel:'.ac-badges-row',     d:1320, special:'bounce'},
+  ],
+  5:[
+    {sel:'.ew',    d:80,  op:0, t:'translateY(16px)'},
+    {sel:'.ttl',   d:200, op:0, t:'translateY(16px)'},
+    {sel:'.sub',   d:320, op:0, t:'translateY(16px)'},
+    {sel:'.xpcard', d:500, op:0, t:'translateY(14px)'},
+    {sel:'.bcard',  d:1320, op:0, t:'translateY(14px)'},
+    {sel:'.pbadge', d:1780, special:'bounce'},
+    {sel:'.coming-soon', d:2020, special:'bounce'},
+  ],
+  6:[
+    {sel:'.ew',    d:80,  op:0, t:'translateY(16px)'},
+    {sel:'.ttl',   d:200, op:0, t:'translateY(16px)'},
+    {sel:'.sub',   d:320, op:0, t:'translateY(16px)'},
+    {sel:'.trow',  d:480, op:0, t:'translateY(14px)'},
+    {sel:'.tstats', d:720, op:0, t:'translateY(14px)'},
+    {sel:'.pnlchart', d:1060, special:'reveal', dur:1500},
+    {sel:'.mbtn',  d:1620, op:0, t:'translateY(14px)'},
+  ]
+};
+
+function fadeEl(el, fromOp, fromT, delay, duration){
+  el.style.transition = 'none';
+  el.style.opacity = String(fromOp);
+  if(fromT) el.style.transform = fromT; else el.style.transform = '';
+}
+
+function animSlide(idx){
+  const slide = document.getElementById('s'+idx);
+  if(!slide) return;
+  const defs = ANIMS[idx] || [];
+
+  // First pass: set initial transform states (no opacity hiding — content always visible)
+  defs.forEach(def => {
+    const el = slide.querySelector(def.sel);
+    if(!el) return;
+    el.style.transition = 'none';
+    if(def.special === 'reveal'){
+      el.style.clipPath = 'inset(0 100% 0 0 round 3px)';
+    } else if(def.special === 'bounce'){
+      el.style.transform = 'scale(.75)';
+    } else if(def.special === 'slideUp'){
+      el.style.transform = 'translateY(110%)';
+    } else if(def.special !== 'tap'){
+      if(def.t) el.style.transform = def.t; else el.style.transform = '';
+    }
+  });
+
+  // Force a single reflow so above styles paint before transitions start
+  void slide.offsetHeight;
+
+  // Second pass: queue transitions/animations with individual delays
+  defs.forEach(def => {
+    const el = slide.querySelector(def.sel);
+    if(!el) return;
+
+    if(def.special === 'reveal'){
+      const dur = def.dur || 1400;
+      const t = setTimeout(()=>{
+        el.style.transition = 'clip-path '+dur+'ms '+EASE;
+        el.style.clipPath = 'inset(0 0% 0 0 round 3px)';
+      }, def.d);
+      timers.push(t);
+    } else if(def.special === 'bounce' || def.special === 'slideUp'){
+      const t = setTimeout(()=>{
+        el.style.transition = 'transform .48s '+BOUNCE;
+        el.style.transform = 'none';
+      }, def.d);
+      timers.push(t);
+    } else if(def.special === 'tap'){
+      const t = setTimeout(()=>{
+        el.style.transition = 'transform .15s ease';
+        el.style.transform = 'scale(.94)';
+        const t2 = setTimeout(()=>{ el.style.transform = 'scale(1.02)';
+          const t3 = setTimeout(()=>{ el.style.transform = 'none'; el.style.transition=''; }, 150);
+          timers.push(t3);
+        }, 160);
+        timers.push(t2);
+      }, def.d);
+      timers.push(t);
+    } else {
+      const easing = def.t && def.t.includes('scale') ? BOUNCE : EASE;
+      const t = setTimeout(()=>{
+        el.style.transition = 'transform .44s '+easing;
+        el.style.transform = 'none';
+      }, def.d);
+      timers.push(t);
+    }
+  });
+
+  // Extra JS animations per slide
+  if(idx === 1){
+    const pn = document.getElementById('pnum');
+    if(pn){
+      pn.textContent = '$0.00';
+      const t = setTimeout(()=>countTo(pn, 0, 12847.32, 1700, '$', 2), 680);
+      timers.push(t);
+    }
+  }
+  if(idx === 4){
+    const ab = document.getElementById('acbar');
+    if(ab){
+      const t = setTimeout(()=>{
+        ab.style.transition = 'width 1.4s '+EASE;
+        ab.style.width = '21%';
+      }, 760);
+      timers.push(t);
+    }
+  }
+  if(idx === 5){
+    const bar = document.getElementById('xpfill');
+    if(bar){
+      const t = setTimeout(()=>{
+        bar.style.transition = 'width 1.6s '+EASE;
+        bar.style.width = '54%';
+      }, 900);
+      timers.push(t);
+    }
+    const rn = document.getElementById('ranknum');
+    if(rn){
+      rn.textContent = '#—';
+      const t = setTimeout(()=>countTo(rn, 4847, 23, 2000, '#', 0), 1100);
+      timers.push(t);
+    }
+  }
+  if(idx === 6){
+    const mb = document.getElementById('mbtn');
+    if(mb){
+      const t = setTimeout(()=>{ mb.style.animation = 'glowPulse 1.3s ease infinite'; }, 2100);
+      timers.push(t);
+    }
+  }
+}
+
+function resetSlide(idx){
+  const slide = document.getElementById('s'+idx);
+  if(!slide) return;
+  (ANIMS[idx]||[]).forEach(def=>{
+    const el = slide.querySelector(def.sel);
+    if(!el) return;
+    el.style.transition = 'none';
+    el.style.transform = def.special==='slideUp' ? 'translateY(110%)' : '';
+    el.style.clipPath = '';
+    el.style.animation = '';
+  });
+  // Reset special els
+  const xp = document.getElementById('xpfill');
+  if(xp){ xp.style.width='0'; xp.style.transition='none'; }
+  const rn = document.getElementById('ranknum');
+  if(rn) rn.textContent = '#—';
+  const pn = document.getElementById('pnum');
+  if(pn) pn.textContent = '$12,847.32';
+  const mb = document.getElementById('mbtn');
+  if(mb) mb.style.animation = '';
+}
+
+/* ── Slide engine ── */
+const TOTAL = 7;
+const track = document.getElementById('track');
+const dotsEl = document.getElementById('dots');
+const btnBack = document.getElementById('btnBack');
+const btnNext = document.getElementById('btnNext');
+const btnSkip = document.getElementById('btnSkip');
+const LABELS = ['Get Started','Next','Next','Next','Next','Next','Start Trading'];
+let cur = 0, timers = [];
+// Compute slide width from DOM (inner content width of phone)
+let slideW = 0;
+
+function clearTimers(){ timers.forEach(clearTimeout); timers=[]; }
+
+// Build dots
+for(let i=0;i<TOTAL;i++){
+  const d = document.createElement('div');
+  d.className = 'dot'+(i===0?' on':'');
+  dotsEl.appendChild(d);
+}
+
+function goTo(n){
+  if(n===cur) return;
+  clearTimers();
+
+  // Hide new slide content immediately before it slides in
+  const nextSlide = document.getElementById('s'+n);
+  const defs = ANIMS[n] || [];
+  defs.forEach(def=>{
+    const el = nextSlide.querySelector(def.sel);
+    if(!el) return;
+    el.style.transition = 'none';
+    if(def.special==='reveal') el.style.clipPath = 'inset(0 100% 0 0 round 3px)';
+    else if(def.special==='bounce') el.style.transform = 'scale(.75)';
+    else if(def.special==='slideUp') el.style.transform = 'translateY(110%)';
+    else if(def.special!=='tap' && def.t) el.style.transform = def.t;
+  });
+  void nextSlide.offsetHeight;
+
+  cur = n;
+  track.style.transform = 'translateX('+(-cur*slideW)+'px)';
+
+  document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('on',i===cur));
+  btnNext.textContent = LABELS[cur];
+  btnSkip.style.opacity = cur===TOTAL-1 ? '0' : '1';
+  btnSkip.style.pointerEvents = cur===TOTAL-1 ? 'none' : 'auto';
+  btnBack.classList.toggle('hidden', cur===0);
+
+  const t = setTimeout(()=>animSlide(cur), 220);
+  timers.push(t);
+}
+
+btnNext.addEventListener('click', ()=>{ if(cur<TOTAL-1) goTo(cur+1); });
+btnBack.addEventListener('click', ()=>{ if(cur>0) goTo(cur-1); });
+btnSkip.addEventListener('click', ()=>goTo(TOTAL-1));
+
+// Touch swipe
+let tx0 = null;
+phone.addEventListener('touchstart', e=>{ tx0=e.touches[0].clientX; },{passive:true});
+phone.addEventListener('touchend', e=>{
+  if(tx0===null) return;
+  const dx = tx0 - e.changedTouches[0].clientX;
+  if(Math.abs(dx)>52){
+    if(dx>0&&cur<TOTAL-1) goTo(cur+1);
+    else if(dx<0&&cur>0) goTo(cur-1);
+  }
+  tx0=null;
+},{passive:true});
+
+/* ── Number counter ── */
+function countTo(el, from, to, dur, prefix, decimals){
+  const start = performance.now();
+  function frame(now){
+    const p = Math.min((now-start)/dur,1);
+    const ease = 1-Math.pow(1-p,3);
+    const val = from+(to-from)*ease;
+    el.textContent = prefix+val.toLocaleString('en-US',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+    if(p<1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ── Init ── */
+// Compute immediately so navigation works before fonts finish loading
+function initSlideW(){
+  slideW = document.querySelector('.slide').offsetWidth || 372;
+}
+initSlideW();
+// Re-measure once fonts render (may change layout)
+window.addEventListener('load', ()=>{ initSlideW(); });
+
+// Guard in goTo: re-measure if still 0
+const _goTo = goTo;
+goTo = function(n){
+  if(!slideW) initSlideW();
+  _goTo(n);
+};
+
+// Run startup animations
+(function startWalkthrough(){
+  slideW = document.querySelector('.slide').offsetWidth;
+  // Immediately hide slide 0 content, then animate in
+  const slide0 = document.getElementById('s0');
+  (ANIMS[0]||[]).forEach(def=>{
+    const el = slide0.querySelector(def.sel);
+    if(!el) return;
+    el.style.transition = 'none';
+    if(def.special==='reveal') el.style.clipPath = 'inset(0 100% 0 0 round 3px)';
+    else if(def.special==='bounce') el.style.transform = 'scale(.75)';
+    else if(def.special==='slideUp') el.style.transform = 'translateY(110%)';
+    else if(def.special!=='tap' && def.t) el.style.transform = def.t;
+  });
+  void slide0.offsetHeight;
+  setTimeout(()=>animSlide(0), 80);
+})();
+</script>
+</body>
+</html>

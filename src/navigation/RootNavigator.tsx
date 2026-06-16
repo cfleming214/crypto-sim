@@ -24,7 +24,7 @@ import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
 import { SplashLogo } from '../components/SplashLogo';
-import { WalkthroughNavigator } from './WalkthroughNavigator';
+import { OnboardingWalkthrough } from '../screens/OnboardingWalkthrough';
 import type { NewsArticle } from '../services/newsService';
 import { useAuth } from '../store/AuthContext';
 import { useApp } from '../store/AppContext';
@@ -78,9 +78,9 @@ export function RootNavigator() {
   // during the 1.4s splash), so a returning user never flashes the walkthrough.
   if (status === 'loading' || minSplash || !state.onboardingChecked) return <SplashLogo />;
 
-  // First run → the teaching walkthrough; it flips `hasOnboarded` when finished,
-  // which re-renders this into the main app below.
-  if (!state.hasOnboarded) return <WalkthroughNavigator />;
+  // First run → the 7-slide feature walkthrough; it flips `hasOnboarded` when
+  // finished (Start Trading / Skip), which re-renders this into the main app.
+  if (!state.hasOnboarded) return <OnboardingWalkthrough />;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
