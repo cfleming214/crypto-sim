@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -25,6 +25,14 @@ import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
 import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target } from 'lucide-react-native';
 import { ACADEMY } from '../data/academy';
+
+// Marker-popup timestamp: "Jun 14, 3:42 PM" for old trades, time-only if today.
+function markerTimeLabel(ts: number): string {
+  const d = new Date(ts);
+  const sameDay = new Date().toDateString() === d.toDateString();
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return sameDay ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+}
 
 // "2h 5m" / "45s" — compact countdown to the next daily claim (next UTC midnight).
 function formatCountdown(ms: number): string {
@@ -258,6 +266,9 @@ export function PortfolioScreen() {
   const [rebalanceLines, setRebalanceLines] = useState<RebalanceLine[]>([]);
   const [rebalanceTarget, setRebalanceTarget] = useState(0);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  // Trades behind a tapped equity-chart marker (a single time bucket). Drives
+  // the full-detail popup. null = closed.
+  const [markerTrades, setMarkerTrades] = useState<ChartMarker[] | null>(null);
   // Ticks once a second so the daily-reward countdown updates live and the
   // claim button re-enables exactly at UTC midnight.
   const [now, setNow] = useState(() => Date.now());
@@ -353,7 +364,7 @@ export function PortfolioScreen() {
   const chartMarkers = React.useMemo<ChartMarker[]>(() =>
     state.trades
       .filter(t => t.kind !== 'reward')
-      .map(t => ({ timestamp: t.timestamp, side: t.side, price: t.price, units: t.units, amount: t.amount, symbol: t.symbol })),
+      .map(t => ({ id: t.id, timestamp: t.timestamp, side: t.side, price: t.price, units: t.units, amount: t.amount, symbol: t.symbol })),
     [state.trades],
   );
 
@@ -544,13 +555,74 @@ export function PortfolioScreen() {
 
       {/* Chart */}
       <View style={{ marginHorizontal: -20 }}>
-        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} markers={chartMarkers} down={!pnlPositive} axes />
+        <AreaChart height={170} data={chartData} timestamps={chartTimestamps} markers={chartMarkers} down={!pnlPositive} axes onMarkerGroupPress={setMarkerTrades} />
         {historyLoading && history.length === 0 && (
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={colors.ink3} />
           </View>
         )}
       </View>
+
+      {/* Full-detail popup for a tapped chart marker — lists every trade in that
+          time bucket; each row opens the full trade receipt. */}
+      <Modal visible={!!markerTrades} transparent animationType="fade" onRequestClose={() => setMarkerTrades(null)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
+          onPress={() => setMarkerTrades(null)}
+        >
+          <Pressable
+            style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingBottom: 28 }}
+            onPress={() => {}}
+          >
+            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.hairline, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 6 }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: colors.ink }}>
+                {markerTrades && markerTrades.length > 1 ? `${markerTrades.length} trades` : 'Trade'}
+              </Text>
+              <TouchableOpacity onPress={() => setMarkerTrades(null)} hitSlop={8}>
+                <X color={colors.ink3} size={20} />
+              </TouchableOpacity>
+            </View>
+            {markerTrades && markerTrades.length > 1 && (
+              <Text style={{ fontSize: 12, color: colors.ink3, paddingHorizontal: 20, marginBottom: 8 }}>
+                {markerTimeLabel(markerTrades[0].timestamp)} – {markerTimeLabel(markerTrades[markerTrades.length - 1].timestamp)}
+              </Text>
+            )}
+            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}>
+              {(markerTrades ?? []).map((m, i) => {
+                const buy = m.side === 'buy';
+                const col = buy ? colors.up : colors.down;
+                return (
+                  <TouchableOpacity
+                    key={m.id ?? i}
+                    activeOpacity={0.75}
+                    disabled={!m.id}
+                    onPress={() => { setMarkerTrades(null); if (m.id) nav.navigate('TradeDetail', { tradeId: m.id }); }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: i < (markerTrades!.length - 1) ? 1 : 0, borderBottomColor: colors.hairline }}
+                  >
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${col}1A`, alignItems: 'center', justifyContent: 'center' }}>
+                      {buy ? <ArrowDownLeft color={col} size={18} /> : <ArrowUpRight color={col} size={18} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontWeight: '700', color: colors.ink }}>{buy ? 'Bought' : 'Sold'} {m.symbol ?? ''}</Text>
+                        <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>${m.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                        <Text style={{ fontSize: 12, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                          {m.units < 1 ? m.units.toFixed(4) : m.units.toFixed(2)} @ ${m.price < 0.01 ? m.price.toFixed(6) : m.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: colors.ink3 }}>{markerTimeLabel(m.timestamp)}</Text>
+                      </View>
+                    </View>
+                    {m.id && <ChevronRight color={colors.ink4} size={16} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Segmented
         options={tfOptions}

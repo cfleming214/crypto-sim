@@ -939,6 +939,10 @@ function reducer(state: AppState, action: Action): AppState {
       if (state.activePrediction && Date.now() < state.activePrediction.expiresAt) return state;
       return { ...state, activePrediction: action.prediction };
     case 'SETTLE_PREDICTION': {
+      // Single-authority guard: only the first settle counts. The global
+      // PredictionWatcher is the sole resolver, but this also prevents any
+      // stray double-dispatch from awarding XP twice.
+      if (!state.activePrediction) return state;
       // Clear the active round and record the outcome (win/loss + XP), reusing
       // the same streak-bonus scoring as RECORD_PREDICTION. A push just clears it
       // and leaves the streak intact.

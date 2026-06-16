@@ -11,6 +11,7 @@ import { ToastProvider } from './src/components/ui/Toast';
 import { AchievementWatcher } from './src/components/AchievementWatcher';
 import { QuestWatcher } from './src/components/QuestWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
+import { PredictionWatcher } from './src/components/PredictionWatcher';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
 
@@ -31,6 +32,7 @@ export default function App() {
                 <AchievementWatcher />
                 <QuestWatcher />
                 <EventWatcher />
+                <PredictionWatcher />
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>
                     <RootNavigator />

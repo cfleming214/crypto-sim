@@ -16,6 +16,11 @@ interface AreaChartProps {
   crosshair?: boolean;     // enable touch-driven inspection (default true when data supplied)
   axes?: boolean;          // render $ (Y) + time (X) labels in gutters (default false)
   markers?: ChartMarker[]; // buy/sell trades pinned on the curve as up/down triangles
+  // Tap handler for a marker. Receives ALL trades that fall in that marker's
+  // time bucket (markers snapped to the same curve point are grouped into one).
+  // When provided, the inline tooltip is suppressed in favour of this callback
+  // (the host shows its own full-detail popup).
+  onMarkerGroupPress?: (markers: ChartMarker[]) => void;
 }
 
 function generatePath(data: number[], w: number, h: number, closed = false): string {
@@ -121,9 +126,9 @@ function fmtMarkerUnits(u: number): string {
   return u.toFixed(4);
 }
 
-export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair, axes = false, markers }: AreaChartProps) {
+export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair, axes = false, markers, onMarkerGroupPress }: AreaChartProps) {
   const { colors } = useTheme();
-  const [selMarker, setSelMarker] = useState<number | null>(null);
+  const [selGroup, setSelGroup] = useState<number | null>(null);
 
   const baseValueRef = useRef(baseValue ?? 10847);
   useEffect(() => {
@@ -200,6 +205,21 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
         return { ...m, idx: bi };
       });
   }, [markers, timestamps, chartData.length]);
+
+  // Group markers that snap to the same curve point into one bucket — i.e. all
+  // trades that happened within that slice of time share a single marker. The
+  // tap target reveals every trade in the bucket. Sorted by time within each.
+  const markerGroups = useMemo(() => {
+    const byIdx = new Map<number, typeof markerData>();
+    for (const m of markerData) {
+      const arr = byIdx.get(m.idx);
+      if (arr) arr.push(m);
+      else byIdx.set(m.idx, [m]);
+    }
+    return [...byIdx.entries()]
+      .map(([idx, ms]) => ({ idx, markers: [...ms].sort((a, b) => a.timestamp - b.timestamp) }))
+      .sort((a, b) => a.idx - b.idx);
+  }, [markerData]);
 
   const upTri = (c: string): ViewStyle => ({
     width: 0, height: 0,
@@ -326,34 +346,58 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
         />
       )}
 
-      {/* Buy/sell triangle markers, anchored to the equity curve. Rendered above
-          the touch overlay so taps hit the triangle, not the crosshair. */}
-      {markerData.map((m, i) => {
-        const xPx = leftGutter + (m.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
-        const yPx = Math.max(7, Math.min(plotH - 7, yForValue(chartData[m.idx])));
-        const buy = m.side === 'buy';
-        const col = buy ? colors.up : colors.down;
+      {/* Buy/sell markers, anchored to the equity curve and grouped by time
+          bucket. A single-trade bucket is a triangle (buy ▲ / sell ▼); a
+          multi-trade bucket is a counted pill. Rendered above the touch overlay
+          so taps hit the marker, not the crosshair. */}
+      {markerGroups.map((g, i) => {
+        const xPx = leftGutter + (g.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const yPx = Math.max(7, Math.min(plotH - 7, yForValue(chartData[g.idx])));
+        const count = g.markers.length;
+        const allBuy = g.markers.every(m => m.side === 'buy');
+        const allSell = g.markers.every(m => m.side === 'sell');
+        // Mixed buckets use the brand colour; single-side buckets keep up/down.
+        const col = allBuy ? colors.up : allSell ? colors.down : colors.brand;
+        const onPress = () => {
+          if (onMarkerGroupPress) onMarkerGroupPress(g.markers);
+          else setSelGroup(prev => (prev === i ? null : i));
+        };
+        const multi = count > 1;
         return (
           <Pressable
-            key={`m${i}`}
-            onPress={() => setSelMarker(prev => (prev === i ? null : i))}
+            key={`g${i}`}
+            onPress={onPress}
             hitSlop={8}
             style={{
               position: 'absolute',
-              left: xPx - 6,
-              top: buy ? yPx + 3 : yPx - 11,
-              width: 12, height: 9, alignItems: 'center', justifyContent: 'center', zIndex: 6,
+              left: xPx - (multi ? 9 : 6),
+              top: multi ? yPx - 9 : (allBuy ? yPx + 3 : yPx - 11),
+              alignItems: 'center', justifyContent: 'center', zIndex: 6,
             }}
           >
-            <View style={buy ? upTri(col) : downTri(col)} />
+            {multi ? (
+              <View style={{
+                minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4,
+                backgroundColor: col, alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1.5, borderColor: colors.surface,
+              }}>
+                <Text style={{ color: colors.brandOn, fontSize: 10, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{count}</Text>
+              </View>
+            ) : (
+              <View style={{ width: 12, height: 9, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={allBuy ? upTri(col) : downTri(col)} />
+              </View>
+            )}
           </Pressable>
         );
       })}
 
-      {/* Marker detail tooltip */}
-      {selMarker !== null && markerData[selMarker] && (() => {
-        const m = markerData[selMarker];
-        const xPx = leftGutter + (m.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+      {/* Inline fallback tooltip — only used when no onMarkerGroupPress host is
+          wired (the portfolio chart shows its own full-detail popup instead). */}
+      {!onMarkerGroupPress && selGroup !== null && markerGroups[selGroup] && (() => {
+        const g = markerGroups[selGroup];
+        const m = g.markers[0];
+        const xPx = leftGutter + (g.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
         const tipW = 150;
         const left = Math.max(4, Math.min(layoutWidth - tipW - 4, xPx - tipW / 2));
         const buy = m.side === 'buy';
@@ -366,7 +410,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
             }}
           >
             <Text style={{ color: buy ? colors.up : colors.down, fontWeight: '800', fontSize: 11, letterSpacing: 0.4 }}>
-              {buy ? 'BUY' : 'SELL'}{m.symbol ? ` · ${m.symbol}` : ''}
+              {buy ? 'BUY' : 'SELL'}{m.symbol ? ` · ${m.symbol}` : ''}{g.markers.length > 1 ? ` +${g.markers.length - 1}` : ''}
             </Text>
             <Text style={{ color: colors.brandOn, fontSize: 12, fontWeight: '700', marginTop: 2, fontVariant: ['tabular-nums'] }}>
               {fmtMarkerUnits(m.units)} @ ${fmtMarkerPrice(m.price)}

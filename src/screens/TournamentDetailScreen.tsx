@@ -218,7 +218,7 @@ export function TournamentDetailScreen() {
         {[
           [CONTEST_CASH_PRIZES ? 'Prize pool' : 'Top prize',
            CONTEST_CASH_PRIZES ? competition.prizePool : `${competition.prizeXp.toLocaleString()} XP`],
-          ['Players', playerCount.toLocaleString()],
+          ['Players', `${playerCount.toLocaleString()} / ${competition.maxPlayers.toLocaleString()}`],
           ['Your rank', userRank !== null ? `#${userRank}` : '—'],
         ].map(([label, value], i) => (
           <View

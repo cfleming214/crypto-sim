@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card } from '../components/ui/Card';
@@ -6,29 +6,19 @@ import { Button } from '../components/ui/Button';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { useToast } from '../components/ui/Toast';
 import {
-  resolvePrediction, PREDICTION_SECONDS, PREDICTION_XP, PREDICTION_STREAK_XP,
-  type PredictionDirection, type PredictionOutcome,
+  PREDICTION_SECONDS, PREDICTION_XP, PREDICTION_STREAK_XP,
+  type PredictionDirection,
 } from '../services/gamification';
-import { TrendingUp, TrendingDown, Target } from 'lucide-react-native';
+import { TrendingUp, TrendingDown } from 'lucide-react-native';
 
 function fmtPrice(p: number): string {
   return p >= 1 ? p.toLocaleString('en-US', { maximumFractionDigits: 2 }) : p.toPrecision(4);
 }
 
-interface Settled {
-  symbol: string;
-  direction: PredictionDirection;
-  lockedPrice: number;
-  finalPrice: number;
-  outcome: PredictionOutcome;
-}
-
 export function PredictionScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
-  const { celebrate, show } = useToast();
 
   const active = state.activePrediction ?? null;
   const tradeable = state.coins.filter(c => c.symbol !== 'USDC');
@@ -42,56 +32,16 @@ export function PredictionScreen() {
   const coin = state.coins.find(c => c.symbol === symbol);
   const price = coin?.price ?? 0;
 
-  // The just-resolved round, kept locally to render the result card (the active
-  // prediction itself is cleared from global state on settle).
-  const [settled, setSettled] = useState<Settled | null>(null);
   const [remaining, setRemaining] = useState(() =>
     active ? Math.max(0, Math.ceil((active.expiresAt - Date.now()) / 1000)) : PREDICTION_SECONDS,
   );
 
-  // Latest price for the active symbol, in a ref so resolution reads it without
-  // a stale closure.
-  const priceRef = useRef(price);
-  priceRef.current = price || priceRef.current;
-
-  // Drive the live round: tick the countdown, and settle when it expires — which
-  // also handles "returned after expiry" (resolves immediately against the
-  // latest price). Re-subscribes when a new prediction starts (expiresAt change).
+  // Display-only countdown. Resolution + the result popup are owned by the
+  // global PredictionWatcher (so a round settles even when this screen isn't
+  // mounted); here we just tick the visible timer while a round is live.
   useEffect(() => {
-    if (!active) return;
-    let resolved = false;
-    const resolve = () => {
-      if (resolved) return;
-      resolved = true;
-      const fp = priceRef.current;
-      const oc = resolvePrediction(active.direction, active.lockedPrice, fp);
-      setSettled({ symbol: active.symbol, direction: active.direction, lockedPrice: active.lockedPrice, finalPrice: fp, outcome: oc });
-      dispatch({ type: 'SETTLE_PREDICTION', outcome: oc });
-
-      // Result toast (uses pre-settle streak: a win awards base + bonus × the
-      // streak it's about to become).
-      const pct = active.lockedPrice > 0 ? ((fp - active.lockedPrice) / active.lockedPrice) * 100 : 0;
-      const moved = `${active.symbol} ${pct >= 0 ? 'up' : 'down'} ${Math.abs(pct).toFixed(2)}%`;
-      if (oc === 'win') {
-        const wonXp = PREDICTION_XP + PREDICTION_STREAK_XP * (state.predictionStreak + 1);
-        celebrate();
-        show({
-          title: 'Prediction won! 🎯',
-          subtitle: `+${wonXp.toLocaleString()} XP · ${moved}`,
-          variant: 'up',
-          icon: Target,
-        });
-      } else if (oc === 'loss') {
-        show({ title: 'Prediction missed', subtitle: moved, variant: 'warn', icon: Target });
-      } else {
-        show({ title: 'Push — no move', subtitle: moved, variant: 'brand', icon: Target });
-      }
-    };
-    const tick = () => {
-      const left = Math.ceil((active.expiresAt - Date.now()) / 1000);
-      if (left > 0) setRemaining(left);
-      else resolve();
-    };
+    if (!active) { setRemaining(PREDICTION_SECONDS); return; }
+    const tick = () => setRemaining(Math.max(0, Math.ceil((active.expiresAt - Date.now()) / 1000)));
     tick();
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
@@ -100,7 +50,6 @@ export function PredictionScreen() {
   const start = (dir: PredictionDirection) => {
     if (!coin || active) return;
     const now = Date.now();
-    setSettled(null);
     setRemaining(PREDICTION_SECONDS);
     dispatch({
       type: 'START_PREDICTION',
@@ -108,26 +57,19 @@ export function PredictionScreen() {
     });
   };
 
-  const phase: 'idle' | 'live' | 'done' = active ? 'live' : settled ? 'done' : 'idle';
+  const phase: 'idle' | 'live' = active ? 'live' : 'idle';
 
   const total = state.predictionWins + state.predictionLosses;
   const winRate = total > 0 ? Math.round((state.predictionWins / total) * 100) : 0;
-  // After a settle, predictionStreak holds the just-resolved streak, so on a win
-  // it reflects the awarded bonus (base + 500 × streak).
   const streakCount = state.predictionStreak;
-  const awardedXp = PREDICTION_XP + PREDICTION_STREAK_XP * streakCount;          // what a just-won round paid
   const nextWinXp = PREDICTION_XP + PREDICTION_STREAK_XP * (streakCount + 1);    // what the next win would pay
 
-  const lockedPrice = active?.lockedPrice ?? settled?.lockedPrice ?? 0;
-  const direction = active?.direction ?? settled?.direction ?? null;
-  const outcome = settled?.outcome ?? null;
-  const refPrice = phase === 'done' ? (settled?.finalPrice ?? price) : price;
+  const lockedPrice = active?.lockedPrice ?? 0;
+  const direction = active?.direction ?? null;
+  const refPrice = price;
   const delta = lockedPrice > 0 ? refPrice - lockedPrice : 0;
   const deltaPct = lockedPrice > 0 ? (delta / lockedPrice) * 100 : 0;
   const deltaColor = delta > 0 ? colors.up : delta < 0 ? colors.down : colors.ink3;
-
-  const outcomeColor = outcome === 'win' ? colors.up : outcome === 'loss' ? colors.down : colors.ink3;
-  const outcomeLabel = outcome === 'win' ? 'You won!' : outcome === 'loss' ? 'Not this time' : 'Push — no move';
 
   return (
     <ScreenShell eyebrow="Mini-game" title="Price prediction">
@@ -139,7 +81,7 @@ export function PredictionScreen() {
             <TouchableOpacity
               key={c.symbol}
               disabled={phase === 'live'}
-              onPress={() => { setPickerSymbol(c.symbol); setSettled(null); }}
+              onPress={() => setPickerSymbol(c.symbol)}
               activeOpacity={0.8}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -161,7 +103,7 @@ export function PredictionScreen() {
       <Card>
         <View style={{ alignItems: 'center', gap: 6, paddingVertical: 8 }}>
           <Text style={{ fontSize: 12, color: colors.ink3 }}>
-            {phase === 'idle' ? 'Current price' : phase === 'live' ? 'Live price' : 'Final price'}
+            {phase === 'idle' ? 'Current price' : 'Live price'}
           </Text>
           <Text style={{ fontSize: 32, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
             ${fmtPrice(refPrice)}
@@ -207,33 +149,6 @@ export function PredictionScreen() {
             </View>
           </View>
         </Card>
-      )}
-
-      {phase === 'done' && (
-        <>
-          <Card style={{ borderWidth: 1, borderColor: `${outcomeColor}55` }}>
-            <View style={{ alignItems: 'center', gap: 8, paddingVertical: 10 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: `${outcomeColor}1A`, alignItems: 'center', justifyContent: 'center' }}>
-                <Target color={outcomeColor} size={28} strokeWidth={2} />
-              </View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: outcomeColor }}>{outcomeLabel}</Text>
-              <Text style={{ fontSize: 13, color: colors.ink3 }}>
-                {symbol} moved {delta >= 0 ? 'up' : 'down'} {Math.abs(deltaPct).toFixed(2)}% — you picked {direction === 'up' ? 'Higher' : 'Lower'}
-              </Text>
-              {outcome === 'win' && (
-                <>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.up }}>+{awardedXp.toLocaleString()} XP</Text>
-                  {streakCount > 1 && (
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.up }}>
-                      🔥 {streakCount} in a row · +{(PREDICTION_STREAK_XP * streakCount).toLocaleString()} streak bonus
-                    </Text>
-                  )}
-                </>
-              )}
-            </View>
-          </Card>
-          <Button variant="brand" onPress={() => setSettled(null)}>Play again</Button>
-        </>
       )}
 
       {/* Lifetime stats */}

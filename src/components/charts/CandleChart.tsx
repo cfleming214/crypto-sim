@@ -19,6 +19,7 @@ export type Indicator = 'MA20' | 'MA50' | 'RSI';
 // an up (buy) / down (sell) triangle at the trade price; tapping it reveals the
 // units, price and dollar amount.
 export interface ChartMarker {
+  id?: string;       // source Trade id — lets a tapped marker open full trade details
   timestamp: number;
   side: 'buy' | 'sell';
   price: number;
