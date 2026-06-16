@@ -627,6 +627,23 @@ export async function fetchTraderByOwner(owner: string): Promise<PublicTrader | 
   }
 }
 
+// Resolve a trader by handle. Contest leaderboard rows (CompetitionEntry) only
+// carry a handle — not an owner or PublicProfile id — so this bridges a contest
+// leaderboard tap to the public-profile screen. Returns null for handles with no
+// public profile (e.g. bots), which the screen renders as a minimal fallback.
+export async function fetchTraderByHandle(handle: string): Promise<PublicTrader | null> {
+  const client = await getClient();
+  if (!client || !handle) return null;
+  try {
+    const { data } = await client.models.PublicProfile.list({ filter: { handle: { eq: handle } } });
+    const row = (data as any[])[0];
+    return row ? await publicTraderFromRecord(row) : null;
+  } catch (e) {
+    console.warn('fetchTraderByHandle failed:', e);
+    return null;
+  }
+}
+
 // Subscribe to a single trader's PublicProfile row so the CopyTrade screen
 // updates live as that trader trades.
 export async function subscribeToTrader(

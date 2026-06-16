@@ -10,6 +10,7 @@ import { LeagueScreen } from '../screens/LeagueScreen';
 import { BracketsScreen } from '../screens/BracketsScreen';
 import { CopyTradeScreen } from '../screens/CopyTradeScreen';
 import { TopTradersScreen } from '../screens/TopTradersScreen';
+import { PublicProfileScreen } from '../screens/PublicProfileScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
 import { PredictionScreen } from '../screens/PredictionScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
@@ -38,6 +39,7 @@ export type RootStackParamList = {
   Brackets: undefined;
   CopyTrade: { traderId: string };
   TopTraders: undefined;
+  PublicProfile: { handle: string };
   Replay: { eraId?: string };
   Predict: undefined;
   Notifications: undefined;
@@ -90,6 +92,7 @@ export function RootNavigator() {
       <Stack.Screen name="Brackets" component={BracketsScreen} />
       <Stack.Screen name="CopyTrade" component={CopyTradeScreen} />
       <Stack.Screen name="TopTraders" component={TopTradersScreen} />
+      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />

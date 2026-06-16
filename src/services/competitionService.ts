@@ -1,6 +1,15 @@
 import { isAmplifyConfigured } from '../lib/amplify';
-import type { Competition, CompetitionEntry } from '../store/types';
+import type { Competition, CompetitionEntry, Holding } from '../store/types';
 import { DEFAULT_PRIZE_XP, STARTING_CASH } from '../constants/featureFlags';
+
+// A player's portfolio within a single contest, read from their CompetitionEntry
+// row (holdings/cash are public-readable). Used by the leaderboard balance popup.
+export interface ContestPortfolio {
+  cash: number;
+  holdings: Holding[];
+  bankroll: number;
+  pnlPct: number;
+}
 
 // Cloud Competition rows (DynamoDB) are the source of truth for real contests,
 // but we always surface one locally-seeded upcoming bracket so there's a
@@ -294,6 +303,31 @@ export async function leaveCompetitionForUser(competitionId: string, handle: str
     await Promise.all(mine.map(e => client.models.CompetitionEntry.delete({ id: e.id }).catch(() => {})));
   } catch (e) {
     console.warn('leaveCompetitionForUser failed:', e);
+  }
+}
+
+// Read one player's portfolio within a contest (their holdings + cash), keyed by
+// handle since that's all a leaderboard row carries. Returns null if no entry.
+export async function fetchEntryPortfolio(competitionId: string, handle: string): Promise<ContestPortfolio | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const { data } = await client.models.CompetitionEntry.list({
+      filter: { competitionId: { eq: competitionId } },
+    });
+    const row = (data as any[]).find(e => e.handle === handle && e.isActive !== false);
+    if (!row) return null;
+    let holdings: Holding[] = [];
+    try { holdings = row.holdingsJson ? JSON.parse(row.holdingsJson) : []; } catch {}
+    return {
+      cash: row.cash ?? STARTING_CASH,
+      holdings: Array.isArray(holdings) ? holdings : [],
+      bankroll: row.bankroll ?? STARTING_CASH,
+      pnlPct: row.pnlPct ?? 0,
+    };
+  } catch (e) {
+    console.warn('fetchEntryPortfolio failed:', e);
+    return null;
   }
 }
 

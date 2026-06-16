@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView, Pressable, Modal, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Avatar, CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { useTheme } from '../theme/ThemeContext';
@@ -11,9 +12,10 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useCompetitions } from '../hooks/useCompetitions';
+import { fetchEntryPortfolio, type ContestPortfolio } from '../services/competitionService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
-import { Bell, MoreHorizontal, Trophy } from 'lucide-react-native';
+import { Bell, MoreHorizontal, Trophy, X } from 'lucide-react-native';
 
 
 export function TournamentDetailScreen() {
@@ -25,6 +27,20 @@ export function TournamentDetailScreen() {
   const { getById, isJoined, join, leave, timeRemaining, refreshLeaderboard, leaderboard } = useCompetitions();
   const { emailVerified, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
+  // Leaderboard balance popup: the tapped player's portfolio within this contest.
+  const [portfolioView, setPortfolioView] = useState<{ handle: string; data: ContestPortfolio | null; loading: boolean } | null>(null);
+
+  // Tap a player's name → their public profile (own row → own Profile tab).
+  const openProfile = (handle: string) => {
+    if (handle === state.user.handle) { nav.navigate('MainTabs', { screen: 'Profile' }); return; }
+    nav.navigate('PublicProfile', { handle });
+  };
+  // Tap a player's balance → their contest holdings (fetched from their entry).
+  const openBalance = async (handle: string) => {
+    setPortfolioView({ handle, data: null, loading: true });
+    const data = await fetchEntryPortfolio(competitionId, handle);
+    setPortfolioView(prev => (prev?.handle === handle ? { handle, data, loading: false } : prev));
+  };
 
   const competitionId: string = route.params?.id ?? '';
   const competition = getById(competitionId);
@@ -384,15 +400,33 @@ export function TournamentDetailScreen() {
                   }}>
                     {liveRank}
                   </Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>
+                  {/* Name → public profile */}
+                  <Pressable
+                    onPress={() => openProfile(e.handle)}
+                    hitSlop={6}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  >
+                    <Avatar initials={e.handle.slice(0, 2).toUpperCase()} size="sm" />
+                    <Text numberOfLines={1} style={{ fontWeight: '600', fontSize: 13, color: colors.ink, flexShrink: 1 }}>
                       @{e.handle}{isMe ? ' (you)' : ''}
                     </Text>
-                    <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
-                      ${Math.round(e.bankroll).toLocaleString()} · {e.pnlPct >= 0 ? '+' : ''}{e.pnlPct.toFixed(1)}%
+                  </Pressable>
+                  {/* Balance → contest portfolio popup */}
+                  <Pressable
+                    onPress={() => openBalance(e.handle)}
+                    hitSlop={6}
+                    style={{ alignItems: 'flex-end', paddingHorizontal: 8 }}
+                  >
+                    <Text style={{ fontWeight: '700', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                      ${Math.round(e.bankroll).toLocaleString()}
                     </Text>
-                  </View>
+                    <Text style={{ fontSize: 11, color: e.pnlPct >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                      {e.pnlPct >= 0 ? '+' : ''}{e.pnlPct.toFixed(1)}%
+                    </Text>
+                  </Pressable>
                   <Text style={{
+                    width: 56,
+                    textAlign: 'right',
                     fontWeight: '700',
                     fontSize: 13,
                     color: (CONTEST_CASH_PRIZES ? prize : prizeXp) > 0 ? colors.up : colors.ink3,
@@ -461,6 +495,93 @@ export function TournamentDetailScreen() {
           join(competitionId);
         }}
       />
+
+      {/* Contest-portfolio popup for a tapped player's balance */}
+      <Modal visible={!!portfolioView} transparent animationType="fade" onRequestClose={() => setPortfolioView(null)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
+          onPress={() => setPortfolioView(null)}
+        >
+          <Pressable
+            style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingBottom: 28 }}
+            onPress={() => {}}
+          >
+            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.hairline, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 10 }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: colors.ink }}>
+                @{portfolioView?.handle}'s portfolio
+              </Text>
+              <TouchableOpacity onPress={() => setPortfolioView(null)} hitSlop={8}>
+                <X color={colors.ink3} size={20} />
+              </TouchableOpacity>
+            </View>
+            {portfolioView?.loading ? (
+              <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+                <ActivityIndicator color={colors.brand} />
+              </View>
+            ) : !portfolioView?.data ? (
+              <Text style={{ paddingHorizontal: 20, fontSize: 13, color: colors.ink3 }}>
+                Couldn't load this player's contest portfolio.
+              </Text>
+            ) : (() => {
+              const d = portfolioView.data;
+              const holdingsValue = d.holdings.reduce((s, h) => {
+                const c = state.coins.find(x => x.symbol === h.symbol);
+                return s + (c ? c.price * h.units : 0);
+              }, 0);
+              const total = d.cash + holdingsValue;
+              const pnl = ((total - STARTING_CASH) / STARTING_CASH) * 100;
+              return (
+                <View style={{ paddingHorizontal: 20 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 14 }}>
+                    <Text style={{ fontSize: 26, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                      ${total.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: pnl >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                      {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
+                    </Text>
+                  </View>
+                  <ScrollView style={{ maxHeight: 340 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.hairline }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink }}>Cash</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                        ${d.cash.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    {d.holdings.length === 0 ? (
+                      <Text style={{ fontSize: 12, color: colors.ink3, paddingVertical: 12 }}>
+                        All cash — no open positions.
+                      </Text>
+                    ) : (
+                      [...d.holdings]
+                        .map(h => {
+                          const c = state.coins.find(x => x.symbol === h.symbol);
+                          const value = c ? c.price * h.units : 0;
+                          return { h, value };
+                        })
+                        .sort((a, b) => b.value - a.value)
+                        .map(({ h, value }, i, arr) => (
+                          <View key={h.symbol} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: colors.hairline }}>
+                            <CoinGlyph symbol={h.symbol} size={32} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{h.symbol}</Text>
+                              <Text style={{ fontSize: 12, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                                {h.units < 1 ? h.units.toFixed(4) : h.units.toFixed(2)} units · {total > 0 ? Math.round((value / total) * 100) : 0}%
+                              </Text>
+                            </View>
+                            <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                              ${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                            </Text>
+                          </View>
+                        ))
+                    )}
+                  </ScrollView>
+                </View>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenShell>
   );
 }
