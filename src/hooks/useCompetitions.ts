@@ -8,6 +8,7 @@ import {
   fetchFinishedCompetitions,
 } from '../services/competitionService';
 import type { Competition } from '../store/types';
+import { STARTING_CASH } from '../constants/featureFlags';
 
 export function useCompetitions() {
   const { state, dispatch } = useApp();
@@ -41,9 +42,12 @@ export function useCompetitions() {
     if (comp && (comp.status === 'finished' || Date.now() >= comp.endAt)) return;
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: competitionId });
     dispatch({ type: 'ADD_XP', amount: 10 });
-    // Persist to cloud if configured (no-op in offline mode)
-    await joinCloud(competitionId, state.user.handle, state.bankroll);
-  }, [state.competitions, state.finishedCompetitions, state.user.handle, state.bankroll, dispatch]);
+    // Every contest starts with a fresh $100K portfolio (JOIN_TOURNAMENT spawns
+    // the matching local slice). Enroll the cloud entry at STARTING_CASH — NOT
+    // state.bankroll, which is the active (usually main) portfolio's balance and
+    // would wrongly seed the leaderboard with the user's personal balance.
+    await joinCloud(competitionId, state.user.handle, STARTING_CASH);
+  }, [state.competitions, state.finishedCompetitions, state.user.handle, dispatch]);
 
   const leave = useCallback(async (competitionId: string, entryId?: string) => {
     dispatch({ type: 'LEAVE_TOURNAMENT', tournamentId: competitionId });

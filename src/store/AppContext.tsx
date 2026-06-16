@@ -1324,6 +1324,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           pnlPct,
         );
       }
+      // Heal the contest we're switching INTO: push its true bankroll to the
+      // cloud entry now, before any trade. A freshly-joined contest reports
+      // $100K / 0% — correcting any entry that was (historically) enrolled at
+      // the user's personal balance instead of STARTING_CASH.
+      if (action.portfolioId !== 'main') {
+        const incoming = state.portfolios[action.portfolioId] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
+        const inBankroll = incoming.cash + incoming.holdings.reduce((s, h) => {
+          const c = state.coins.find(x => x.symbol === h.symbol);
+          return s + (c ? c.price * h.units : 0);
+        }, 0);
+        const inPnl = ((inBankroll - STARTING_CASH) / STARTING_CASH) * 100;
+        saveContestPortfolio(action.portfolioId, incoming, inBankroll, inPnl);
+      }
     }
     if (SAVE_ACTIONS.includes(action.type)) {
       lastActionRef.current = action;
