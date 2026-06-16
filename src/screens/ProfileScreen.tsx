@@ -631,6 +631,18 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
 
+        <TouchableOpacity testID="profile-new-walkthrough" onPress={() => nav.navigate('NewWalkthrough')}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Sparkles color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>New walkthrough</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
         <TouchableOpacity testID="profile-old-walkthrough" onPress={() => nav.navigate('OldWalkthrough')}>
           <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
