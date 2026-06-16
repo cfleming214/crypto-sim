@@ -24,8 +24,7 @@ import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
 import { SplashLogo } from '../components/SplashLogo';
-import { WalkthroughNavigator } from './WalkthroughNavigator';
-import { NewWalkthroughScreen } from '../screens/OnboardingWalkthrough';
+import { OnboardingWalkthrough } from '../screens/OnboardingWalkthrough';
 import { OldWalkthroughScreen } from '../screens/OldWalkthroughScreen';
 import type { NewsArticle } from '../services/newsService';
 import { useAuth } from '../store/AuthContext';
@@ -43,7 +42,6 @@ export type RootStackParamList = {
   TopTraders: undefined;
   PublicProfile: { handle: string };
   OldWalkthrough: undefined;
-  NewWalkthrough: undefined;
   Replay: { eraId?: string };
   Predict: undefined;
   Notifications: undefined;
@@ -90,10 +88,10 @@ export function RootNavigator() {
   // during the 1.4s splash), so a returning user never flashes the walkthrough.
   if (!splashTimedOut && (status === 'loading' || minSplash || !state.onboardingChecked)) return <SplashLogo />;
 
-  // First run → the original guided-trade walkthrough (stable). The new feature
-  // walkthrough is opt-in from Profile → "New walkthrough" while we confirm it's
-  // crash-free; both flip `hasOnboarded`/dismiss appropriately.
-  if (!state.hasOnboarded) return <WalkthroughNavigator />;
+  // First run → the new feature walkthrough; it flips `hasOnboarded` when
+  // finished (Start Trading / Skip), which re-renders this into the main app.
+  // The original W1–W8 tour stays available from Profile → "Old walkthrough".
+  if (!state.hasOnboarded) return <OnboardingWalkthrough />;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -107,7 +105,6 @@ export function RootNavigator() {
       <Stack.Screen name="TopTraders" component={TopTradersScreen} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
       <Stack.Screen name="OldWalkthrough" component={OldWalkthroughScreen} options={{ presentation: 'fullScreenModal' }} />
-      <Stack.Screen name="NewWalkthrough" component={NewWalkthroughScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />

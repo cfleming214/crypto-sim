@@ -4,7 +4,6 @@ import {
   useWindowDimensions, StyleProp, ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -762,7 +761,7 @@ const SLIDES = [
 
 // ── Root carousel ────────────────────────────────────────────────────────────
 
-export function OnboardingWalkthrough({ onDone }: { onDone?: () => void } = {}) {
+export function OnboardingWalkthrough() {
   const { width } = useWindowDimensions();
   const { dispatch } = useApp();
   const scrollRef = useRef<ScrollView>(null);
@@ -775,9 +774,6 @@ export function OnboardingWalkthrough({ onDone }: { onDone?: () => void } = {}) 
   };
 
   const finish = async () => {
-    // Preview mode (launched from Settings): just dismiss, don't touch the
-    // onboarding flag or grant XP.
-    if (onDone) { onDone(); return; }
     await AsyncStorage.setItem('hasOnboarded', 'true');
     const rewarded = await AsyncStorage.getItem('onboardingRewarded');
     if (!rewarded) {
@@ -856,18 +852,11 @@ export function OnboardingWalkthrough({ onDone }: { onDone?: () => void } = {}) 
             </View>
             {/* Skip */}
             <Pressable onPress={finish} disabled={isLast} style={{ alignItems: 'center', paddingVertical: 12, opacity: isLast ? 0 : 1 }}>
-              <Text style={{ color: C.muted, fontSize: 14 }}>{onDone ? 'Close' : 'Skip intro'}</Text>
+              <Text style={{ color: C.muted, fontSize: 14 }}>Skip intro</Text>
             </Pressable>
           </SafeAreaView>
         </LinearGradient>
       </View>
     </View>
   );
-}
-
-// Settings entry point: plays the new walkthrough on demand as a dismissible
-// modal (the CTA/Skip call onDone → goBack instead of flipping onboarding).
-export function NewWalkthroughScreen() {
-  const nav = useNavigation<any>();
-  return <OnboardingWalkthrough onDone={() => nav.goBack()} />;
 }
