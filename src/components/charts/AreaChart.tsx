@@ -348,12 +348,11 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
 
       {/* Buy/sell markers, anchored to the equity curve and grouped by time
           bucket. A single-trade bucket is a triangle (buy ▲ / sell ▼); a
-          multi-trade bucket is a counted pill. Rendered above the touch overlay
-          so taps hit the marker, not the crosshair. */}
+          multi-trade bucket is a plain dot (the transaction count lives in the
+          tap popup, not on the icon). Above the touch overlay so taps hit it. */}
       {markerGroups.map((g, i) => {
         const xPx = leftGutter + (g.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
         const yPx = Math.max(7, Math.min(plotH - 7, yForValue(chartData[g.idx])));
-        const count = g.markers.length;
         const allBuy = g.markers.every(m => m.side === 'buy');
         const allSell = g.markers.every(m => m.side === 'sell');
         // Mixed buckets use the brand colour; single-side buckets keep up/down.
@@ -362,7 +361,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
           if (onMarkerGroupPress) onMarkerGroupPress(g.markers);
           else setSelGroup(prev => (prev === i ? null : i));
         };
-        const multi = count > 1;
+        const multi = g.markers.length > 1;
         return (
           <Pressable
             key={`g${i}`}
@@ -370,19 +369,13 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
             hitSlop={8}
             style={{
               position: 'absolute',
-              left: xPx - (multi ? 9 : 6),
-              top: multi ? yPx - 9 : (allBuy ? yPx + 3 : yPx - 11),
+              left: xPx - (multi ? 5.5 : 6),
+              top: multi ? yPx - 5.5 : (allBuy ? yPx + 3 : yPx - 11),
               alignItems: 'center', justifyContent: 'center', zIndex: 6,
             }}
           >
             {multi ? (
-              <View style={{
-                minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4,
-                backgroundColor: col, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1.5, borderColor: colors.surface,
-              }}>
-                <Text style={{ color: colors.brandOn, fontSize: 10, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{count}</Text>
-              </View>
+              <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: col, borderWidth: 1.5, borderColor: colors.surface }} />
             ) : (
               <View style={{ width: 12, height: 9, alignItems: 'center', justifyContent: 'center' }}>
                 <View style={allBuy ? upTri(col) : downTri(col)} />

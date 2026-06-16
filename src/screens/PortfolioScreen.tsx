@@ -608,7 +608,7 @@ export function PortfolioScreen() {
             <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.hairline, marginBottom: 12 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 6 }}>
               <Text style={{ fontSize: 17, fontWeight: '800', color: colors.ink }}>
-                {markerTrades && markerTrades.length > 1 ? `${markerTrades.length} trades` : 'Trade'}
+                {markerTrades ? `${markerTrades.length} ${markerTrades.length === 1 ? 'transaction' : 'transactions'}` : 'Trade'}
               </Text>
               <TouchableOpacity onPress={() => setMarkerTrades(null)} hitSlop={8}>
                 <X color={colors.ink3} size={20} />

@@ -10,6 +10,7 @@ import { AreaChart } from '../components/charts/AreaChart';
 import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { REPLAY_ERAS, type ReplayEraId } from '../data/replayHistory';
+import { STARTING_CASH } from '../constants/featureFlags';
 import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward } from 'lucide-react-native';
 
 const SPEED_DELAYS: Record<string, number> = { '1×': 500, '5×': 100, '60×': 20 };
@@ -45,7 +46,7 @@ export function ReplayScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState('5×');
   const [day, setDay] = useState(0);
-  const [replayCash, setReplayCash] = useState(10000);
+  const [replayCash, setReplayCash] = useState(STARTING_CASH);
   const [replayUnits, setReplayUnits] = useState(0);
 
   const dayRef = useRef(day);
@@ -59,7 +60,7 @@ export function ReplayScreen() {
   useEffect(() => {
     if (!activeEraId) return;
     setDay(0);
-    setReplayCash(10000);
+    setReplayCash(STARTING_CASH);
     setReplayUnits(0);
     setIsPlaying(true);
   }, [activeEraId]);
@@ -79,8 +80,8 @@ export function ReplayScreen() {
   const currentPrice = priceSeries[day] ?? priceSeries[0] ?? 0;
   const holdingsValue = replayUnits * currentPrice;
   const bankroll = replayCash + holdingsValue;
-  const pnl = bankroll - 10000;
-  const pnlPct = (pnl / 10000) * 100;
+  const pnl = bankroll - STARTING_CASH;
+  const pnlPct = (pnl / STARTING_CASH) * 100;
 
   const handleBuy = () => {
     if (!activeEra) return;
@@ -139,7 +140,7 @@ export function ReplayScreen() {
     setActiveEraId(null);
     setIsPlaying(false);
     setDay(0);
-    setReplayCash(10000);
+    setReplayCash(STARTING_CASH);
     setReplayUnits(0);
   };
 
@@ -176,7 +177,7 @@ export function ReplayScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20 }}>
             <TouchableOpacity
               style={{ padding: 8 }}
-              onPress={() => { setDay(0); setIsPlaying(false); setReplayCash(10000); setReplayUnits(0); }}
+              onPress={() => { setDay(0); setIsPlaying(false); setReplayCash(STARTING_CASH); setReplayUnits(0); }}
             >
               <SkipBack color={colors.ink} size={22} strokeWidth={1.75} />
             </TouchableOpacity>
@@ -256,7 +257,7 @@ export function ReplayScreen() {
               Replay complete {pnl >= 0 ? '🎉' : ''}
             </Text>
             <Text style={{ fontSize: 13, color: colors.ink2, marginTop: 4 }}>
-              You turned $10,000 into ${bankroll.toFixed(0)} — a {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}% return over {days} days.
+              You turned $100,000 into ${bankroll.toFixed(0)} — a {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}% return over {days} days.
             </Text>
           </Card>
         )}
