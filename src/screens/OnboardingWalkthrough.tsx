@@ -9,7 +9,7 @@ import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-nati
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   LineChart, Trophy, Copy, ChevronLeft, GraduationCap,
-  Flame, TrendingUp, Zap, Gem, Check,
+  Flame, TrendingUp, TrendingDown, Zap, Gem, Check, Target,
 } from 'lucide-react-native';
 import { useApp } from '../store/AppContext';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -575,8 +575,55 @@ function SlideCopyTrade({ active }: { active: boolean }) {
   );
 }
 
-const SLIDES = [SlideWelcome, SlidePortfolio, SlideMarkets, SlideTrade, SlideAcademy, SlideCompete, SlideCopyTrade];
-const CTA_LABELS = ['Get Started', 'Next', 'Next', 'Next', 'Next', 'Next', 'Start Trading'];
+function SlidePrediction({ active }: { active: boolean }) {
+  const xp = useCountUp(0, 1500, active, 1200, 1960);
+  return (
+    <View style={{ flex: 1 }}>
+      <SlideHead active={active} eyebrow="Mini-game" title="Call the next move" sub="Predict whether a coin goes up or down in 60 seconds — win XP and build a streak." />
+      <Reveal active={active} delay={480}>
+        <View style={[uiCard(), { padding: 18, alignItems: 'center' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <CoinDot sym="BTC" size={22} />
+            <Text style={{ color: C.muted, fontSize: 13 }}>BTC · Live price</Text>
+          </View>
+          <Text style={{ color: C.text, fontSize: 32, fontWeight: '700', marginTop: 6, fontVariant: ['tabular-nums'] }}>$94,237</Text>
+          <Text style={{ color: C.green, fontSize: 13, fontWeight: '600', marginTop: 2 }}>▲ 0.18% vs locked $94,070</Text>
+          <View style={{ width: '100%', marginTop: 16, gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: C.muted, fontSize: 12 }}>Round ends in</Text>
+              <Text style={{ color: C.text, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] }}>0:42</Text>
+            </View>
+            <Bar active={active} to={0.7} delay={760} height={7} />
+          </View>
+        </View>
+      </Reveal>
+      <Reveal active={active} delay={680}>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+          <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, backgroundColor: C.glow, borderWidth: 1, borderColor: `${C.green}66` }}>
+            <TrendingUp color={C.green} size={18} strokeWidth={2.4} />
+            <Text style={{ color: C.green, fontSize: 15, fontWeight: '700' }}>Higher</Text>
+          </View>
+          <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }}>
+            <TrendingDown color={C.muted} size={18} strokeWidth={2.4} />
+            <Text style={{ color: C.muted, fontSize: 15, fontWeight: '700' }}>Lower</Text>
+          </View>
+        </View>
+      </Reveal>
+      <Reveal active={active} delay={1960} from="scale" style={{ marginTop: 14 }}>
+        <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: `${C.green}55`, borderRadius: 16, padding: 16, alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: C.glow, alignItems: 'center', justifyContent: 'center' }}>
+            <Target color={C.green} size={24} strokeWidth={2} />
+          </View>
+          <Text style={{ color: C.green, fontSize: 18, fontWeight: '800' }}>You won! 🎯</Text>
+          <Text style={{ color: C.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] }}>+{Math.round(xp).toLocaleString()} XP</Text>
+          <Text style={{ color: C.green, fontSize: 12, fontWeight: '600' }}>🔥 3 in a row · +500 streak bonus</Text>
+        </View>
+      </Reveal>
+    </View>
+  );
+}
+
+const SLIDES = [SlideWelcome, SlidePortfolio, SlideMarkets, SlideTrade, SlideAcademy, SlideCompete, SlidePrediction, SlideCopyTrade];
 
 // ── Root carousel ────────────────────────────────────────────────────────────
 
@@ -604,6 +651,7 @@ export function OnboardingWalkthrough() {
 
   const onCta = () => { if (index >= SLIDES.length - 1) finish(); else goTo(index + 1); };
   const isLast = index === SLIDES.length - 1;
+  const ctaLabel = index === 0 ? 'Get Started' : isLast ? 'Start Trading' : 'Next';
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -657,7 +705,7 @@ export function OnboardingWalkthrough() {
               </Pressable>
               <Pressable onPress={onCta} style={{ flex: 1 }}>
                 <LinearGradient colors={[C.green, C.greenDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 52, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ color: '#03120a', fontSize: 16, fontWeight: '700' }}>{CTA_LABELS[index]}</Text>
+                  <Text style={{ color: '#03120a', fontSize: 16, fontWeight: '700' }}>{ctaLabel}</Text>
                 </LinearGradient>
               </Pressable>
             </View>
