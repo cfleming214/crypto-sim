@@ -31,8 +31,11 @@ export function replayDisplayPrice(meta: ReplayMeta, now: number): number {
 }
 
 // The real calendar date the current step represents, e.g. "September 13, 2020".
+// Uses histStepMs (historical time per step), which differs from intervalMs
+// (real time per step) for accelerated solo replays.
 export function replayDateAt(meta: ReplayMeta, now: number): Date {
-  return new Date(Date.parse(meta.histStartIso) + replayIndex(meta, now) * (meta.intervalMs || 60000));
+  const histStep = meta.histStepMs ?? meta.intervalMs ?? 60000;
+  return new Date(Date.parse(meta.histStartIso) + replayIndex(meta, now) * histStep);
 }
 
 export function replayDateLabel(meta: ReplayMeta, now: number): string {

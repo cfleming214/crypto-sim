@@ -133,9 +133,19 @@ export interface ReplayMeta {
   coin: string;
   histStartIso: string;   // ISO date of prices[0] — drives the "(Month D, YYYY)" label
   startAt: number;        // ms epoch the contest clock starts (real time)
-  endAt: number;          // startAt + 7 days
-  intervalMs: number;     // ms per step (60000)
-  prices: number[];       // real minute closes, oldest → newest
+  endAt: number;          // startAt + (prices.length × intervalMs)
+  intervalMs: number;     // REAL ms per step (contests: 60000 = real-time 1:1)
+  prices: number[];       // close series, oldest → newest
+  // HISTORICAL ms each step represents. Defaults to intervalMs (contests are
+  // 1:1). Solo replays accelerate — e.g. intervalMs 3000 (3s/step) with
+  // histStepMs 86400000 (one day/step) fast-forwards a daily era in minutes,
+  // while the date label still advances a full day per step.
+  histStepMs?: number;
+  // True for a locally-created solo replay (no cloud entry, no leaderboard).
+  solo?: boolean;
+  // Display name (solo replays aren't in the server contest list, so they carry
+  // their own title for the pill + header eyebrow).
+  title?: string;
 }
 
 // Lightweight replay-contest row for the Compete browse list (no heavy pricesJson).

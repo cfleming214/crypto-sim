@@ -1449,8 +1449,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const outId = state.activePortfolioId;
       const outSlice = { cash: state.cash, holdings: state.holdings, trades: state.trades };
       const outPnl = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
+      const outMeta = state.replayMeta[outId];
       if (outId === 'main') saveProfile(state);
-      else if (state.replayMeta[outId]) saveReplayEntry(outId, outSlice, state.bankroll, outPnl);
+      else if (outMeta) { if (!outMeta.solo) saveReplayEntry(outId, outSlice, state.bankroll, outPnl); }
       else saveContestPortfolio(outId, outSlice, state.bankroll, outPnl);
       // Heal the contest/replay we're switching INTO: push its true bankroll to
       // the cloud entry now, before any trade (a fresh join reports $100K / 0%).
@@ -1464,7 +1465,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return s + (c ? c.price * h.units : 0);
         }, 0);
         const inPnl = ((inBankroll - STARTING_CASH) / STARTING_CASH) * 100;
-        if (inMeta) saveReplayEntry(action.portfolioId, incoming, inBankroll, inPnl);
+        if (inMeta) { if (!inMeta.solo) saveReplayEntry(action.portfolioId, incoming, inBankroll, inPnl); }
         else saveContestPortfolio(action.portfolioId, incoming, inBankroll, inPnl);
       }
     }
@@ -1967,7 +1968,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
     const unsubs: (() => void)[] = [];
-    state.joinedReplayIds.forEach(replayContestId => {
+    // Solo replays have no cloud entries/leaderboard — only subscribe contests.
+    state.joinedReplayIds.filter(id => !state.replayMeta[id]?.solo).forEach(replayContestId => {
       subscribeToReplayLeaderboard(replayContestId, entries => {
         if (entries.length === 0) return;
         dispatch({ type: 'SET_LEADERBOARD', competitionId: replayContestId, entries });
@@ -2003,9 +2005,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
       const slice = { cash: state.cash, holdings: state.holdings, trades: state.trades };
       // Replay portfolios persist to ReplayEntry (separate table); contests to
-      // CompetitionEntry. The tradesJson carries the ledger, so no saveTrade.
-      if (state.replayMeta[state.activePortfolioId]) {
-        saveReplayEntry(state.activePortfolioId, slice, state.bankroll, pnlPct);
+      // CompetitionEntry. Solo replays are local-only (no cloud entry).
+      const activeMeta = state.replayMeta[state.activePortfolioId];
+      if (activeMeta) {
+        if (!activeMeta.solo) saveReplayEntry(state.activePortfolioId, slice, state.bankroll, pnlPct);
       } else {
         saveContestPortfolio(state.activePortfolioId, slice, state.bankroll, pnlPct);
       }

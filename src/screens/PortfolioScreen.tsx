@@ -24,7 +24,7 @@ import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification
 import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
-import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target, Rewind } from 'lucide-react-native';
 import { ACADEMY } from '../data/academy';
 
 // Marker-popup timestamp: "Jun 14, 3:42 PM" for old trades, time-only if today.
@@ -319,7 +319,9 @@ export function PortfolioScreen() {
         const existing = await loadSnapshots(pid);
         const pts = existing.length ? [...existing] : [{ t: meta.startAt, v: STARTING_CASH }];
         const lastT = pts[pts.length - 1].t;
-        const step = 5 * 60 * 1000;
+        // Adaptive step (~300 points across the contest's real-time span) so the
+        // chart is smooth for both a ~5-min solo replay and a 7-day contest.
+        const step = Math.max(10_000, Math.floor((meta.endAt - meta.startAt) / 300));
         const valueAt = (t: number) => state.cash + state.holdings.reduce(
           (s, h) => s + (h.symbol === meta.coin ? replayPriceAt(meta, t) * h.units : 0), 0,
         );
@@ -506,12 +508,12 @@ export function PortfolioScreen() {
   const eyebrowLabel = state.activePortfolioId === 'main'
     ? 'Main portfolio'
     : isReplay
-      ? `Replay · ${activeReplaySummary?.eventTitle ?? activeReplayMeta.coin}`
+      ? `Replay · ${activeReplaySummary?.eventTitle ?? activeReplayMeta.title ?? activeReplayMeta.coin}`
       : (activeContest?.name ?? 'Contest');
   // The replay's real historical date, centered under the price; advances with `now`.
   const replaySubtitle = activeReplayMeta ? `(${replayDateLabel(activeReplayMeta, now)})` : undefined;
 
-  const portfolioOptions: { id: string; label: string }[] = [
+  const portfolioOptions: { id: string; label: string; replay?: boolean }[] = [
     { id: 'main', label: 'Main' },
     ...state.joinedTournamentIds.map(id => {
       const comp = state.competitions.find(c => c.id === id);
@@ -519,7 +521,7 @@ export function PortfolioScreen() {
     }),
     ...state.joinedReplayIds.map(id => {
       const r = state.replayContests.find(c => c.id === id);
-      return { id, label: r?.eventTitle ?? state.replayMeta[id]?.coin ?? 'Replay' };
+      return { id, label: r?.eventTitle ?? state.replayMeta[id]?.title ?? state.replayMeta[id]?.coin ?? 'Replay', replay: true };
     }),
   ];
 
@@ -564,8 +566,12 @@ export function PortfolioScreen() {
                   borderWidth: 1,
                   borderColor: active ? colors.brand : colors.hairline,
                   backgroundColor: active ? colors.brand : 'transparent',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
                 }}
               >
+                {opt.replay && <Rewind color={active ? colors.brandOn : colors.ink} size={12} strokeWidth={2.25} />}
                 <Text style={{
                   fontSize: 12,
                   fontWeight: '600',
@@ -662,8 +668,8 @@ export function PortfolioScreen() {
         style={{ alignSelf: 'center' }}
       />
 
-      {/* Replay leaderboard — server-ranked ReplayEntry rows for this contest */}
-      {isReplay && (
+      {/* Replay leaderboard — server-ranked ReplayEntry rows (contests only; solo has none) */}
+      {isReplay && !activeReplayMeta?.solo && (
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <Text style={{ fontWeight: '700', color: colors.ink }}>Leaderboard</Text>

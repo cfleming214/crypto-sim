@@ -82,6 +82,31 @@ export function CompeteScreen() {
     dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: id });
     nav.navigate('MainTabs', { screen: 'Portfolio' });
   };
+
+  // Create a SOLO replay portfolio from a bundled historical era and switch into
+  // it. Accelerated: 2.5 real seconds per historical day fast-forwards a months-
+  // long era in ~3–10 min, while the date label still advances a day per step.
+  const SOLO_STEP_MS = 2500;
+  const startSoloReplay = (era: typeof REPLAY_ERAS[number]) => {
+    const soloId = `solo-${era.id}`;
+    const startAt = Date.now();
+    const meta = {
+      coin: era.coin,
+      histStartIso: era.startDate,
+      startAt,
+      endAt: startAt + era.prices.length * SOLO_STEP_MS,
+      intervalMs: SOLO_STEP_MS,
+      histStepMs: era.intervalMs,   // historical step from the bundled data (a day)
+      prices: era.prices,
+      solo: true,
+      title: era.title,
+    };
+    if (state.joinedReplayIds.includes(soloId)) dispatch({ type: 'LEAVE_REPLAY', replayContestId: soloId });
+    dispatch({ type: 'JOIN_REPLAY', replayContestId: soloId, meta });
+    dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: soloId });
+    setSoloReplayOpen(false);
+    nav.navigate('MainTabs', { screen: 'Portfolio' });
+  };
   const { emailVerified, status, userId, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [soloReplayOpen, setSoloReplayOpen] = useState(false);
@@ -888,7 +913,7 @@ export function CompeteScreen() {
                     key={era.id}
                     activeOpacity={0.75}
                     testID={`solo-replay-${era.id}`}
-                    onPress={() => { setSoloReplayOpen(false); nav.navigate('Replay', { eraId: era.id }); }}
+                    onPress={() => startSoloReplay(era)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.hairline }}
                   >
                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: down ? `${colors.down}1A` : `${colors.up}1A`, alignItems: 'center', justifyContent: 'center' }}>
