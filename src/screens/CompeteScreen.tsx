@@ -16,7 +16,6 @@ import { levelForXp } from '../services/gamification';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { useReplayContests } from '../hooks/useReplayContests';
 import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
@@ -69,43 +68,12 @@ export function CompeteScreen() {
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
   const { getLive, isJoined, join, timeRemaining, refresh } = useCompetitions();
-  const { join: joinReplay, isJoined: isReplayJoined } = useReplayContests();
-  // Enter a replay contest: join it (creates the $100K portfolio + cloud entry)
-  // if needed, then switch into its portfolio and jump to the Portfolio tab.
-  const openReplay = async (id: string) => {
+  // A replay contest: play the scenario on the Replay screen; your final result
+  // is submitted as your entry. Open to all until the end date.
+  const openReplay = (id: string) => {
     const summary = state.replayContests.find(c => c.id === id);
     if (summary && (summary.status === 'finished' || Date.now() >= summary.endAt)) return;
-    if (!isReplayJoined(id)) {
-      const ok = await joinReplay(id);
-      if (!ok) { Alert.alert('Could not join', 'This replay is no longer available.'); return; }
-    }
-    dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: id });
-    nav.navigate('MainTabs', { screen: 'Portfolio' });
-  };
-
-  // Create a SOLO replay portfolio from a bundled historical era and switch into
-  // it. Accelerated: 2.5 real seconds per historical day fast-forwards a months-
-  // long era in ~3–10 min, while the date label still advances a day per step.
-  const SOLO_STEP_MS = 2500;
-  const startSoloReplay = (era: typeof REPLAY_ERAS[number]) => {
-    const soloId = `solo-${era.id}`;
-    const startAt = Date.now();
-    const meta = {
-      coin: era.coin,
-      histStartIso: era.startDate,
-      startAt,
-      endAt: startAt + era.prices.length * SOLO_STEP_MS,
-      intervalMs: SOLO_STEP_MS,
-      histStepMs: era.intervalMs,   // historical step from the bundled data (a day)
-      prices: era.prices,
-      solo: true,
-      title: era.title,
-    };
-    if (state.joinedReplayIds.includes(soloId)) dispatch({ type: 'LEAVE_REPLAY', replayContestId: soloId });
-    dispatch({ type: 'JOIN_REPLAY', replayContestId: soloId, meta });
-    dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: soloId });
-    setSoloReplayOpen(false);
-    nav.navigate('MainTabs', { screen: 'Portfolio' });
+    nav.navigate('Replay', { contestId: id });
   };
   const { emailVerified, status, userId, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
@@ -581,36 +549,26 @@ export function CompeteScreen() {
         return (
           <View style={{ gap: 10 }}>
             {replays.map(r => {
-              const joined = isReplayJoined(r.id);
-              const starts = r.startAt > Date.now();
-              const dateLabel = new Date(r.histStartIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const endsMs = r.endAt - Date.now();
+              const endLabel = endsMs <= 0 ? 'Ended' : endsMs < DAY_MS ? `${Math.ceil(endsMs / (60 * 60 * 1000))}h left` : `${Math.ceil(endsMs / DAY_MS)}d left`;
               return (
                 <PressableScale key={r.id} testID={`replay-card-${r.id}`} onPress={() => openReplay(r.id)}>
                   <Card variant="compact" style={{ gap: 6 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Replay · {r.coin}
+                        Replay contest · {r.coin}
                       </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {r.status === 'live' && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.down }} />
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>Live</Text>
-                          </View>
-                        )}
-                        {joined && <Chip variant="brand" style={{ paddingVertical: 1, paddingHorizontal: 5 }}>Joined</Chip>}
-                      </View>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: colors.up, textTransform: 'uppercase', letterSpacing: 0.5 }}>Play to enter</Text>
                     </View>
                     <Text style={{ fontWeight: '600', color: colors.ink }}>{r.eventTitle}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                       <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
                       <Text style={{ fontSize: 11, color: colors.ink3 }}>
-                        {starts ? `Starts ${startsInLabel(r.startAt)}` : '7-day replay'} · from {dateLabel}
-                        {r.lockAfterStart ? (starts ? ' · 🔒 locks at start' : ' · 🔒 locked') : ''}
+                        Play the scenario, submit your score · {endLabel}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
-                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{r.entryCount.toLocaleString()} / {r.maxPlayers.toLocaleString()} players</Text>
+                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{r.entryCount.toLocaleString()} entries</Text>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{r.prizeXp.toLocaleString()} XP</Text>
                     </View>
                   </Card>
@@ -913,7 +871,7 @@ export function CompeteScreen() {
                     key={era.id}
                     activeOpacity={0.75}
                     testID={`solo-replay-${era.id}`}
-                    onPress={() => startSoloReplay(era)}
+                    onPress={() => { setSoloReplayOpen(false); nav.navigate('Replay', { eraId: era.id }); }}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.hairline }}
                   >
                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: down ? `${colors.down}1A` : `${colors.up}1A`, alignItems: 'center', justifyContent: 'center' }}>

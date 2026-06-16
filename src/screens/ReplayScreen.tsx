@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -11,7 +11,13 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { REPLAY_ERAS, type ReplayEraId } from '../data/replayHistory';
 import { STARTING_CASH } from '../constants/featureFlags';
-import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward } from 'lucide-react-native';
+import { useApp } from '../store/AppContext';
+import { fetchReplayContestScenario, submitReplayScore, fetchReplayLeaderboard } from '../services/replayService';
+import type { CompetitionEntry } from '../store/types';
+import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward, Trophy } from 'lucide-react-native';
+
+// A playable scenario — either a bundled free-play era or a fetched contest.
+interface Scenario { id: string; title: string; coin: string; prices: number[]; down: boolean; tag: string; sub: string; }
 
 const SPEED_DELAYS: Record<string, number> = { '1×': 500, '5×': 100, '60×': 20 };
 
@@ -39,8 +45,10 @@ const FEATURED = ERA_LIST.find(e => e.id === 'bull-run-2021') ?? ERA_LIST[0];
 
 export function ReplayScreen() {
   const { colors } = useTheme();
+  const { state } = useApp();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
+  const contestId = route.params?.contestId as string | undefined;
 
   const [activeEraId, setActiveEraId] = useState<ReplayEraId | null>(route.params?.eraId ?? null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -49,21 +57,45 @@ export function ReplayScreen() {
   const [replayCash, setReplayCash] = useState(STARTING_CASH);
   const [replayUnits, setReplayUnits] = useState(0);
 
+  // Contest mode: load the contest scenario, then submit the result on finish.
+  const [contestRaw, setContestRaw] = useState<{ id: string; title: string; coin: string; prices: number[]; histStartIso: string } | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [board, setBoard] = useState<CompetitionEntry[]>([]);
+  useEffect(() => {
+    if (!contestId) return;
+    fetchReplayContestScenario(contestId).then(setContestRaw);
+  }, [contestId]);
+
   const dayRef = useRef(day);
   dayRef.current = day;
 
-  const activeEra = ERA_LIST.find(e => e.id === activeEraId) ?? null;
-  const priceSeries = activeEra?.prices ?? [];
-  const days = Math.max(0, priceSeries.length - 1);
+  // Unify a fetched contest and a bundled era into one Scenario shape.
+  const contestScenario: Scenario | null = useMemo(() => {
+    if (!contestRaw || !contestRaw.prices.length) return null;
+    const start = contestRaw.prices[0], end = contestRaw.prices[contestRaw.prices.length - 1];
+    const pct = start > 0 ? ((end - start) / start) * 100 : 0;
+    return {
+      id: contestRaw.id, title: contestRaw.title, coin: contestRaw.coin, prices: contestRaw.prices,
+      down: end < start, tag: `${pct >= 0 ? '+' : ''}${Math.round(pct)}% ${contestRaw.coin}`,
+      sub: `${new Date(contestRaw.histStartIso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} · ${fmtK(start)} → ${fmtK(end)}`,
+    };
+  }, [contestRaw]);
 
-  // Reset replay state whenever the era changes, then auto-play.
+  const activeScenario: Scenario | null = contestScenario ?? (ERA_LIST.find(e => e.id === activeEraId) ?? null);
+  const priceSeries = activeScenario?.prices ?? [];
+  const days = Math.max(0, priceSeries.length - 1);
+  const scenarioId = activeScenario?.id;
+
+  // Reset + auto-play whenever the scenario changes.
   useEffect(() => {
-    if (!activeEraId) return;
+    if (!scenarioId) return;
     setDay(0);
     setReplayCash(STARTING_CASH);
     setReplayUnits(0);
+    setSubmitted(false);
+    setBoard([]);
     setIsPlaying(true);
-  }, [activeEraId]);
+  }, [scenarioId]);
 
   // Playback: advance one step per tick at the chosen speed.
   useEffect(() => {
@@ -83,8 +115,19 @@ export function ReplayScreen() {
   const pnl = bankroll - STARTING_CASH;
   const pnlPct = (pnl / STARTING_CASH) * 100;
 
+  // Contest mode: when the playthrough reaches the end, submit the final result
+  // as the user's entry and load the standings.
+  useEffect(() => {
+    if (!contestScenario || days === 0 || day < days || submitted) return;
+    setSubmitted(true);
+    (async () => {
+      await submitReplayScore(contestScenario.id, state.user.handle, bankroll, pnlPct);
+      setBoard(await fetchReplayLeaderboard(contestScenario.id));
+    })();
+  }, [contestScenario, day, days, submitted]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleBuy = () => {
-    if (!activeEra) return;
+    if (!activeScenario) return;
     if (replayCash < 50) {
       Alert.alert('Insufficient cash', `You only have $${replayCash.toFixed(0)} left.`);
       return;
@@ -92,7 +135,7 @@ export function ReplayScreen() {
     const price = currentPrice;
     const options = [50, 200, 500].filter(a => a <= replayCash);
     Alert.alert(
-      `Buy ${activeEra.coin}`,
+      `Buy ${activeScenario.coin}`,
       `Day ${day} · Price: $${price.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -109,14 +152,14 @@ export function ReplayScreen() {
   };
 
   const handleSell = () => {
-    if (!activeEra || replayUnits <= 0) {
-      Alert.alert('No holdings', `You don't hold any ${activeEra?.coin ?? 'coin'} to sell.`);
+    if (!activeScenario || replayUnits <= 0) {
+      Alert.alert('No holdings', `You don't hold any ${activeScenario?.coin ?? 'coin'} to sell.`);
       return;
     }
     const price = currentPrice;
     const totalValue = replayUnits * price;
     Alert.alert(
-      `Sell ${activeEra.coin}`,
+      `Sell ${activeScenario.coin}`,
       `Day ${day} · Holdings: $${totalValue.toFixed(0)} · Price: $${price.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -137,6 +180,7 @@ export function ReplayScreen() {
   };
 
   const handleReset = () => {
+    if (contestId) { nav.goBack(); return; }   // contest mode → back to Compete
     setActiveEraId(null);
     setIsPlaying(false);
     setDay(0);
@@ -144,17 +188,26 @@ export function ReplayScreen() {
     setReplayUnits(0);
   };
 
-  if (activeEra) {
+  const playAgain = () => {
+    setDay(0);
+    setReplayCash(STARTING_CASH);
+    setReplayUnits(0);
+    setSubmitted(false);
+    setBoard([]);
+    setIsPlaying(true);
+  };
+
+  if (activeScenario) {
     const progress = days > 0 ? day / days : 0;
     const finished = day >= days;
 
     return (
       <ScreenShell
         eyebrow="Time Machine · Replay"
-        title={activeEra.title}
-        rightActions={<Chip variant={activeEra.down ? 'down' : 'up'}>{activeEra.tag}</Chip>}
+        title={activeScenario.title}
+        rightActions={<Chip variant={activeScenario.down ? 'down' : 'up'}>{activeScenario.tag}</Chip>}
       >
-        <Text style={{ fontSize: 13, color: colors.ink3 }}>{activeEra.sub}</Text>
+        <Text style={{ fontSize: 13, color: colors.ink3 }}>{activeScenario.sub}</Text>
 
         {/* Playback controls */}
         <Card style={{ gap: 14 }}>
@@ -210,14 +263,14 @@ export function ReplayScreen() {
           <AreaChart
             height={180}
             data={priceSeries.slice(0, Math.max(2, day + 1))}
-            down={activeEra.down}
+            down={activeScenario.down}
             crosshair={false}
           />
         </View>
 
         {/* Current price */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
-          <Text style={{ fontSize: 13, color: colors.ink3 }}>{activeEra.coin} price · day {day}</Text>
+          <Text style={{ fontSize: 13, color: colors.ink3 }}>{activeScenario.coin} price · day {day}</Text>
           <Text style={{ fontWeight: '700', fontSize: 18, color: colors.ink, fontVariant: ['tabular-nums'] }}>
             ${currentPrice.toLocaleString('en-US', { maximumFractionDigits: currentPrice < 100 ? 2 : 0 })}
           </Text>
@@ -228,7 +281,7 @@ export function ReplayScreen() {
           {[
             ['Bankroll', `$${bankroll.toFixed(0)}`],
             ['P&L', `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)`],
-            ['Holdings', replayUnits > 0 ? `${replayUnits.toFixed(4)} ${activeEra.coin}` : 'None'],
+            ['Holdings', replayUnits > 0 ? `${replayUnits.toFixed(4)} ${activeScenario.coin}` : 'None'],
           ].map(([k, v], i) => (
             <View key={k} style={{ flex: 1, padding: 12, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}>
               <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>
@@ -244,14 +297,46 @@ export function ReplayScreen() {
         {/* Trade buttons */}
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Button variant="down" style={{ flex: 1 }} onPress={handleSell} disabled={replayUnits <= 0}>
-            Sell {activeEra.coin}
+            Sell {activeScenario.coin}
           </Button>
           <Button variant="up" style={{ flex: 1 }} onPress={handleBuy} disabled={replayCash < 50}>
-            Buy {activeEra.coin}
+            Buy {activeScenario.coin}
           </Button>
         </View>
 
-        {finished && pnl !== 0 && (
+        {finished && contestScenario ? (
+          <Card variant="tinted">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Trophy color={colors.up} size={18} strokeWidth={2} />
+              <Text style={{ fontWeight: '800', fontSize: 16, color: colors.ink }}>{submitted ? 'Score submitted!' : 'Submitting…'}</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: colors.ink2, marginTop: 4 }}>
+              You turned $100,000 into ${bankroll.toFixed(0)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%){submitted ? " — it's on the contest leaderboard." : '.'}
+            </Text>
+            {board.length > 0 && (() => {
+              const sorted = [...board].sort((a, b) => b.bankroll - a.bankroll);
+              const myRank = sorted.findIndex(e => e.handle === state.user.handle) + 1;
+              const top = sorted.slice(0, 8);
+              return (
+                <View style={{ marginTop: 12 }}>
+                  {myRank > 0 && (
+                    <Text style={{ fontSize: 12, color: colors.brand, fontWeight: '700', marginBottom: 6 }}>You're #{myRank} of {sorted.length}</Text>
+                  )}
+                  {top.map((e, i) => {
+                    const me = e.handle === state.user.handle;
+                    return (
+                      <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5, borderBottomWidth: i < top.length - 1 ? 1 : 0, borderBottomColor: colors.hairline }}>
+                        <Text style={{ width: 20, fontWeight: '700', fontSize: 13, color: i < 3 ? colors.up : colors.ink3, fontVariant: ['tabular-nums'] }}>{i + 1}</Text>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: me ? colors.brand : colors.ink }} numberOfLines={1}>@{e.handle}{me ? ' (you)' : ''}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${Math.round(e.bankroll).toLocaleString()}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })()}
+          </Card>
+        ) : finished && pnl !== 0 ? (
           <Card variant="tinted">
             <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink }}>
               Replay complete {pnl >= 0 ? '🎉' : ''}
@@ -260,9 +345,14 @@ export function ReplayScreen() {
               You turned $100,000 into ${bankroll.toFixed(0)} — a {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}% return over {days} days.
             </Text>
           </Card>
-        )}
+        ) : null}
 
-        <Button variant="ghost" onPress={handleReset}>← Back to eras</Button>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {finished && (
+            <Button variant="ghost" style={{ flex: 1 }} onPress={playAgain}>Play again</Button>
+          )}
+          <Button variant="ghost" style={{ flex: 1 }} onPress={handleReset}>{contestId ? '← Back to contests' : '← Back to eras'}</Button>
+        </View>
       </ScreenShell>
     );
   }

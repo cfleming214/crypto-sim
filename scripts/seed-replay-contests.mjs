@@ -37,23 +37,24 @@ const REGION = outputs.auth?.aws_region ?? 'us-east-1';
 const ddb = new DynamoDBClient({ region: REGION });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Notable 7-day windows. Pick dramatic weeks so the replay is fun to trade.
+// Full historical eras (DAILY data). A contest replays the whole era quickly on
+// the Replay screen; your final result is your submission. Open until endAt.
 const WINDOWS = [
-  { eventId: 'covid-crash',     eventTitle: 'COVID Crash Week',   coin: 'BTC', product: 'BTC-USD', weekIndex: 0, start: '2020-03-09', end: '2020-03-16' },
-  { eventId: 'bull-run-2021',   eventTitle: '2021 Bull Run Week', coin: 'BTC', product: 'BTC-USD', weekIndex: 0, start: '2021-01-01', end: '2021-01-08' },
-  { eventId: 'ftx-collapse',    eventTitle: 'FTX Collapse Week',  coin: 'BTC', product: 'BTC-USD', weekIndex: 0, start: '2022-11-06', end: '2022-11-13' },
+  { eventId: 'bull-run-2021',      eventTitle: 'The 2021 Bull Run', coin: 'BTC', product: 'BTC-USD', weekIndex: 0, start: '2020-11-01', end: '2021-05-01' },
+  { eventId: 'covid-crash',        eventTitle: 'COVID Crash',       coin: 'BTC', product: 'BTC-USD', weekIndex: 0, start: '2020-02-15', end: '2020-04-15' },
+  { eventId: 'crypto-winter-2022', eventTitle: 'Crypto Winter 2022',coin: 'BTC', product: 'BTC-USD', weekIndex: 0, start: '2022-05-01', end: '2022-11-13' },
 ];
 
 const BOT_HANDLES = ['AvaWhale', 'MaxLeverage', 'DiamondHan', 'SatoshiJr', 'MoonLina', 'HodlKing', 'PaperHandPat'];
 
-// Coinbase 1-minute closes for a range (≤300 candles/request → ~34 calls/week).
-async function fetchMinuteCloses(product, startISO, endISO) {
+// Coinbase DAILY closes for a range (≤300 candles/request → a couple of calls).
+async function fetchDailyCloses(product, startISO, endISO) {
   const startMs = Date.parse(startISO), endMs = Date.parse(endISO);
-  const byMin = new Map();
-  for (let from = startMs; from < endMs; from += 300 * 60 * 1000) {
-    const to = Math.min(from + 300 * 60 * 1000, endMs);
+  const byDay = new Map();
+  for (let from = startMs; from < endMs; from += 290 * DAY) {
+    const to = Math.min(from + 290 * DAY, endMs);
     const url = `https://api.exchange.coinbase.com/products/${product}/candles`
-      + `?granularity=60&start=${new Date(from).toISOString()}&end=${new Date(to).toISOString()}`;
+      + `?granularity=86400&start=${new Date(from).toISOString()}&end=${new Date(to).toISOString()}`;
     let rows;
     for (let attempt = 0; attempt < 5; attempt++) {
       const res = await fetch(url, { headers: { 'User-Agent': 'crypto-sim-replay-seed' } });
@@ -61,10 +62,10 @@ async function fetchMinuteCloses(product, startISO, endISO) {
       await sleep(700 * (attempt + 1));
     }
     if (!Array.isArray(rows)) throw new Error(`fetch failed ${product} ${startISO}`);
-    for (const r of rows) byMin.set(r[0], r[4]); // time → close
+    for (const r of rows) byDay.set(r[0], r[4]); // time → close
     await sleep(220);
   }
-  return [...byMin.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => Math.round(c * 100) / 100);
+  return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => Math.round(c * 100) / 100);
 }
 
 async function findTables() {
@@ -118,13 +119,13 @@ async function main() {
   const nowIso = new Date(nowMs).toISOString();
 
   for (const w of WINDOWS) {
-    process.stdout.write(`Fetching ${w.eventTitle} (${w.product} ${w.start}..${w.end}) 1-min… `);
-    const prices = await fetchMinuteCloses(w.product, w.start, w.end);
-    if (prices.length < 100) throw new Error(`${w.eventId}: only ${prices.length} minute points`);
+    process.stdout.write(`Fetching ${w.eventTitle} (${w.product} ${w.start}..${w.end}) daily… `);
+    const prices = await fetchDailyCloses(w.product, w.start, w.end);
+    if (prices.length < 10) throw new Error(`${w.eventId}: only ${prices.length} daily points`);
     const histStartIso = new Date(w.start + 'T00:00:00Z').toISOString();
     const open = prices[0], close = prices[prices.length - 1];
     const pct = ((close - open) / open) * 100;
-    console.log(`${prices.length} min, $${open.toLocaleString()} → $${close.toLocaleString()} (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)`);
+    console.log(`${prices.length} days, $${open.toLocaleString()} → $${close.toLocaleString()} (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)`);
 
     const contestId = randomUUID();
     await put(tables.ReplayContest, {
@@ -136,11 +137,11 @@ async function main() {
       weekIndex: w.weekIndex,
       histStartIso,
       startAt: new Date(startAt).toISOString(),
-      endAt: new Date(startAt + WEEK_MS).toISOString(),
+      endAt: new Date(startAt + WEEK_MS).toISOString(),   // open to play for 7 days
       status: 'live',
-      intervalMs: 60000,
+      intervalMs: DAY,
       pricesJson: JSON.stringify(prices),
-      maxPlayers: 1000,
+      maxPlayers: 100000,
       prizeXp: 5000,
       lockAfterStart: false,
       entryCount: BOT_HANDLES.length,
@@ -149,24 +150,22 @@ async function main() {
       updatedAt: nowIso,
     });
 
-    // Seed bots: each allocates a random fraction of $100K into the coin at the
-    // opening price. The tick Lambda reprices them as the replay clock advances.
+    // Seed bots with a SUBMITTED final score (holdings empty so the tick Lambda's
+    // reprice is a no-op and the score stands), so the leaderboard looks alive.
     for (const handle of BOT_HANDLES) {
-      const allocPct = Math.random();                 // 0..1 of bankroll into the coin
-      const alloc = Math.round(STARTING_CASH * allocPct);
-      const units = alloc / open;
-      const holdings = units > 0 ? [{ symbol: w.coin, units, avgCost: open }] : [];
+      const score = Math.round(STARTING_CASH * (0.7 + Math.random() * 1.3)); // 70K–200K
+      const pnlPct = ((score - STARTING_CASH) / STARTING_CASH) * 100;
       await put(tables.ReplayEntry, {
         __typename: 'ReplayEntry',
         id: randomUUID(),
         replayContestId: contestId,
         handle,
         owner: `replay-seed::${handle}`,
-        cash: STARTING_CASH - alloc,
-        holdingsJson: JSON.stringify(holdings),
+        cash: score,
+        holdingsJson: '[]',
         tradesJson: '[]',
-        bankroll: STARTING_CASH,   // = cash + units*open
-        pnlPct: 0,
+        bankroll: score,
+        pnlPct: Number(pnlPct.toFixed(2)),
         rank: 999,
         joinedAt: nowIso,
         isActive: true,
@@ -174,10 +173,10 @@ async function main() {
         updatedAt: nowIso,
       });
     }
-    console.log(`  wrote contest ${contestId} + ${BOT_HANDLES.length} bots`);
+    console.log(`  wrote contest ${contestId} + ${BOT_HANDLES.length} bot submissions`);
   }
 
-  console.log(DRY ? '\nDry run — no writes.' : '\nDone. Live now; leaderboard fills within ~5 min (tick-replay-leaderboard).');
+  console.log(DRY ? '\nDry run — no writes.' : '\nDone. Play a contest from Compete → Replay; your final result is submitted.');
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

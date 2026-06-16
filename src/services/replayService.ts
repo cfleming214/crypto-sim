@@ -110,6 +110,23 @@ export async function fetchReplayContests(): Promise<ReplayContestSummary[]> {
   }
 }
 
+// The playable scenario for a replay contest (title + coin + price series), used
+// by the Replay screen's contest mode.
+export async function fetchReplayContestScenario(id: string): Promise<{ id: string; title: string; coin: string; prices: number[]; histStartIso: string } | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const { data } = await client.models.ReplayContest.get({ id });
+    if (!data) return null;
+    let prices: number[] = [];
+    try { prices = JSON.parse((data as any).pricesJson || '[]'); } catch { prices = []; }
+    return { id, title: (data as any).eventTitle, coin: (data as any).coin, prices, histStartIso: (data as any).histStartIso };
+  } catch (e) {
+    console.warn('fetchReplayContestScenario failed:', e);
+    return null;
+  }
+}
+
 // Full config incl. the minute series — fetched once on join / restore.
 export async function fetchReplayContestMeta(id: string): Promise<ReplayMeta | null> {
   const client = await getClient();
@@ -144,6 +161,32 @@ export async function joinReplayContest(replayContestId: string, handle: string,
     return true;
   } catch (e) {
     console.warn('joinReplayContest failed:', e);
+    return false;
+  }
+}
+
+// Submit a finished replay run as the user's contest entry. Stores the result
+// as cash (holdings empty) so the tick-replay-leaderboard Lambda's reprice is a
+// no-op (cash + 0 = score) and the submitted bankroll stands. Keeps the BEST run.
+export async function submitReplayScore(replayContestId: string, handle: string, bankroll: number, pnlPct: number): Promise<boolean> {
+  const client = await getClient();
+  if (!client) return false;
+  try {
+    const ownerId = await getCurrentOwnerId();
+    const { data } = await client.models.ReplayEntry.list({ filter: { replayContestId: { eq: replayContestId } } });
+    const own = (data as any[]).find(e => ownedByMe(e, ownerId));
+    const final = { bankroll, pnlPct, cash: bankroll, holdingsJson: '[]', tradesJson: '[]' };
+    if (own) {
+      if (bankroll <= (own.bankroll ?? 0)) return true; // didn't beat the prior best
+      await client.models.ReplayEntry.update({ id: own.id, ...final });
+    } else {
+      await client.models.ReplayEntry.create({
+        replayContestId, handle, rank: 999, joinedAt: new Date().toISOString(), isActive: true, ...final,
+      });
+    }
+    return true;
+  } catch (e) {
+    console.warn('submitReplayScore failed:', e);
     return false;
   }
 }

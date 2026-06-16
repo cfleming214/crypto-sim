@@ -7,7 +7,7 @@ import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type Pr
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence } from '../services/portfolioService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
-import { saveReplayEntry, loadReplayEntries, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
+import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
@@ -1743,13 +1743,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Restore joined replay portfolios from ReplayEntry rows (each joined to its
-    // ReplayContest config so the deterministic price can be computed locally).
-    loadReplayEntries().then(rows => {
-      for (const r of rows) {
-        dispatch({ type: 'INIT_REPLAY_PORTFOLIO', replayContestId: r.id, meta: r.meta, slice: r.slice });
-      }
-    });
 
     let unsubProfile: () => void = () => {};
     let unsubNudges:  () => void = () => {};
