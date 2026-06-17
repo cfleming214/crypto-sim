@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
 import { Button } from './ui/Button';
+import { FeatureHero } from './FeatureHero';
 
 type IconComponent = React.ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
 
@@ -44,6 +45,11 @@ export function AuthWall({ icon: Icon, title, subtitle }: AuthWallProps) {
         <Text style={{ fontSize: 14, color: `${colors.brandOn}CC`, textAlign: 'center', lineHeight: 21, maxWidth: 300 }}>
           {subtitle}
         </Text>
+
+        {/* Auto-scrolling hero — what you get once you sign in */}
+        <View style={{ alignSelf: 'stretch', marginTop: 4 }}>
+          <FeatureHero colors={colors} />
+        </View>
 
         <View style={{ alignSelf: 'stretch', gap: 12, marginTop: 8 }}>
           <Button
