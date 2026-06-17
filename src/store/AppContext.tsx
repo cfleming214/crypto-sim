@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser, ReplayMeta, ReplayContestSummary } from './types';
 import { replayPriceAt } from '../services/replayPricing';
 import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence } from '../services/portfolioService';
+import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence, fetchMyContestWins } from '../services/portfolioService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
@@ -196,6 +196,7 @@ const INITIAL_STATE: AppState = {
   finishedCompetitions: [],          // past contests (FinishedCompetition table)
   joinedTournamentIds: [],
   leaderboard: {},
+  myContestWins: 0,
   pendingOrders: [],
   watchlist: ['BTC', 'ETH'],
   riskScore: 100,
@@ -254,6 +255,7 @@ type Action =
   | { type: 'JOIN_TOURNAMENT'; tournamentId: string }
   | { type: 'LEAVE_TOURNAMENT'; tournamentId: string }
   | { type: 'SET_LEADERBOARD'; competitionId: string; entries: CompetitionEntry[] }
+  | { type: 'SET_MY_WINS'; wins: number }
   | { type: 'TOGGLE_WATCHLIST'; symbol: string }
   | { type: 'SET_HANDLE'; handle: string }
   | { type: 'SET_LEADERBOARD_VISIBLE'; visible: boolean }
@@ -1207,6 +1209,8 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_REPLAY_CONTESTS':
       return { ...state, replayContests: action.contests };
+    case 'SET_MY_WINS':
+      return { ...state, myContestWins: action.wins };
     case 'JOIN_REPLAY': {
       const id = action.replayContestId;
       if (state.joinedReplayIds.includes(id)) return state;
@@ -1735,6 +1739,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetchReplayContests().then(contests => {
       if (contests.length) dispatch({ type: 'SET_REPLAY_CONTESTS', contests });
     });
+    // Your own contest-win count, so it shows even when opted out of the board.
+    fetchMyContestWins().then(wins => dispatch({ type: 'SET_MY_WINS', wins }));
 
     // Restore per-contest portfolios from CompetitionEntry rows
     loadContestPortfolios().then(stash => {

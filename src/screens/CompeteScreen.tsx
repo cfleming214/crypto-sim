@@ -675,7 +675,7 @@ export function CompeteScreen() {
                   You · @{state.user.handle}
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
-                  {(myBoardRow?.xp ?? state.user.xp).toLocaleString()} XP · {myBoardRow?.contestsWon ?? 0}W
+                  {(myBoardRow?.xp ?? state.user.xp).toLocaleString()} XP · {myBoardRow?.contestsWon ?? state.myContestWins}W
                 </Text>
               </View>
               <View style={{ height: 1, backgroundColor: colors.hairline }} />

@@ -157,6 +157,26 @@ function ownedByMe(record: any, ownerId: string | null): boolean {
   return typeof owner === 'string' && owner.startsWith(ownerId);
 }
 
+// Count the user's OWN contest wins (distinct contests finished in 1st place),
+// so the app can show your win count even when you've opted out of the global
+// leaderboard (where that number normally comes from). Matches the
+// tick-global-leaderboard Lambda's win definition (rank===1 && isActive===false).
+export async function fetchMyContestWins(): Promise<number> {
+  const client = await getClient();
+  if (!client) return 0;
+  try {
+    const ownerId = await getCurrentOwnerId();
+    const { data } = await client.models.CompetitionEntry.list();
+    const wonContests = new Set<string>();
+    for (const e of data as any[]) {
+      if (ownedByMe(e, ownerId) && e.rank === 1 && e.isActive === false) wonContests.add(e.competitionId);
+    }
+    return wonContests.size;
+  } catch {
+    return 0;
+  }
+}
+
 async function loadJoinedCompetitions(client: any): Promise<string[]> {
   try {
     const ownerId = await getCurrentOwnerId();

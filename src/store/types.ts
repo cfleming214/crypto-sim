@@ -206,6 +206,9 @@ export interface AppState {
   finishedCompetitions: Competition[];
   joinedTournamentIds: string[];
   leaderboard: Record<string, CompetitionEntry[]>;
+  // The user's own contest-win count, computed locally so it shows even when
+  // opted out of the global leaderboard (where the count otherwise comes from).
+  myContestWins: number;
   pendingOrders: PendingOrder[];
   watchlist: string[];
   riskScore: number;
