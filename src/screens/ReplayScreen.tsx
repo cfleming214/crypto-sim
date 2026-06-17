@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -15,12 +15,13 @@ import { useApp } from '../store/AppContext';
 import { fetchReplayContestScenario, submitReplayScore, fetchReplayLeaderboard } from '../services/replayService';
 import { loadReplaySessions, saveReplaySession, type ReplaySession, type ReplaySessionTrade } from '../services/replayHistoryStore';
 import type { CompetitionEntry } from '../store/types';
-import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward, Trophy } from 'lucide-react-native';
+import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward, Trophy, Play } from 'lucide-react-native';
 
 // A playable scenario — either a bundled free-play era or a fetched contest.
 interface Scenario { id: string; title: string; coin: string; prices: number[]; down: boolean; tag: string; sub: string; }
 
-const SPEED_DELAYS: Record<string, number> = { '1×': 500, '5×': 100, '60×': 20 };
+const SPEED_DELAYS: Record<string, number> = { '1×': 500, '5×': 100, '20×': 30, '60×': 16 };
+const SPEED_OPTIONS = ['1×', '5×', '20×', '60×'];
 
 // Compact dollar label: $13.8K / $360 / $1.2K.
 function fmtK(n: number): string {
@@ -53,7 +54,10 @@ export function ReplayScreen() {
 
   const [activeEraId, setActiveEraId] = useState<ReplayEraId | null>(route.params?.eraId ?? null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState('5×');
+  const [speed, setSpeed] = useState('1×');
+  // "Ready to start?" confirm gate — shown when a scenario loads; playback
+  // doesn't begin until the user confirms (then it starts at 1×).
+  const [readyOpen, setReadyOpen] = useState(false);
   const [day, setDay] = useState(0);
   const [replayCash, setReplayCash] = useState(STARTING_CASH);
   const [replayUnits, setReplayUnits] = useState(0);
@@ -91,7 +95,8 @@ export function ReplayScreen() {
   const days = Math.max(0, priceSeries.length - 1);
   const scenarioId = activeScenario?.id;
 
-  // Reset + auto-play whenever the scenario changes.
+  // Reset whenever the scenario changes, then gate playback behind a
+  // "Ready to start?" confirm (no auto-play). Confirming starts it at 1×.
   useEffect(() => {
     if (!scenarioId) return;
     setDay(0);
@@ -101,8 +106,18 @@ export function ReplayScreen() {
     savedRef.current = false;
     setSubmitted(false);
     setBoard([]);
-    setIsPlaying(true);
+    setIsPlaying(false);
+    setSpeed('1×');
+    setReadyOpen(true);
   }, [scenarioId]);
+
+  // Confirm the ready prompt → begin playback from the start at 1×.
+  const confirmStart = () => {
+    setReadyOpen(false);
+    setDay(0);
+    setSpeed('1×');
+    setIsPlaying(true);
+  };
 
   // Record each executed trade (keyed by the current step) for the history.
   const recordTrade = (side: 'buy' | 'sell', amount: number, units: number, price: number) => {
@@ -236,6 +251,27 @@ export function ReplayScreen() {
       >
         <Text style={{ fontSize: 13, color: colors.ink3 }}>{activeScenario.sub}</Text>
 
+        {/* Ready-to-start gate — playback waits here until confirmed, then 1×. */}
+        <Modal visible={readyOpen} transparent animationType="fade" onRequestClose={() => setReadyOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+            <Card style={{ width: '100%', maxWidth: 360, gap: 14, alignItems: 'center' }}>
+              <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center' }}>
+                <Play color={colors.brand} size={26} strokeWidth={2} />
+              </View>
+              <Text style={{ fontSize: 19, fontWeight: '800', color: colors.ink, textAlign: 'center' }}>Ready to start?</Text>
+              <Text style={{ fontSize: 13.5, color: colors.ink3, textAlign: 'center', lineHeight: 20 }}>
+                {activeScenario.title} plays back day by day. It begins at 1× speed — bump it to 5×, 20×, or 60× anytime. Buy and sell as the market moves.
+              </Text>
+              <Button variant="brand" style={{ alignSelf: 'stretch' }} onPress={confirmStart}>
+                Start replay
+              </Button>
+              <TouchableOpacity onPress={() => setReadyOpen(false)} style={{ paddingVertical: 4 }}>
+                <Text style={{ fontSize: 13, color: colors.ink3, fontWeight: '600' }}>Not yet</Text>
+              </TouchableOpacity>
+            </Card>
+          </View>
+        </Modal>
+
         {/* Playback controls */}
         <Card style={{ gap: 14 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -281,7 +317,7 @@ export function ReplayScreen() {
           {/* Speed */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <Text style={{ fontSize: 11, color: colors.ink3 }}>Speed</Text>
-            <Segmented options={['1×', '5×', '60×']} value={speed} onChange={setSpeed} />
+            <Segmented options={SPEED_OPTIONS} value={speed} onChange={setSpeed} />
           </View>
         </Card>
 
