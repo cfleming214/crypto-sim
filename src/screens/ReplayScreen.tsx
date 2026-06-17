@@ -13,6 +13,7 @@ import { REPLAY_ERAS, type ReplayEraId } from '../data/replayHistory';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { useApp } from '../store/AppContext';
 import { fetchReplayContestScenario, submitReplayScore, fetchReplayLeaderboard } from '../services/replayService';
+import { loadReplaySessions, saveReplaySession, type ReplaySession, type ReplaySessionTrade } from '../services/replayHistoryStore';
 import type { CompetitionEntry } from '../store/types';
 import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward, Trophy } from 'lucide-react-native';
 
@@ -56,6 +57,10 @@ export function ReplayScreen() {
   const [day, setDay] = useState(0);
   const [replayCash, setReplayCash] = useState(STARTING_CASH);
   const [replayUnits, setReplayUnits] = useState(0);
+  const [tradesLog, setTradesLog] = useState<ReplaySessionTrade[]>([]);
+  const [sessions, setSessions] = useState<ReplaySession[]>([]);
+  const savedRef = useRef(false);
+  useEffect(() => { loadReplaySessions().then(setSessions); }, []);
 
   // Contest mode: load the contest scenario, then submit the result on finish.
   const [contestRaw, setContestRaw] = useState<{ id: string; title: string; coin: string; prices: number[]; histStartIso: string } | null>(null);
@@ -92,10 +97,31 @@ export function ReplayScreen() {
     setDay(0);
     setReplayCash(STARTING_CASH);
     setReplayUnits(0);
+    setTradesLog([]);
+    savedRef.current = false;
     setSubmitted(false);
     setBoard([]);
     setIsPlaying(true);
   }, [scenarioId]);
+
+  // Record each executed trade (keyed by the current step) for the history.
+  const recordTrade = (side: 'buy' | 'sell', amount: number, units: number, price: number) => {
+    setTradesLog(prev => [...prev, { day: dayRef.current, side, amount, units, price }]);
+  };
+
+  // Free-play era replays: save a local history session when the run completes.
+  useEffect(() => {
+    if (contestId || !activeEraId || days === 0 || day < days || savedRef.current) return;
+    savedRef.current = true;
+    const era = ERA_LIST.find(e => e.id === activeEraId);
+    if (!era) return;
+    const session: ReplaySession = {
+      id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      eraId: activeEraId, title: era.title, coin: era.coin,
+      playedAt: Date.now(), finalBankroll: bankroll, pnlPct, trades: tradesLog,
+    };
+    saveReplaySession(session).then(setSessions);
+  }, [activeEraId, day, days, contestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Playback: advance one step per tick at the chosen speed.
   useEffect(() => {
@@ -141,11 +167,11 @@ export function ReplayScreen() {
         { text: 'Cancel', style: 'cancel' },
         ...options.map(a => ({
           text: `$${a}`,
-          onPress: () => { setReplayCash(c => c - a); setReplayUnits(u => u + a / price); },
+          onPress: () => { setReplayCash(c => c - a); setReplayUnits(u => u + a / price); recordTrade('buy', a, a / price, price); },
         })),
         {
           text: `All-in ($${replayCash.toFixed(0)})`,
-          onPress: () => { setReplayUnits(u => u + replayCash / price); setReplayCash(0); },
+          onPress: () => { const amt = replayCash; setReplayUnits(u => u + amt / price); setReplayCash(0); recordTrade('buy', amt, amt / price, price); },
         },
       ],
     );
@@ -169,11 +195,12 @@ export function ReplayScreen() {
             const half = replayUnits / 2;
             setReplayUnits(u => u - half);
             setReplayCash(c => c + half * price);
+            recordTrade('sell', half * price, half, price);
           },
         },
         {
           text: `Sell all ($${totalValue.toFixed(0)})`,
-          onPress: () => { setReplayCash(c => c + replayUnits * price); setReplayUnits(0); },
+          onPress: () => { const all = replayUnits; setReplayCash(c => c + all * price); setReplayUnits(0); recordTrade('sell', all * price, all, price); },
         },
       ],
     );
@@ -421,6 +448,36 @@ export function ReplayScreen() {
           </TouchableOpacity>
         ))}
       </Card>
+
+      {/* Your replay history */}
+      {sessions.length > 0 && (
+        <>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Your replays</Text>
+          <Card variant="noPad">
+            {sessions.map((s, i) => {
+              const up = s.pnlPct >= 0;
+              return (
+                <TouchableOpacity key={s.id} testID={`replay-history-${s.id}`} activeOpacity={0.75} onPress={() => nav.navigate('ReplayHistory', { sessionId: s.id })}>
+                  <CardSection last={i === sessions.length - 1}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: '600', color: colors.ink }}>{s.title}</Text>
+                        <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                          {new Date(s.playedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} · {s.trades.length} trade{s.trades.length === 1 ? '' : 's'} · ${Math.round(s.finalBankroll).toLocaleString()}
+                        </Text>
+                      </View>
+                      <Text style={{ fontWeight: '700', fontSize: 13, color: up ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                        {up ? '+' : ''}{s.pnlPct.toFixed(1)}%
+                      </Text>
+                      <ChevronRight color={colors.ink3} size={18} strokeWidth={1.75} />
+                    </View>
+                  </CardSection>
+                </TouchableOpacity>
+              );
+            })}
+          </Card>
+        </>
+      )}
 
       {/* Custom range */}
       <TouchableOpacity

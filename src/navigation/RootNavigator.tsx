@@ -12,6 +12,7 @@ import { CopyTradeScreen } from '../screens/CopyTradeScreen';
 import { TopTradersScreen } from '../screens/TopTradersScreen';
 import { PublicProfileScreen } from '../screens/PublicProfileScreen';
 import { ReplayScreen } from '../screens/ReplayScreen';
+import { ReplayHistoryScreen } from '../screens/ReplayHistoryScreen';
 import { PredictionScreen } from '../screens/PredictionScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { LearnScreen } from '../screens/LearnScreen';
@@ -42,7 +43,8 @@ export type RootStackParamList = {
   TopTraders: undefined;
   PublicProfile: { handle: string };
   OldWalkthrough: undefined;
-  Replay: { eraId?: string };
+  Replay: { eraId?: string; contestId?: string };
+  ReplayHistory: { sessionId: string };
   Predict: undefined;
   Notifications: undefined;
   Learn: undefined;
@@ -106,6 +108,7 @@ export function RootNavigator() {
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
       <Stack.Screen name="OldWalkthrough" component={OldWalkthroughScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="Replay" component={ReplayScreen} />
+      <Stack.Screen name="ReplayHistory" component={ReplayHistoryScreen} />
       <Stack.Screen name="Predict" component={PredictionScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Learn" component={LearnScreen} />

@@ -21,7 +21,6 @@ import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardR
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { useNavigation } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X, Rewind, ChevronRight } from 'lucide-react-native';
-import { REPLAY_ERAS } from '../data/replayHistory';
 import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
@@ -77,7 +76,6 @@ export function CompeteScreen() {
   };
   const { emailVerified, status, userId, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
-  const [soloReplayOpen, setSoloReplayOpen] = useState(false);
   const pendingJoin = useRef<Competition | null>(null);
   const [duelModalOpen, setDuelModalOpen] = useState(false);
   const [duelCode, setDuelCode] = useState('');
@@ -830,8 +828,8 @@ export function CompeteScreen() {
         </Card>
       </TouchableOpacity>
 
-      {/* Solo replay — pick a historical scenario and trade it on your own */}
-      <TouchableOpacity testID="compete-solo-replay-link" onPress={() => setSoloReplayOpen(true)} activeOpacity={0.85}>
+      {/* Solo replay — opens the eras page (pick a scenario + your replay history) */}
+      <TouchableOpacity testID="compete-solo-replay-link" onPress={() => nav.navigate('Replay')} activeOpacity={0.85}>
         <Card variant="tinted">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -848,50 +846,6 @@ export function CompeteScreen() {
           </View>
         </Card>
       </TouchableOpacity>
-
-      {/* Scenario picker */}
-      <Modal visible={soloReplayOpen} transparent animationType="slide" onRequestClose={() => setSoloReplayOpen(false)}>
-        <TouchableOpacity activeOpacity={1} onPress={() => setSoloReplayOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingBottom: 28 }}>
-            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.hairline, marginBottom: 12 }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 6 }}>
-              <Text style={{ fontSize: 17, fontWeight: '800', color: colors.ink }}>Choose a scenario</Text>
-              <TouchableOpacity onPress={() => setSoloReplayOpen(false)} hitSlop={8}><X color={colors.ink3} size={20} /></TouchableOpacity>
-            </View>
-            <Text style={{ fontSize: 12, color: colors.ink3, paddingHorizontal: 20, marginBottom: 8 }}>
-              Trade a real past market with a fresh $100K — solo, no leaderboard.
-            </Text>
-            <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}>
-              {REPLAY_ERAS.map(era => {
-                const start = era.prices[0], end = era.prices[era.prices.length - 1];
-                const pct = start > 0 ? ((end - start) / start) * 100 : 0;
-                const down = end < start;
-                return (
-                  <TouchableOpacity
-                    key={era.id}
-                    activeOpacity={0.75}
-                    testID={`solo-replay-${era.id}`}
-                    onPress={() => { setSoloReplayOpen(false); nav.navigate('Replay', { eraId: era.id }); }}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.hairline }}
-                  >
-                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: down ? `${colors.down}1A` : `${colors.up}1A`, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontWeight: '800', color: down ? colors.down : colors.up, fontSize: 13 }}>{era.coin}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: '700', color: colors.ink }}>{era.title}</Text>
-                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 1 }}>{era.dateLabel}</Text>
-                    </View>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: down ? colors.down : colors.up, fontVariant: ['tabular-nums'] }}>
-                      {pct >= 0 ? '+' : ''}{Math.round(pct)}%
-                    </Text>
-                    <ChevronRight color={colors.ink4} size={16} />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
 
       {/* Enter-a-duel-code modal */}
       <Modal visible={duelModalOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDuelModalOpen(false)}>
