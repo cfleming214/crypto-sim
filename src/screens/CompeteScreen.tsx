@@ -321,6 +321,9 @@ export function CompeteScreen() {
         </Card>
       ) : null;
     }
+    // Under "All" the replay cards are brand-bordered so they stand out among
+    // the regular contests; under their own tab they don't need the accent.
+    const highlight = mode === 'all';
     return (
       <View style={{ gap: 10 }}>
         {mode === 'all' && (
@@ -331,7 +334,7 @@ export function CompeteScreen() {
           const endLabel = endsMs <= 0 ? 'Ended' : endsMs < DAY_MS ? `${Math.ceil(endsMs / (60 * 60 * 1000))}h left` : `${Math.ceil(endsMs / DAY_MS)}d left`;
           return (
             <PressableScale key={r.id} testID={`replay-card-${r.id}`} onPress={() => openReplay(r.id)}>
-              <Card variant="compact" style={{ gap: 6 }}>
+              <Card variant="compact" style={{ gap: 6, ...(highlight ? { borderWidth: 1, borderColor: colors.brand } : {}) }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Replay contest · {r.coin}
@@ -584,6 +587,10 @@ export function CompeteScreen() {
         })}
       </ScrollView>
 
+      {/* Replay contests are featured at the top of "All" (highlighted) so they
+          surface without hunting for the dedicated Replay tab. */}
+      {contestTab === 'All' && renderReplayContests('all')}
+
       {contestTab === 'Replay' ? renderReplayContests('tab')
       : listComps.length === 0 ? (
         <Card variant="tinted">
@@ -658,10 +665,6 @@ export function CompeteScreen() {
         </Wrapper>
         );
       })()}
-
-      {/* Replay contests also surface under "All" so they're discoverable
-          without hunting for the dedicated Replay tab. */}
-      {contestTab === 'All' && renderReplayContests('all')}
 
       {/* Top traders entry point — previews the leaderboard's top 3 */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
