@@ -9,7 +9,7 @@
  *   - the era's REAL daily close series in pricesJson (read straight from
  *     src/data/replayHistory.ts, so the contest playthrough matches the app's
  *     era page exactly — no network/Coinbase dependency),
- *   - a 1-HOUR submission window (endAt = startAt + 1h),
+ *   - a 24-HOUR submission window (endAt = startAt + 24h),
  *   - a 20-player cap, 5,000 XP prize,
  *   - a handful of bot ReplayEntry rows (already-submitted scores) so the
  *     leaderboard looks alive.
@@ -31,7 +31,7 @@ const DRY = process.argv.includes('--dry-run');
 const APPEND = process.argv.includes('--append');
 const CREATED_BY = 'replay-seed';
 const STARTING_CASH = 100_000;
-const HOUR_MS = 60 * 60 * 1000;     // contest submission window
+const WINDOW_MS = 24 * 60 * 60 * 1000;   // contest submission window (24 hours)
 const MAX_PLAYERS = 20;
 const PRIZE_XP = 5000;
 
@@ -122,7 +122,7 @@ async function main() {
       weekIndex: 0,
       histStartIso,
       startAt: new Date(startAt).toISOString(),
-      endAt: new Date(startAt + HOUR_MS).toISOString(),   // open to play for 1 hour
+      endAt: new Date(startAt + WINDOW_MS).toISOString(),   // open to play for 24 hours
       status: 'live',
       intervalMs: era.intervalMs,
       pricesJson: JSON.stringify(prices),
@@ -158,7 +158,7 @@ async function main() {
         updatedAt: nowIso,
       });
     }
-    console.log(`  wrote contest ${contestId} + ${BOT_HANDLES.length} bot submissions (cap ${MAX_PLAYERS}, ${PRIZE_XP} XP, 1h window)`);
+    console.log(`  wrote contest ${contestId} + ${BOT_HANDLES.length} bot submissions (cap ${MAX_PLAYERS}, ${PRIZE_XP} XP, 24h window)`);
   }
 
   console.log(DRY ? '\nDry run — no writes.' : '\nDone. Play a contest from Compete → Replay; your final result is submitted.');

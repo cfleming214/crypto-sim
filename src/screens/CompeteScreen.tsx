@@ -308,6 +308,55 @@ export function CompeteScreen() {
         .filter(c => !activeTabType || c.type === activeTabType)
         .sort((a, b) => a.endAt - b.endAt);
 
+  // Replay contests (separate table/shape). Rendered both under the dedicated
+  // "Replay" tab and — for discoverability — under "All". `mode` decides the
+  // empty state: the tab shows a placeholder card; "All" simply omits the
+  // section when there are none.
+  const renderReplayContests = (mode: 'tab' | 'all') => {
+    const replays = state.replayContests.filter(r => r.status !== 'finished').sort((a, b) => a.startAt - b.startAt);
+    if (replays.length === 0) {
+      return mode === 'tab' ? (
+        <Card variant="tinted">
+          <Text style={{ color: colors.ink3, fontSize: 13 }}>No replay contests right now — check back soon.</Text>
+        </Card>
+      ) : null;
+    }
+    return (
+      <View style={{ gap: 10 }}>
+        {mode === 'all' && (
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink2, marginTop: 4 }}>Replay contests</Text>
+        )}
+        {replays.map(r => {
+          const endsMs = r.endAt - Date.now();
+          const endLabel = endsMs <= 0 ? 'Ended' : endsMs < DAY_MS ? `${Math.ceil(endsMs / (60 * 60 * 1000))}h left` : `${Math.ceil(endsMs / DAY_MS)}d left`;
+          return (
+            <PressableScale key={r.id} testID={`replay-card-${r.id}`} onPress={() => openReplay(r.id)}>
+              <Card variant="compact" style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Replay contest · {r.coin}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.up, textTransform: 'uppercase', letterSpacing: 0.5 }}>Play to enter</Text>
+                </View>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{r.eventTitle}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>
+                    Play the scenario, submit your score · {endLabel}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>{r.entryCount.toLocaleString()} entries</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{r.prizeXp.toLocaleString()} XP</Text>
+                </View>
+              </Card>
+            </PressableScale>
+          );
+        })}
+      </View>
+    );
+  };
+
   // Current balance of the player's portfolio for a joined contest: cash + live
   // value of its holdings. The active contest's data lives at the top level of
   // state; the others are stashed in state.portfolios. Returns null if there's
@@ -535,47 +584,8 @@ export function CompeteScreen() {
         })}
       </ScrollView>
 
-      {contestTab === 'Replay' ? (() => {
-        const replays = state.replayContests.filter(r => r.status !== 'finished').sort((a, b) => a.startAt - b.startAt);
-        if (replays.length === 0) {
-          return (
-            <Card variant="tinted">
-              <Text style={{ color: colors.ink3, fontSize: 13 }}>No replay contests right now — check back soon.</Text>
-            </Card>
-          );
-        }
-        return (
-          <View style={{ gap: 10 }}>
-            {replays.map(r => {
-              const endsMs = r.endAt - Date.now();
-              const endLabel = endsMs <= 0 ? 'Ended' : endsMs < DAY_MS ? `${Math.ceil(endsMs / (60 * 60 * 1000))}h left` : `${Math.ceil(endsMs / DAY_MS)}d left`;
-              return (
-                <PressableScale key={r.id} testID={`replay-card-${r.id}`} onPress={() => openReplay(r.id)}>
-                  <Card variant="compact" style={{ gap: 6 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Replay contest · {r.coin}
-                      </Text>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: colors.up, textTransform: 'uppercase', letterSpacing: 0.5 }}>Play to enter</Text>
-                    </View>
-                    <Text style={{ fontWeight: '600', color: colors.ink }}>{r.eventTitle}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
-                      <Text style={{ fontSize: 11, color: colors.ink3 }}>
-                        Play the scenario, submit your score · {endLabel}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
-                      <Text style={{ fontSize: 11, color: colors.ink3 }}>{r.entryCount.toLocaleString()} entries</Text>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{r.prizeXp.toLocaleString()} XP</Text>
-                    </View>
-                  </Card>
-                </PressableScale>
-              );
-            })}
-          </View>
-        );
-      })() : listComps.length === 0 ? (
+      {contestTab === 'Replay' ? renderReplayContests('tab')
+      : listComps.length === 0 ? (
         <Card variant="tinted">
           <Text style={{ color: colors.ink3, fontSize: 13 }}>
             No {contestTab === 'All' ? '' : `${contestTab.toLowerCase()} `}contests right now — check back soon.
@@ -648,6 +658,10 @@ export function CompeteScreen() {
         </Wrapper>
         );
       })()}
+
+      {/* Replay contests also surface under "All" so they're discoverable
+          without hunting for the dedicated Replay tab. */}
+      {contestTab === 'All' && renderReplayContests('all')}
 
       {/* Top traders entry point — previews the leaderboard's top 3 */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
