@@ -76,7 +76,10 @@ export function Button({
           backgroundColor: bgMap[variant],
           borderColor: borderMap[variant],
           opacity: disabled ? 0.5 : 1,
-          flex: fullWidth ? 1 : undefined,
+          // Full width = stretch across the container's cross axis. (Using
+          // `flex: 1` here collapsed the button's height to ~0 inside an
+          // auto-height column — e.g. modal cards — clipping the label.)
+          alignSelf: fullWidth ? 'stretch' : undefined,
         },
         style,
       ]}
