@@ -14,7 +14,7 @@
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_PAYOUTS_ENABLED": "true",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_REPLACE_ME"
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51TjkdwAQ5JYLHb2K6RUXyoGLN40sfjdJezf53blvvSMIUYS8OVeifBgve13ZPm1TagKIOgDxf7mMDH0D1hSuKrY500AwmOwslM"
       }
     },
     "production": {
@@ -22,7 +22,7 @@
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_PAYOUTS_ENABLED": "true",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_REPLACE_ME"
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51TjkdwAQ5JYLHb2K6RUXyoGLN40sfjdJezf53blvvSMIUYS8OVeifBgve13ZPm1TagKIOgDxf7mMDH0D1hSuKrY500AwmOwslM"
       }
     }
   },
