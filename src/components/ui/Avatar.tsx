@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, ViewStyle } from 'react-native';
+import { View, Image, StyleSheet, ViewStyle } from 'react-native';
+import { Text } from './Text';
 import { useTheme } from '../../theme/ThemeContext';
 import { coinColors, coinColorsDark } from '../../theme/tokens';
 

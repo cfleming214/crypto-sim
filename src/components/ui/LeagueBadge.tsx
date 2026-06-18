@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ViewStyle } from 'react-native';
+import { View, ViewStyle } from 'react-native';
+import { Text } from './Text';
 
 // Metallic colors per league so the badge reads as Bronze/Silver/Gold/etc.
 // (the old badge used the brand color for all leagues, so Bronze looked black).

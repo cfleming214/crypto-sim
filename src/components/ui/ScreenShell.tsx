@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, ViewStyle, TouchableOpacity, RefreshControl as RNRefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet, ViewStyle, TouchableOpacity, RefreshControl as RNRefreshControl } from 'react-native';
+import { Text } from './Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';

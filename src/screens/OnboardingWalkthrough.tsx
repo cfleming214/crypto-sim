@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  View, Text, ScrollView, Pressable, Animated, Easing,
-  useWindowDimensions, StyleProp, ViewStyle,
-} from 'react-native';
+import { View, ScrollView, Pressable, Animated, Easing, useWindowDimensions, StyleProp, ViewStyle } from 'react-native';
+import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';

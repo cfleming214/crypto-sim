@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, ViewStyle, PanResponder, Text, Pressable } from 'react-native';
+import { View, ViewStyle, PanResponder, Pressable } from 'react-native';
+import { Text } from '../ui/Text';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useTheme } from '../../theme/ThemeContext';
 import { computeMA, computeRSI } from '../../lib/indicators';

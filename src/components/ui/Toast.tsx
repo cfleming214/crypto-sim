@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Easing, View } from 'react-native';
+import { Text } from './Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/ThemeContext';
 import { ConfettiBurst } from './ConfettiBurst';

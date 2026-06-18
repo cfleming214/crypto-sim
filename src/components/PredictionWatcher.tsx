@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text } from 'react-native';
+import { Modal, View } from 'react-native';
+import { Text } from './ui/Text';
 import { Target, TrendingUp, TrendingDown } from 'lucide-react-native';
 import { useApp } from '../store/AppContext';
 import { useTheme } from '../theme/ThemeContext';

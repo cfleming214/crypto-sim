@@ -1,8 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View, Text, FlatList, Image, TouchableOpacity,
-  RefreshControl, ActivityIndicator,
-} from 'react-native';
+import { View, FlatList, Image, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';

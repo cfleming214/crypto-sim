@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, ScrollView, Pressable } from 'react-native';
+import { Text } from './ui/Text';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Props { children: React.ReactNode }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Text } from './Text';
 import { Card } from './Card';
 import { Button } from './Button';
 import { PressableScale } from './PressableScale';

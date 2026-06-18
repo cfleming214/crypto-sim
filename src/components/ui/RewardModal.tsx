@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text } from 'react-native';
+import { Modal, View } from 'react-native';
+import { Text } from './Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeContext';

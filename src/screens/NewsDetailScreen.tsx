@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Image, TouchableOpacity, Linking, Alert } from 'react-native';
+import { Text } from '../components/ui/Text';
 import { useRoute } from '@react-navigation/native';
 import { ExternalLink, Newspaper } from 'lucide-react-native';
 import { ScreenShell } from '../components/ui/ScreenShell';

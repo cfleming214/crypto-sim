@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Text } from '../components/ui/Text';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';

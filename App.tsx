@@ -1,4 +1,6 @@
 import React from 'react';
+import { View, Appearance } from 'react-native';
+import { useFonts, Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } from '@expo-google-fonts/geist';
 import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,6 +24,14 @@ export default function App() {
   // Production-safe OTA "hot reload": pull the latest JS bundle on launch +
   // foreground (no-op in dev / Expo Go). See src/lib/otaUpdates.ts.
   React.useEffect(() => startOtaUpdates(), []);
+
+  // Load Geist (the app typeface) before first paint so text never flashes in a
+  // system fallback. The faces are bundled assets, so they load near-instantly
+  // and ship over OTA. Hold a themed blank frame until they're ready.
+  const [fontsLoaded] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: Appearance.getColorScheme() === 'dark' ? '#0A0A0B' : '#F7F6F2' }} />;
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ViewStyle } from 'react-native';
+import { View, ViewStyle } from 'react-native';
+import { Text } from './Text';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/tokens';
 import { PressableScale } from './PressableScale';

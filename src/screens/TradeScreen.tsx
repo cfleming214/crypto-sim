@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
+import { View, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
+import { Text } from '../components/ui/Text';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useCoachmark } from '../components/coachmarks/CoachmarkProvider';

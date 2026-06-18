@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, TouchableOpacity } from 'react-native';
+import { Text } from '../../components/ui/Text';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { WalkthroughParamList } from '../../navigation/WalkthroughNavigator';
 import { ScreenShell } from '../../components/ui/ScreenShell';

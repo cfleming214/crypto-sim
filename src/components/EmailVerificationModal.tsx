@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Modal, View, Text, TextInput, TouchableOpacity, Alert,
-  KeyboardAvoidingView, Platform,
-} from 'react-native';
+import { Modal, View, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { Text } from './ui/Text';
 import { Mail, X } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { Button } from './ui/Button';

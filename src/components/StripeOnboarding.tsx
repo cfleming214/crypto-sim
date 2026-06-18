@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Text } from './ui/Text';
 import { WebView } from 'react-native-webview';
 import { useTheme } from '../theme/ThemeContext';
 import { LEGAL_BASE } from '../constants/legal';

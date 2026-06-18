@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { Text } from '../components/ui/Text';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card } from '../components/ui/Card';
