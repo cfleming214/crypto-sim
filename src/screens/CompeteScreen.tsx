@@ -377,6 +377,47 @@ export function CompeteScreen() {
   };
   const fmtBalance = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  // The player's live standing in a joined contest, derived from the subscribed
+  // leaderboard (state.leaderboard[id], kept fresh by subscribeToLeaderboard).
+  // Sorted by bankroll so the rank matches what the leaderboard shows. Returns
+  // null until the board has loaded / the player's entry appears.
+  const contestStanding = (id: string): { rank: number; total: number } | null => {
+    const entries = state.leaderboard[id];
+    if (!entries || entries.length === 0) return null;
+    const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
+    const idx = sorted.findIndex(e => e.handle === state.user.handle);
+    if (idx < 0) return null;
+    return { rank: idx + 1, total: sorted.length };
+  };
+
+  // Joined-contest summary shown on the contest card: live leaderboard rank +
+  // current portfolio balance and P&L. Returns null until either is known.
+  const renderJoinedStanding = (id: string) => {
+    const bal = contestBalance(id);
+    const standing = contestStanding(id);
+    if (bal == null && !standing) return null;
+    const pnlPct = bal != null ? ((bal - STARTING_CASH) / STARTING_CASH) * 100 : null;
+    const up = (pnlPct ?? 0) >= 0;
+    const rankText = standing ? `#${standing.rank} of ${standing.total}` : '—';
+    const balText = bal != null ? `$${fmtBalance(bal)}` : '—';
+    const pnlText = pnlPct != null ? ` ${up ? '+' : ''}${pnlPct.toFixed(1)}%` : '';
+    return (
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, backgroundColor: colors.surface2, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 }}>
+        <View>
+          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your rank</Text>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'], marginTop: 1 }}>{rankText}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Balance</Text>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'], marginTop: 1 }}>
+            {balText}
+            <Text style={{ fontSize: 11, fontWeight: '700', color: up ? colors.up : colors.down }}>{pnlText}</Text>
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   const finalizeJoin = async (comp: Competition) => {
     await join(comp.id);
     Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
@@ -650,11 +691,7 @@ export function CompeteScreen() {
                     {comp.lockAfterStart ? (comp.startAt > Date.now() ? ' · 🔒 locks at start' : ' · 🔒 locked') : ''}
                   </Text>
                 </View>
-                {isJoined(comp.id) && contestBalance(comp.id) != null && (
-                  <Text style={{ fontSize: 11, color: colors.ink2, fontVariant: ['tabular-nums'] }}>
-                    Your balance: ${fmtBalance(contestBalance(comp.id)!)}
-                  </Text>
-                )}
+                {isJoined(comp.id) && renderJoinedStanding(comp.id)}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
