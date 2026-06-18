@@ -89,6 +89,35 @@ function sanitizeSnapshots(points: EquityPoint[]): EquityPoint[] {
   return points.filter(p => p.v !== STARTING_CASH || p.t === earliestT);
 }
 
+// Resample an (unevenly spaced) equity series onto a uniform time grid of
+// `count` points spaced `stepMs` apart and ending at `endT`, linearly
+// interpolating between recorded points and holding the edge values flat
+// outside the recorded range. The AreaChart distributes points evenly along X,
+// so feeding it a uniform-time grid keeps the time axis honest — e.g. the 1H
+// window becomes 60 one-minute points instead of whatever uneven mix of 60s
+// captures and gap-backfill happened to land in the hour. Returns [] when there
+// are no source points, so the caller keeps its own sparse fallback.
+export function resampleSeries(points: EquityPoint[], endT: number, stepMs: number, count: number): EquityPoint[] {
+  if (!(stepMs > 0) || count < 2) return [];
+  const src = [...points].filter(p => Number.isFinite(p.t) && Number.isFinite(p.v)).sort((a, b) => a.t - b.t);
+  if (src.length === 0) return [];
+  const out: EquityPoint[] = [];
+  let i = 0; // forward cursor: grid times are monotonic, so it only advances → O(count + src)
+  for (let k = 0; k < count; k++) {
+    const gt = endT - (count - 1 - k) * stepMs;
+    while (i + 1 < src.length && src[i + 1].t <= gt) i++;
+    let v: number;
+    if (gt <= src[0].t) v = src[0].v;                 // before first reading → flat
+    else if (i + 1 >= src.length) v = src[src.length - 1].v; // after last reading → flat
+    else {
+      const a = src[i], b = src[i + 1];               // bracketing readings → linear
+      v = b.t > a.t ? a.v + (b.v - a.v) * ((gt - a.t) / (b.t - a.t)) : a.v;
+    }
+    out.push({ t: gt, v });
+  }
+  return out;
+}
+
 export async function loadSnapshots(portfolioId: string): Promise<EquityPoint[]> {
   try {
     const raw = await AsyncStorage.getItem(KEY(portfolioId));

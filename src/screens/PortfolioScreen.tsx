@@ -18,7 +18,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchLivePrices } from '../services/tokenCatalog';
-import { loadSnapshots, backfillGap, type EquityPoint } from '../services/equitySnapshots';
+import { loadSnapshots, backfillGap, resampleSeries, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
 import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
@@ -297,6 +297,14 @@ export function PortfolioScreen() {
     'MAX':  Number.MAX_SAFE_INTEGER,
   };
 
+  // Intraday windows are drawn on a uniform 1-minute grid so the time axis is
+  // honest (the AreaChart spaces points evenly in X) — the 1H view is exactly
+  // 60 one-minute points, not the uneven mix of 60s captures + gap-backfill.
+  const TF_STEP_MS: Record<string, number> = {
+    'Live': 60 * 1000,  // 15 points
+    '1H':   60 * 1000,  // 60 points
+  };
+
   const [history, setHistory] = useState<EquityPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -346,8 +354,22 @@ export function PortfolioScreen() {
 
   const { chartData, chartTimestamps } = React.useMemo(() => {
     const windowMs = TF_WINDOW_MS[tf] ?? 0;
-    const cutoff = tf === 'MAX' ? 0 : Date.now() - windowMs;
+    const now = Date.now();
+    const cutoff = tf === 'MAX' ? 0 : now - windowMs;
     const windowed = history.filter(p => p.t >= cutoff);
+
+    // Intraday: resample to a uniform 1-min grid (1H → 60 points). Falls through
+    // to the raw/sparse path when there are no recorded points yet.
+    const stepMs = TF_STEP_MS[tf];
+    if (stepMs) {
+      const grid = resampleSeries(history, now, stepMs, Math.round(windowMs / stepMs));
+      if (grid.length >= 2) {
+        const vals = grid.map(p => p.v);
+        vals[vals.length - 1] = totalEquity; // live right edge — matches the header $
+        return { chartData: vals, chartTimestamps: grid.map(p => p.t) };
+      }
+    }
+
     if (windowed.length >= 2) {
       const vals = windowed.map(p => p.v);
       vals[vals.length - 1] = totalEquity; // live right edge — matches the header $
@@ -355,7 +377,7 @@ export function PortfolioScreen() {
     }
     return {
       chartData:       [startEquity, totalEquity],
-      chartTimestamps: [Date.now() - (windowMs || 0), Date.now()],
+      chartTimestamps: [now - (windowMs || 0), now],
     };
   }, [history, totalEquity, tf]); // eslint-disable-line react-hooks/exhaustive-deps
 
