@@ -5,15 +5,22 @@
 // current App Store submission so the build stays a pure play-money simulator —
 // matching the approved "no real money ever leaves the app" framing and the
 // Terms. The Stripe backend + screens stay in the codebase; they're just not
-// reachable from the UI. Flip this to true only alongside the real-money launch
-// work (17+ age rating, Terms rewrite disclosing cash prizes, live Stripe keys).
-export const PAYOUTS_ENABLED = false;
+// reachable from the UI.
+//
+// ENV-GATED for Stripe TEST mode: the flag is driven by EXPO_PUBLIC_PAYOUTS_ENABLED,
+// which Expo inlines at build time. Production builds (where the var is unset)
+// stay false; a preview/test build set to "true" (see eas.json `preview.env`, or
+// a local .env) turns the full payout flow on against Stripe TEST keys. Flip the
+// hard default to true only alongside the real-money launch work (17+ age rating,
+// Terms rewrite disclosing cash prizes, LIVE Stripe keys).
+export const PAYOUTS_ENABLED = process.env.EXPO_PUBLIC_PAYOUTS_ENABLED === 'true';
 
 // CONTEST_CASH_PRIZES gates whether contests advertise/award real cash. When OFF
-// (the current default), contests reward XP instead — the prize is shown as XP
-// and the winner claims XP, with no cash settlement surfaced. Flip to true only
-// together with PAYOUTS_ENABLED and the real-money launch work.
-export const CONTEST_CASH_PRIZES = false;
+// (the production default), contests reward XP instead — the prize is shown as XP
+// and the winner claims XP, with no cash settlement surfaced. Tied to the same
+// env gate as PAYOUTS_ENABLED so a test build gets the full cash-prize → payout
+// path end-to-end; production stays XP-only.
+export const CONTEST_CASH_PRIZES = process.env.EXPO_PUBLIC_PAYOUTS_ENABLED === 'true';
 
 // Headline XP a contest awards its winner when cash prizes are off. Used as the
 // fallback when a Competition row has no prizeXp set yet (e.g. before the
