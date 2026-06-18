@@ -12,6 +12,9 @@ export const LEGAL_URLS = {
   privacy: `${LEGAL_BASE}/privacy.html`,
   support: `${LEGAL_BASE}/support.html`,
   contact: `${LEGAL_BASE}/contact.html`,
+  // Official Rules for the free-entry cash-prize contests (sweepstakes). Linked
+  // from Profile → Safety & legal and from each contest's prize/rules card.
+  rules:   `${LEGAL_BASE}/official-contest-rules.html`,
 } as const;
 
 // Where reviewers / users can reach a human about reported content (also cited

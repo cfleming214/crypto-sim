@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView, Pressable, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView, Pressable, Modal, ActivityIndicator, Linking } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -15,6 +15,7 @@ import { useCompetitions } from '../hooks/useCompetitions';
 import { fetchEntryPortfolio, type ContestPortfolio } from '../services/competitionService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
+import { LEGAL_URLS } from '../constants/legal';
 import { Bell, MoreHorizontal, Trophy, X } from 'lucide-react-native';
 
 
@@ -300,6 +301,19 @@ export function TournamentDetailScreen() {
             {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: colors.hairline, marginTop: 8, opacity: 0.6 }} />}
           </View>
         ))}
+        {CONTEST_CASH_PRIZES && (
+          <TouchableOpacity
+            onPress={() => Linking.openURL(LEGAL_URLS.rules)}
+            style={{ marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.hairline }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>
+              Official contest rules & eligibility ›
+            </Text>
+            <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
+              Free to enter · no purchase necessary · 18+ · void where prohibited
+            </Text>
+          </TouchableOpacity>
+        )}
       </Card>
 
       {/* Cash payouts (only when cash prizes are enabled) */}

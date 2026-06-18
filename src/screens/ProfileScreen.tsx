@@ -656,11 +656,23 @@ export function ProfileScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity testID="profile-privacy" onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>
-          <CardSection last>
+          <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Shield color={colors.ink} size={18} strokeWidth={1.75} />
                 <Text style={{ fontWeight: '600', color: colors.ink }}>Privacy Policy</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+
+        <TouchableOpacity testID="profile-rules" onPress={() => Linking.openURL(LEGAL_URLS.rules)}>
+          <CardSection last>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Trophy color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Contest Rules</Text>
               </View>
               <Text style={{ color: colors.ink3 }}>›</Text>
             </View>
