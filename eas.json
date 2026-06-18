@@ -19,7 +19,11 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_PAYOUTS_ENABLED": "true",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_REPLACE_ME"
+      }
     }
   },
   "submit": {
