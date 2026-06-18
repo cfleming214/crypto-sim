@@ -77,6 +77,7 @@
     "seed:tokens": "node scripts/seed-tokens.mjs",
     "seed:contests": "node scripts/seed-live-contest.mjs",
     "seed:contests:clean": "node scripts/seed-contests-clean.mjs",
+    "seed:payout-test": "node scripts/seed-payout-test.mjs",
     "stress:contest": "node scripts/stress-test-contest.mjs"
   },
   "private": true
