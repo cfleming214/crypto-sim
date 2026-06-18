@@ -16,7 +16,7 @@ import { useApp } from '../store/AppContext';
 import { fetchReplayContestScenario, submitReplayScore, fetchReplayLeaderboard } from '../services/replayService';
 import { loadReplaySessions, saveReplaySession, type ReplaySession, type ReplaySessionTrade } from '../services/replayHistoryStore';
 import type { CompetitionEntry } from '../store/types';
-import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward, Trophy, Play } from 'lucide-react-native';
+import { Filter, Plus, ChevronRight, Pause, SkipBack, SkipForward, Trophy, Play, History } from 'lucide-react-native';
 
 // A playable scenario — either a bundled free-play era or a fetched contest.
 interface Scenario { id: string; title: string; coin: string; prices: number[]; down: boolean; tag: string; sub: string; }
@@ -64,6 +64,8 @@ export function ReplayScreen() {
   const [replayUnits, setReplayUnits] = useState(0);
   const [tradesLog, setTradesLog] = useState<ReplaySessionTrade[]>([]);
   const [sessions, setSessions] = useState<ReplaySession[]>([]);
+  // Era-picker view: 'Play' (browse eras) vs 'History' (past runs).
+  const [pickerTab, setPickerTab] = useState<'Play' | 'History'>('Play');
   const savedRef = useRef(false);
   useEffect(() => { loadReplaySessions().then(setSessions); }, []);
 
@@ -125,18 +127,25 @@ export function ReplayScreen() {
     setTradesLog(prev => [...prev, { day: dayRef.current, side, amount, units, price }]);
   };
 
-  // Free-play era replays: save a local history session when the run completes.
-  useEffect(() => {
-    if (contestId || !activeEraId || days === 0 || day < days || savedRef.current) return;
-    savedRef.current = true;
+  // Save a free-play era run to local history — at most once per run (savedRef).
+  // Called on completion, and on early exit when the user actually traded.
+  const persistRun = () => {
+    if (contestId || !activeEraId || savedRef.current) return;
     const era = ERA_LIST.find(e => e.id === activeEraId);
     if (!era) return;
+    savedRef.current = true;
     const session: ReplaySession = {
       id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       eraId: activeEraId, title: era.title, coin: era.coin,
       playedAt: Date.now(), finalBankroll: bankroll, pnlPct, trades: tradesLog,
     };
     saveReplaySession(session).then(setSessions);
+  };
+
+  // Free-play era replays: save the session when the run reaches the final day.
+  useEffect(() => {
+    if (days === 0 || day < days) return;
+    persistRun();
   }, [activeEraId, day, days, contestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Playback: advance one step per tick at the chosen speed.
@@ -224,6 +233,9 @@ export function ReplayScreen() {
 
   const handleReset = () => {
     if (contestId) { nav.goBack(); return; }   // contest mode → back to Compete
+    const hasRun = savedRef.current || tradesLog.length > 0;
+    if (tradesLog.length > 0) persistRun();     // capture an early exit that traded
+    if (hasRun) setPickerTab('History');        // land on History so the run is visible
     setActiveEraId(null);
     setIsPlaying(false);
     setDay(0);
@@ -425,12 +437,20 @@ export function ReplayScreen() {
     <ScreenShell
       eyebrow="Time Machine"
       title="Trade the past"
-      rightActions={
+      rightActions={pickerTab === 'Play' ? (
         <TouchableOpacity onPress={() => Alert.alert('Filter', 'Filter eras by market condition, date range, or volatility.', [{ text: 'OK' }])}>
           <Filter color={colors.ink} size={20} strokeWidth={1.75} />
         </TouchableOpacity>
-      }
+      ) : undefined}
     >
+      <Segmented
+        variant="tabs"
+        options={['Play', 'History']}
+        value={pickerTab}
+        onChange={(v) => setPickerTab(v as 'Play' | 'History')}
+      />
+
+      {pickerTab === 'Play' && (<>
       <Text style={{ fontSize: 13, color: colors.ink3, lineHeight: 20 }}>
         Step into a real market moment with $10K. See how you would have played it — on actual historical prices.
       </Text>
@@ -486,36 +506,6 @@ export function ReplayScreen() {
         ))}
       </Card>
 
-      {/* Your replay history */}
-      {sessions.length > 0 && (
-        <>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Your replays</Text>
-          <Card variant="noPad">
-            {sessions.map((s, i) => {
-              const up = s.pnlPct >= 0;
-              return (
-                <TouchableOpacity key={s.id} testID={`replay-history-${s.id}`} activeOpacity={0.75} onPress={() => nav.navigate('ReplayHistory', { sessionId: s.id })}>
-                  <CardSection last={i === sessions.length - 1}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: '600', color: colors.ink }}>{s.title}</Text>
-                        <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-                          {new Date(s.playedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} · {s.trades.length} trade{s.trades.length === 1 ? '' : 's'} · ${Math.round(s.finalBankroll).toLocaleString()}
-                        </Text>
-                      </View>
-                      <Text style={{ fontWeight: '700', fontSize: 13, color: up ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                        {up ? '+' : ''}{s.pnlPct.toFixed(1)}%
-                      </Text>
-                      <ChevronRight color={colors.ink3} size={18} strokeWidth={1.75} />
-                    </View>
-                  </CardSection>
-                </TouchableOpacity>
-              );
-            })}
-          </Card>
-        </>
-      )}
-
       {/* Custom range */}
       <TouchableOpacity
         activeOpacity={0.6}
@@ -531,6 +521,54 @@ export function ReplayScreen() {
           </View>
         </Card>
       </TouchableOpacity>
+      </>)}
+
+      {/* History tab — your past free-play runs */}
+      {pickerTab === 'History' && (
+        sessions.length === 0 ? (
+          <Card style={{ alignItems: 'center', gap: 10, paddingVertical: 28 }}>
+            <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+              <History color={colors.ink3} size={24} strokeWidth={1.75} />
+            </View>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.ink }}>No replays yet</Text>
+            <Text style={{ fontSize: 13, color: colors.ink3, textAlign: 'center', lineHeight: 19, maxWidth: 280 }}>
+              Play an era and your run is saved here — with the P&L and a tap-to-watch play-by-play.
+            </Text>
+            <Button variant="brand" size="sm" style={{ marginTop: 4 }} onPress={() => setPickerTab('Play')}>
+              Play a replay
+            </Button>
+          </Card>
+        ) : (
+          <>
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              {sessions.length} run{sessions.length === 1 ? '' : 's'} · tap one to watch it back
+            </Text>
+            <Card variant="noPad">
+              {sessions.map((s, i) => {
+                const up = s.pnlPct >= 0;
+                return (
+                  <TouchableOpacity key={s.id} testID={`replay-history-${s.id}`} activeOpacity={0.75} onPress={() => nav.navigate('ReplayHistory', { sessionId: s.id })}>
+                    <CardSection last={i === sessions.length - 1}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '600', color: colors.ink }}>{s.title}</Text>
+                          <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                            {new Date(s.playedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} · {s.trades.length} trade{s.trades.length === 1 ? '' : 's'} · ${Math.round(s.finalBankroll).toLocaleString()}
+                          </Text>
+                        </View>
+                        <Text style={{ fontWeight: '700', fontSize: 13, color: up ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                          {up ? '+' : ''}{s.pnlPct.toFixed(1)}%
+                        </Text>
+                        <ChevronRight color={colors.ink3} size={18} strokeWidth={1.75} />
+                      </View>
+                    </CardSection>
+                  </TouchableOpacity>
+                );
+              })}
+            </Card>
+          </>
+        )
+      )}
     </ScreenShell>
   );
 }
