@@ -19,7 +19,7 @@ export function PayoutSetupScreen() {
   const { status: authStatus } = useAuth();
   const [account, setAccount] = useState<PayoutAccount | null>(null);
   const [loading, setLoading] = useState(true);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [onboardUrl, setOnboardUrl] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
   // refreshStatus is authoritative: the Lambda looks up the account by id (the
@@ -32,20 +32,20 @@ export function PayoutSetupScreen() {
 
   useEffect(() => { if (authStatus === 'authenticated') load(); }, [authStatus, load]);
 
-  // Mint an Account Session and hand its client secret to the WebView. In mock
-  // mode there's no secret — the backend already flipped the account to enabled,
-  // so just reload status (which shows "Payouts active") instead of erroring.
+  // Mint a hosted Account Link and open it in the WebView. In mock mode there's
+  // no URL — the backend already flipped the account to enabled, so just reload
+  // status (which shows "Payouts active") instead of erroring.
   const beginOnboarding = useCallback(async () => {
     setStarting(true);
-    const { clientSecret: cs, mock, error } = await startOnboarding();
+    const { url, mock, error } = await startOnboarding();
     setStarting(false);
-    if (cs) setClientSecret(cs);
+    if (url) setOnboardUrl(url);
     else if (mock) await load();
     else Alert.alert('Could not start setup', error ?? 'Please try again later.');
   }, [load]);
 
   const handleExit = useCallback(async () => {
-    setClientSecret(null);
+    setOnboardUrl(null);
     // Pull fresh capability state from Stripe (also updates our StripeAccount row).
     await load();
   }, [load]);
@@ -58,8 +58,8 @@ export function PayoutSetupScreen() {
 
   return (
     <ScreenShell title="Prize payouts">
-      {clientSecret ? (
-        <StripeOnboarding clientSecret={clientSecret} onExit={handleExit} />
+      {onboardUrl ? (
+        <StripeOnboarding url={onboardUrl} onExit={handleExit} />
       ) : loading ? (
         <View style={{ paddingVertical: 60, alignItems: 'center' }}>
           <ActivityIndicator color={colors.brand} />

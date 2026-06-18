@@ -14,6 +14,11 @@ const ddb = new DynamoDBClient({});
 const MOCK = !process.env.STRIPE_SECRET_KEY;
 const stripe = MOCK ? null : new Stripe(process.env.STRIPE_SECRET_KEY!);
 
+// Stripe-hosted Connect onboarding (Account Links) sends the user back here when
+// they finish; the app's WebView watches for this URL to close. Hosted
+// onboarding (vs. embedded components) needs NO domain allow-listed in Stripe.
+const RETURN_BASE = process.env.PAYOUT_RETURN_BASE ?? 'https://cfleming214.github.io/crypto-sim';
+
 // AppSync resolver event shape for an Amplify custom mutation backed by a
 // function handler. identity is the authenticated Cognito user; fieldName tells
 // us which of the three mutations was called.
@@ -81,7 +86,7 @@ async function startPayoutOnboarding(userId: string, email?: string) {
       detailsSubmitted: true,
       status: 'enabled',
     });
-    return { mock: true, accountId, payoutsEnabled: true, status: 'enabled', clientSecret: null };
+    return { mock: true, accountId, payoutsEnabled: true, status: 'enabled', url: null };
   }
 
   let row = await getStripeAccountRow(userId);
@@ -104,14 +109,17 @@ async function startPayoutOnboarding(userId: string, email?: string) {
     });
   }
 
-  // Embedded onboarding: the client renders Stripe's account-onboarding
-  // component with this session's client_secret.
-  const session = await stripe!.accountSessions.create({
+  // Hosted onboarding: Stripe serves the onboarding page; the client opens this
+  // URL in a WebView and closes when Stripe redirects to return_url. Account
+  // Links are single-use and short-lived, so we mint a fresh one per call.
+  const link = await stripe!.accountLinks.create({
     account: accountId,
-    components: { account_onboarding: { enabled: true } },
+    type: 'account_onboarding',
+    refresh_url: `${RETURN_BASE}/payouts-return.html?status=refresh`,
+    return_url: `${RETURN_BASE}/payouts-return.html?status=complete`,
   });
 
-  return { clientSecret: session.client_secret, accountId };
+  return { url: link.url, accountId };
 }
 
 async function refreshPayoutStatus(userId: string) {

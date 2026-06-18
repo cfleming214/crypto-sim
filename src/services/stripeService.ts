@@ -47,22 +47,22 @@ export interface PayoutRow {
   paidAt?: string;
 }
 
-// Kicks off (or resumes) Connect onboarding. Returns the Account Session
-// client secret the native embedded onboarding component consumes.
-export async function startOnboarding(): Promise<{ clientSecret: string | null; mock?: boolean; error?: string }> {
+// Kicks off (or resumes) Connect onboarding. Returns the Stripe-hosted Account
+// Link URL the onboarding WebView opens.
+export async function startOnboarding(): Promise<{ url: string | null; mock?: boolean; error?: string }> {
   const client = await getClient();
-  if (!client) return { clientSecret: null, error: 'Offline' };
+  if (!client) return { url: null, error: 'Offline' };
   try {
     const { data, errors } = await client.mutations.startPayoutOnboarding();
-    if (errors?.length) return { clientSecret: null, error: errors[0].message };
+    if (errors?.length) return { url: null, error: errors[0].message };
     const res = parseJson(data);
-    if (res?.error) return { clientSecret: null, error: res.error };
-    // Mock backend: no client secret to render — payouts were activated
-    // server-side, so the caller just refreshes status instead of onboarding.
-    return { clientSecret: res?.clientSecret ?? null, mock: !!res?.mock };
+    if (res?.error) return { url: null, error: res.error };
+    // Mock backend: no URL to open — payouts were activated server-side, so the
+    // caller just refreshes status instead of onboarding.
+    return { url: res?.url ?? null, mock: !!res?.mock };
   } catch (e) {
     console.warn('startOnboarding failed', e);
-    return { clientSecret: null, error: String(e) };
+    return { url: null, error: String(e) };
   }
 }
 

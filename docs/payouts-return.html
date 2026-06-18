@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CryptoComp — Payouts</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           min-height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center;
+           text-align: center; padding: 24px; color: #1a1a1a; background: #fff; }
+    @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #0A0A0B; } }
+    h1 { font-size: 20px; letter-spacing: -0.3px; margin: 0 0 8px; }
+    p { font-size: 14px; color: #777; margin: 0; }
+  </style>
+</head>
+<body>
+  <!--
+    Stripe redirects here after hosted Connect onboarding (return_url) or when an
+    Account Link expires (refresh_url). The app's WebView intercepts this URL and
+    closes the onboarding view, so this page is rarely seen — it's just a safe
+    landing target. The app then re-checks the account's payout status.
+  -->
+  <div>
+    <h1>All set — you can return to CryptoComp</h1>
+    <p>Close this window to go back to the app.</p>
+  </div>
+</body>
+</html>
