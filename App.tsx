@@ -27,9 +27,12 @@ export default function App() {
 
   // Load Geist (the app typeface) before first paint so text never flashes in a
   // system fallback. The faces are bundled assets, so they load near-instantly
-  // and ship over OTA. Hold a themed blank frame until they're ready.
-  const [fontsLoaded] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
-  if (!fontsLoaded) {
+  // and ship over OTA. Hold a themed blank frame until they're ready — but if
+  // loading ERRORS, render anyway: the Text wrapper's Geist families fall back
+  // to the system font, so a font failure degrades gracefully instead of
+  // leaving the user on a permanent blank screen.
+  const [fontsLoaded, fontError] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
+  if (!fontsLoaded && !fontError) {
     return <View style={{ flex: 1, backgroundColor: Appearance.getColorScheme() === 'dark' ? '#0A0A0B' : '#F7F6F2' }} />;
   }
 
