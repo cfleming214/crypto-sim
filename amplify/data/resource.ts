@@ -40,6 +40,12 @@ const schema = a.schema({
     // portfolioService.touchPresence). Drives the online/away/offline dot on
     // avatars; carried onto GlobalLeaderboard/PublicProfile for other viewers.
     lastActiveAt: a.string(),
+    // Withdrawable real-money balance, in cents. Credited when a winner CLAIMS a
+    // contest prize and reserved out when they request a withdrawal. Written ONLY
+    // by the payout Lambdas (stripeConnect claimPrize/requestWithdrawal,
+    // process-withdrawals) via the DynamoDB SDK — never trusted from the client,
+    // which has read-only owner access to its own row.
+    balanceCents: a.integer(),
   }).authorization(allow => [allow.owner()]),
 
   Trade: a.model({
@@ -382,23 +388,64 @@ const schema = a.schema({
     payoutsEnabled:   a.boolean(),  // capabilities.transfers active — can receive Transfers
     detailsSubmitted: a.boolean(),  // finished the onboarding form
     status:           a.string(),   // 'onboarding' | 'enabled' | 'restricted'
+    // The user's chosen default payout method (a Stripe external account on their
+    // connected account). setPayoutMethod marks it default_for_currency in Stripe
+    // and records it here for display; the daily withdrawal transfer relies on
+    // Stripe routing to the connected account's default external account.
+    preferredMethodId:    a.string(),  // "ba_..." / "card_..." external-account id
+    preferredMethodLabel: a.string(),  // e.g. "Bank •••• 6789"
   }).authorization(allow => [allow.owner().to(['read'])]),
 
-  // One row per prize owed to a winner. Created by close-competition when a
-  // contest finishes: auto-paid (status 'paid') if the winner has already
-  // onboarded, otherwise 'pending' until they claim it. Drives the Earnings tab.
-  // `userId` is the winner's Cognito sub (== StripeAccount.id) so the claim
-  // mutation can verify ownership without depending on the owner-field format.
+  // One row per prize owed to a winner, id "<competitionId>#<userId>". Created
+  // by close-competition as 'unclaimed' (no auto-transfer). Lifecycle:
+  //   unclaimed → (claimPrize) claimed → (requestWithdrawal reserves it) →
+  //   (process-withdrawals pays) withdrawn.
+  // The `claimed` and `withdrawn` booleans are the double-payout guards: a prize
+  // can be credited to the balance once, and paid out once. `userId` is the
+  // winner's Cognito sub (== StripeAccount.id) so the Lambdas verify ownership
+  // without depending on the owner-field format.
   Payout: a.model({
     competitionId:    a.string().required(),
     competitionName:  a.string(),
     userId:           a.string().required(),  // Cognito sub of the winner
     rank:             a.integer(),
     amountCents:      a.integer().required(),  // prizesJson dollars * 100
-    status:           a.string().required(),   // 'pending'|'processing'|'paid'|'failed'
+    status:           a.string().required(),   // 'unclaimed'|'claimed'|'withdrawn'
+    // Credited-to-balance guard. Set true by claimPrize; once true the prize
+    // can't be claimed (double-credited) again.
+    claimed:          a.boolean(),
+    claimedAt:        a.string(),
+    // Paid-out guard. Set true by process-withdrawals once the Stripe transfer
+    // for the owning withdrawal request succeeds.
+    withdrawn:        a.boolean(),
+    // Reserves this prize into a pending WithdrawalRequest (set at request time,
+    // cleared if that request fails). Prevents a second request grabbing it.
+    withdrawalRequestId: a.string(),
     stripeTransferId: a.string(),
     createdAt:        a.string().required(),
     paidAt:           a.string(),
+  }).authorization(allow => [allow.owner().to(['read'])]),
+
+  // A user's request to withdraw their full available balance. Created by the
+  // requestWithdrawal mutation (only if Stripe-onboarded); processed once a day
+  // by the process-withdrawals Lambda, which re-verifies every contest funding
+  // it before transferring. `payoutsJson` lists the contributing Payout ids;
+  // `verificationJson` records the per-contest check results for the admin audit
+  // view. Client reads its own rows to show withdrawal history/status; all
+  // writes come from the Lambdas via the DynamoDB SDK.
+  WithdrawalRequest: a.model({
+    userId:           a.string().required(),  // Cognito sub of the requester
+    handle:           a.string(),
+    amountCents:      a.integer().required(),
+    status:           a.string().required(),  // 'pending'|'processing'|'paid'|'failed'|'rejected'
+    method:           a.string(),             // preferred external-account id at request time
+    methodLabel:      a.string(),             // e.g. "Bank •••• 6789"
+    payoutsJson:      a.string(),             // JSON array of contributing Payout ids
+    verificationJson: a.string(),             // JSON: per-contest {winner, claimed, notWithdrawn, ok}
+    stripeTransferId: a.string(),
+    failureReason:    a.string(),
+    createdAt:        a.string().required(),
+    processedAt:      a.string(),
   }).authorization(allow => [allow.owner().to(['read'])]),
 
   // --- Stripe payout custom mutations (client -> stripeConnect Lambda) ---
@@ -416,6 +463,33 @@ const schema = a.schema({
 
   claimPayout: a.mutation()
     .arguments({ payoutId: a.string().required() })
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  // Credit a won prize to the user's withdrawable balance (sets Payout.claimed).
+  claimPrize: a.mutation()
+    .arguments({ payoutId: a.string().required() })
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  // Open a pending withdrawal of the user's full available balance.
+  requestWithdrawal: a.mutation()
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  // List the Stripe external accounts (banks/cards) on the user's connected
+  // account so they can choose a default payout method.
+  listPayoutMethods: a.mutation()
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  // Set the chosen external account as the default payout method.
+  setPayoutMethod: a.mutation()
+    .arguments({ externalAccountId: a.string().required() })
     .returns(a.json())
     .handler(a.handler.function(stripeConnect))
     .authorization(allow => [allow.authenticated()]),

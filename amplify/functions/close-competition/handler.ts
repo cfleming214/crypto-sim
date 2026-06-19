@@ -1,34 +1,28 @@
 import {
   DynamoDBClient,
   DeleteItemCommand,
-  GetItemCommand,
   PutItemCommand,
   ScanCommand,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import Stripe from 'stripe';
 import { pushToUser } from '../lib/expoPush';
 
 const ddb = new DynamoDBClient({});
-// MOCK MODE when no Stripe key is configured (see resource.ts): winners who are
-// "onboarded" (mock onboarding sets payoutsEnabled) are settled as paid with a
-// synthetic transfer id — no Stripe API call. Set STRIPE_SECRET_KEY to go live.
-const MOCK = !process.env.STRIPE_SECRET_KEY;
-const stripe = MOCK ? null : new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // Amplify owner fields can be stored as "<sub>::<username>" or just "<sub>".
-// StripeAccount rows are keyed by the bare sub, so normalize before lookups.
+// Payout rows are keyed by the bare sub, so normalize before use.
 const subFromOwner = (owner: string | undefined): string =>
   owner ? owner.split('::')[0] : '';
 
-// Create the Payout row for one winning entry, then attempt an immediate
-// Transfer if they've already onboarded. Idempotent: the row id is
-// "<competitionId>#<userId>" and the PutItem is conditional, so a re-run after
-// a partial failure never duplicates a payout or double-pays.
+// Create the UNCLAIMED Payout row for one winning entry. No transfer happens
+// here anymore — the winner claims the prize into their in-app balance, then
+// withdraws it (the daily process-withdrawals Lambda does the Stripe transfer).
+// Idempotent: the row id is "<competitionId>#<userId>" and the PutItem is
+// conditional, so the 10-minute cron re-settling a contest never duplicates a
+// prize or re-notifies.
 async function settleWinner(
   payoutTable: string,
-  accountTable: string,
   comp: { id: string; name?: string },
   entry: { owner?: string; rank?: number },
   amountCents: number,
@@ -39,20 +33,7 @@ async function settleWinner(
   const payoutId = `${comp.id}#${userId}`;
   const now = new Date().toISOString();
 
-  // Look up onboarding state up front so the row lands in its final state.
-  let stripeAccountId: string | undefined;
-  let payoutsEnabled = false;
-  const { Item: acctItem } = await ddb.send(new GetItemCommand({
-    TableName: accountTable,
-    Key: marshall({ id: userId }),
-  }));
-  if (acctItem) {
-    const acct = unmarshall(acctItem);
-    stripeAccountId = acct.stripeAccountId;
-    payoutsEnabled = !!acct.payoutsEnabled;
-  }
-
-  // Reserve the payout row first (pending) — conditional so we only settle once.
+  // Create the prize row once (conditional) in its initial unclaimed state.
   try {
     await ddb.send(new PutItemCommand({
       TableName: payoutTable,
@@ -65,7 +46,9 @@ async function settleWinner(
         competitionName: comp.name ?? '',
         rank: entry.rank ?? null,
         amountCents,
-        status: 'pending',
+        status: 'unclaimed',
+        claimed: false,
+        withdrawn: false,
         createdAt: now,
         updatedAt: now,
       }, { removeUndefinedValues: true }),
@@ -76,8 +59,8 @@ async function settleWinner(
     throw err;
   }
 
-  // Notify the winner — fired here, inside the once-per-winner conditional-put
-  // branch, so the 10-minute cron re-settling a contest never re-notifies.
+  // Notify the winner — fired inside the once-per-winner conditional-put branch,
+  // so the 10-minute cron re-settling a contest never re-notifies.
   const pushTable = process.env.PUSH_TOKEN_TABLE_NAME;
   if (pushTable) {
     const dollars = (amountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -85,43 +68,18 @@ async function settleWinner(
     try {
       await pushToUser(pushTable, userId, {
         title: 'You won! 🏆',
-        body: `${place} in ${comp.name || 'your contest'} — $${dollars} prize`,
+        body: `${place} in ${comp.name || 'your contest'} — $${dollars} prize to claim`,
         data: { type: 'contest_result', competitionId: comp.id },
       });
     } catch (err) {
       console.error('Winner push failed for', payoutId, err); // never block settlement on a push
     }
   }
-
-  // Auto-pay if they can receive funds; otherwise leave it pending to claim.
-  if (stripeAccountId && payoutsEnabled) {
-    try {
-      const transfer = MOCK
-        ? { id: `mock_tr_${payoutId}` }
-        : await stripe!.transfers.create({
-            amount: amountCents,
-            currency: 'usd',
-            destination: stripeAccountId,
-            metadata: { payoutId, userId },
-          }, { idempotencyKey: `payout-${payoutId}` });
-
-      await ddb.send(new UpdateItemCommand({
-        TableName: payoutTable,
-        Key: marshall({ id: payoutId }),
-        UpdateExpression: 'SET #s = :paid, stripeTransferId = :tid, paidAt = :now, updatedAt = :now',
-        ExpressionAttributeNames: { '#s': 'status' },
-        ExpressionAttributeValues: marshall({ ':paid': 'paid', ':tid': transfer.id, ':now': new Date().toISOString() }),
-      }));
-    } catch (err) {
-      console.error('Auto-transfer failed for', payoutId, err); // stays pending → claimable
-    }
-  }
 }
 
 async function settleCompetition(compTable: string, entryTable: string, comp: any) {
   const payoutTable = process.env.PAYOUT_TABLE_NAME;
-  const accountTable = process.env.STRIPE_ACCOUNT_TABLE_NAME;
-  if (!payoutTable || !accountTable) throw new Error('Payout/StripeAccount table env vars not set');
+  if (!payoutTable) throw new Error('PAYOUT_TABLE_NAME not set');
 
   let prizes: number[] = [];
   try { prizes = JSON.parse(comp.prizesJson || '[]'); } catch { prizes = []; }
@@ -140,7 +98,7 @@ async function settleCompetition(compTable: string, entryTable: string, comp: an
     if (rank < 1 || rank > numberOfPrizes) continue;
     const dollars = prizes[rank - 1];
     if (!dollars || dollars <= 0) continue;
-    await settleWinner(payoutTable, accountTable, comp, entry, Math.round(dollars * 100));
+    await settleWinner(payoutTable, comp, entry, Math.round(dollars * 100));
   }
 }
 
