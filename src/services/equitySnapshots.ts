@@ -201,33 +201,52 @@ export async function backfillGap(
   const span = toT - fromT;
   if (span < 5 * MINUTE) return existing;   // nothing meaningful to fill
 
-  // Step the fill fine for short reopens so the Live (15m) and 1H windows have
-  // points, coarse for long absences to keep the series bounded. Without this a
-  // reopen left those windows with at most one hourly point → a flat 2-point
-  // fallback, even though 24H+ looked fine.
-  const step = span <= 3 * HOUR ? 5 * MINUTE : HOUR;
-  const startT = Math.ceil(fromT / step) * step;
+  // Build a NON-UNIFORM time grid: 5-min resolution for the most recent 3h,
+  // hourly for anything older. The fine recent tail is what keeps the Live (15m)
+  // and 1H windows honest — they get ~12 real points across the hour instead of
+  // collapsing to a single point that the chart draws as a straight interpolated
+  // ramp. Previously the WHOLE gap was hourly once it exceeded 3h, so a normal
+  // daily user reopened to one point in the last hour → the straight-line-up bug.
+  const FINE = 5 * MINUTE;
+  const fineStart = Math.max(fromT, toT - 3 * HOUR);
+  const grid: number[] = [];
+  for (let t = Math.ceil(fromT / HOUR) * HOUR; t < fineStart; t += HOUR) grid.push(t);
+  for (let t = Math.ceil(fineStart / FINE) * FINE; t < toT; t += FINE) grid.push(t);
+  if (grid.length === 0) return existing;
 
   const tradable = slice.holdings.filter(h => h.symbol !== 'USDC' && h.units > 0);
 
   // No positions → the balance is pure cash and can't have moved while closed.
   if (tradable.length === 0) {
-    const flat: EquityPoint[] = [];
-    for (let t = startT; t < toT; t += step) flat.push({ t, v: slice.cash });
+    const flat: EquityPoint[] = grid.map(t => ({ t, v: slice.cash }));
     return mergeSnapshots(portfolioId, flat);
   }
 
-  const tfKey = tfKeyForSpan(toT - fromT);
+  // Price history per symbol. The coarse series (sized to the whole gap) values
+  // the old hourly points; but for a gap longer than a day it only carries
+  // hourly/daily closes, so the 5-min recent tail would read the SAME daily
+  // close at every point and flatten back into a straight line. So when the gap
+  // is long, ALSO pull the 24H series (5-min closes) and splice it in for the
+  // recent window. (For gaps ≤ 24h the coarse key already IS '24H' = 5-min.)
+  const coarseKey = tfKeyForSpan(span);
+  const needFine = coarseKey !== '24H';
   const series = new Map<string, { t: number; p: number }[]>();
   await Promise.all(tradable.map(async h => {
-    const candles = await fetchOhlc(h.symbol, tfKey);
-    series.set(
-      h.symbol,
-      candles.map(c => ({ t: c.timestamp, p: c.close })).sort((a, b) => a.t - b.t),
-    );
+    const coarse = await fetchOhlc(h.symbol, coarseKey);
+    let pts = coarse.map(c => ({ t: c.timestamp, p: c.close }));
+    if (needFine) {
+      const fine = await fetchOhlc(h.symbol, '24H');
+      pts = [
+        ...pts.filter(x => x.t < fineStart),
+        ...fine.map(c => ({ t: c.timestamp, p: c.close })).filter(x => x.t >= fineStart),
+      ];
+    }
+    series.set(h.symbol, pts.sort((a, b) => a.t - b.t));
   }));
 
   // Forward price cursor per symbol → O(grid + Σcandles), no per-point search.
+  // The grid is monotonic (hourly old points then 5-min recent ones), so the
+  // cursor only ever advances.
   const cursor = new Map<string, number>();
   const priceAt = (sym: string, gt: number): number => {
     const s = series.get(sym);
@@ -239,7 +258,7 @@ export async function backfillGap(
   };
 
   const filled: EquityPoint[] = [];
-  for (let t = startT; t < toT; t += step) {
+  for (const t of grid) {
     let v = slice.cash;
     for (const h of tradable) v += h.units * priceAt(h.symbol, t);
     if (v > 0) filled.push({ t, v });
