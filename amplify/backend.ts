@@ -22,6 +22,7 @@ import { priceWatch } from './functions/price-watch/resource.js';
 import { notificationDispatcher } from './functions/notification-dispatcher/resource.js';
 import { stripeConnect } from './functions/stripe-connect/resource.js';
 import { stripeWebhook } from './functions/stripe-webhook/resource.js';
+import { processWithdrawals } from './functions/process-withdrawals/resource.js';
 
 // NOTE: backend.ts is loaded by the CDK assembler with a type-stripping transformer
 // that handles annotations but NOT `as` casts or other TS-only expressions. Keep
@@ -49,6 +50,7 @@ const backend = defineBackend({
   notificationDispatcher,
   stripeConnect,
   stripeWebhook,
+  processWithdrawals,
 });
 
 // Enable USER_PASSWORD_AUTH on the Cognito user pool client. The default
@@ -68,6 +70,7 @@ const competitionTable  = backend.data.resources.tables['Competition'];
 const entryTable        = backend.data.resources.tables['CompetitionEntry'];
 const stripeAccountTable = backend.data.resources.tables['StripeAccount'];
 const payoutTable        = backend.data.resources.tables['Payout'];
+const withdrawalReqTable = backend.data.resources.tables['WithdrawalRequest'];
 const tokenTable         = backend.data.resources.tables['Token'];
 const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 // Device push tokens — read by the notification-sending Lambdas; write access
@@ -307,14 +310,18 @@ new Rule(Stack.of(dispatchFn), 'NotificationDispatcherRule', {
   targets: [new LambdaFunction(dispatchFn)],
 });
 
-// --- stripeConnect: backs the payout onboarding / status / claim mutations ---
+// --- stripeConnect: backs the payout onboarding / status / claim / wallet
+// (claimPrize, requestWithdrawal, list/setPayoutMethod) mutations ---
 const stripeConnectFn = backend.stripeConnect.resources.lambda;
 stripeAccountTable.grantReadWriteData(stripeConnectFn);
 payoutTable.grantReadWriteData(stripeConnectFn);
+withdrawalReqTable.grantReadWriteData(stripeConnectFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 stripeConnectFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 stripeConnectFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeConnectFn.addEnvironment('WITHDRAWAL_REQUEST_TABLE_NAME', withdrawalReqTable.tableName);
 
 // --- stripeWebhook: public Function URL, syncs account + payout state ---
 const stripeWebhookFn = backend.stripeWebhook.resources.lambda;
@@ -330,3 +337,20 @@ stripeWebhookFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
 const webhookUrl = stripeWebhookFn.addFunctionUrl({ authType: FunctionUrlAuthType.NONE });
 // Surface the URL in amplify_outputs so we can paste it into the Stripe Dashboard.
 backend.addOutput({ custom: { stripeWebhookUrl: webhookUrl.url } });
+
+// --- processWithdrawals: daily batch payout of pending withdrawal requests ---
+const withdrawFn = backend.processWithdrawals.resources.lambda;
+withdrawalReqTable.grantReadWriteData(withdrawFn);   // claim + finish requests
+payoutTable.grantReadWriteData(withdrawFn);          // verify + flip withdrawn
+stripeAccountTable.grantReadWriteData(withdrawFn);   // read account + refund balance
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+withdrawFn.addEnvironment('WITHDRAWAL_REQUEST_TABLE_NAME', withdrawalReqTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+withdrawFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+withdrawFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.tableName);
+
+new Rule(Stack.of(withdrawFn), 'ProcessWithdrawalsRule', {
+  schedule: Schedule.rate(Duration.days(1)),
+  targets: [new LambdaFunction(withdrawFn)],
+});

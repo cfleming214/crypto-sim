@@ -40,12 +40,6 @@ const schema = a.schema({
     // portfolioService.touchPresence). Drives the online/away/offline dot on
     // avatars; carried onto GlobalLeaderboard/PublicProfile for other viewers.
     lastActiveAt: a.string(),
-    // Withdrawable real-money balance, in cents. Credited when a winner CLAIMS a
-    // contest prize and reserved out when they request a withdrawal. Written ONLY
-    // by the payout Lambdas (stripeConnect claimPrize/requestWithdrawal,
-    // process-withdrawals) via the DynamoDB SDK — never trusted from the client,
-    // which has read-only owner access to its own row.
-    balanceCents: a.integer(),
   }).authorization(allow => [allow.owner()]),
 
   Trade: a.model({
@@ -394,6 +388,12 @@ const schema = a.schema({
     // Stripe routing to the connected account's default external account.
     preferredMethodId:    a.string(),  // "ba_..." / "card_..." external-account id
     preferredMethodLabel: a.string(),  // e.g. "Bank •••• 6789"
+    // Withdrawable real-money balance, in cents. The row is keyed by the bare
+    // Cognito sub (id = userId), so the payout Lambdas credit (claimPrize) and
+    // reserve (requestWithdrawal) it with a single keyed UpdateItem — no scan.
+    // claimPrize upserts this row even before onboarding, so a winner can build a
+    // balance and only needs Stripe to WITHDRAW. The client reads its own row.
+    balanceCents:     a.integer(),
   }).authorization(allow => [allow.owner().to(['read'])]),
 
   // One row per prize owed to a winner, id "<competitionId>#<userId>". Created
