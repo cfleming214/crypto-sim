@@ -1,6 +1,7 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { View, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder, Animated, Dimensions, Easing } from 'react-native';
 import { Text } from '../components/ui/Text';
+import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -19,8 +20,9 @@ import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
+import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X, Rewind, ChevronRight } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
@@ -214,6 +216,39 @@ export function CompeteScreen() {
   const [duelDays, setDuelDays] = useState(1);
   // Selected contest-list pill tab.
   const [contestTab, setContestTab] = useState('All');
+
+  // Unclaimed cash prizes (Payout rows not yet claimed into the balance). Drives
+  // the "Unclaimed" pill + claim cards. Reloaded on focus so a freshly-settled
+  // win appears when the user returns to the tab.
+  const [unclaimed, setUnclaimed] = useState<UnclaimedPrize[]>([]);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [prizeConfetti, setPrizeConfetti] = useState(0);
+  const reloadUnclaimed = useCallback(() => {
+    if (CONTEST_CASH_PRIZES) fetchUnclaimed().then(setUnclaimed).catch(() => {});
+  }, []);
+  useFocusEffect(reloadUnclaimed);
+
+  // The pill tabs — inject "Unclaimed" right after "All" when cash prizes are on.
+  const contestTabs = useMemo(() => {
+    if (!CONTEST_CASH_PRIZES) return CONTEST_TABS;
+    const base = [...CONTEST_TABS];
+    base.splice(1, 0, { label: 'Unclaimed', type: null });
+    return base;
+  }, []);
+
+  const handleClaimPrize = async (p: UnclaimedPrize) => {
+    if (claimingId) return;
+    setClaimingId(p.payoutId);
+    const res = await claimPrize(p.payoutId);
+    setClaimingId(null);
+    if (res.ok) {
+      setUnclaimed(prev => prev.filter(x => x.payoutId !== p.payoutId));
+      setPrizeConfetti(t => t + 1);
+      Alert.alert('Prize claimed 🎉', `$${(p.amountCents / 100).toFixed(2)} was added to your balance. Withdraw it from your Profile.`);
+    } else {
+      Alert.alert('Could not claim', res.error ?? 'Please try again in a moment.');
+    }
+  };
 
   const handleChallenge = async () => {
     if (duelBusy) return;
@@ -609,8 +644,9 @@ export function CompeteScreen() {
         style={{ marginHorizontal: -20 }}
         contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
       >
-        {CONTEST_TABS.map(t => {
+        {contestTabs.map(t => {
           const active = contestTab === t.label;
+          const badge = t.label === 'Unclaimed' && unclaimed.length > 0 ? unclaimed.length : null;
           return (
             <TouchableOpacity
               key={t.label}
@@ -618,12 +654,18 @@ export function CompeteScreen() {
               onPress={() => setContestTab(t.label)}
               activeOpacity={0.8}
               style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1,
                 borderColor: active ? colors.brand : colors.hairline,
                 backgroundColor: active ? colors.brand : 'transparent',
               }}
             >
               <Text style={{ fontSize: 12, fontWeight: '600', color: active ? colors.brandOn : colors.ink }}>{t.label}</Text>
+              {badge != null && (
+                <View style={{ minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? colors.brandOn : colors.up }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: active ? colors.brand : colors.brandOn }}>{badge}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -633,7 +675,52 @@ export function CompeteScreen() {
           surface without hunting for the dedicated Replay tab. */}
       {contestTab === 'All' && renderReplayContests('all')}
 
-      {contestTab === 'Replay' ? renderReplayContests('tab')
+      <ConfettiBurst trigger={prizeConfetti} />
+
+      {contestTab === 'Unclaimed' ? (
+        unclaimed.length === 0 ? (
+          <Card variant="tinted">
+            <Text style={{ color: colors.ink3, fontSize: 13 }}>
+              No unclaimed prizes. Win a cash contest and your prize shows up here to claim.
+            </Text>
+          </Card>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {unclaimed.map(p => {
+              const place = p.rank === 1 ? '1st place' : p.rank === 2 ? '2nd place' : p.rank === 3 ? '3rd place' : `Rank #${p.rank ?? '?'}`;
+              return (
+                <Card key={p.payoutId} variant="compact" style={{ gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.upSoft }}>
+                      <Trophy color={colors.up} size={20} strokeWidth={1.75} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontWeight: '700', color: colors.ink }} numberOfLines={1}>{p.competitionName || 'Contest prize'}</Text>
+                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{place} · prize to claim</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.up, fontVariant: ['tabular-nums'] }}>
+                      ${(p.amountCents / 100).toFixed(2)}
+                    </Text>
+                  </View>
+                  <Button
+                    testID={`claim-prize-${p.payoutId}`}
+                    variant="brand"
+                    fullWidth
+                    loading={claimingId === p.payoutId}
+                    disabled={claimingId === p.payoutId}
+                    onPress={() => handleClaimPrize(p)}
+                  >
+                    {claimingId === p.payoutId ? 'Claiming…' : 'Claim to balance'}
+                  </Button>
+                </Card>
+              );
+            })}
+            <Text style={{ fontSize: 12, color: colors.ink4, textAlign: 'center', paddingHorizontal: 16 }}>
+              Claimed prizes land in your balance — withdraw them from Profile once your Stripe payout details are set up.
+            </Text>
+          </View>
+        )
+      ) : contestTab === 'Replay' ? renderReplayContests('tab')
       : listComps.length === 0 ? (
         <Card variant="tinted">
           <Text style={{ color: colors.ink3, fontSize: 13 }}>

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share, Linking } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { AuthWall } from '../components/AuthWall';
 import { Card, CardSection } from '../components/ui/Card';
@@ -26,6 +26,7 @@ import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolio
 import { registerDevice, deactivateDevices } from '../services/pushDeviceService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
+import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
 
 const AVATAR_COLORS = [
@@ -232,6 +233,15 @@ export function ProfileScreen() {
     if (v && userId) registerDevice(userId);
     else if (!v) deactivateDevices();
   };
+
+  // Withdrawable prize balance — refreshed whenever Profile regains focus (e.g.
+  // after claiming a prize on the Compete tab or returning from the Withdraw
+  // screen). Only meaningful when real-money payouts are enabled.
+  const [balanceCents, setBalanceCents] = useState(0);
+  const loadBalance = useCallback(() => {
+    if (PAYOUTS_ENABLED) refreshStatus().then(a => { if (a) setBalanceCents(a.balanceCents ?? 0); }).catch(() => {});
+  }, []);
+  useFocusEffect(loadBalance);
 
   // Two-step confirmation, then a permanent client-side wipe + Cognito
   // deleteUser (App Store guideline 5.1.1(v)). On success auth flips to
@@ -617,6 +627,30 @@ export function ProfileScreen() {
           </TouchableOpacity>
         )}
       </Card>
+
+      {/* Prize balance + withdrawals — only when real-money payouts are enabled. */}
+      {PAYOUTS_ENABLED && (
+        <Card variant="noPad">
+          <TouchableOpacity testID="profile-balance" onPress={() => nav.navigate('Withdraw')}>
+            <CardSection last>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.upSoft }}>
+                    <Banknote color={colors.up} size={20} strokeWidth={1.75} />
+                  </View>
+                  <View>
+                    <Text style={{ fontWeight: '700', color: colors.ink }}>Prize balance</Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>Withdraw to your bank ›</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                  ${(balanceCents / 100).toFixed(2)}
+                </Text>
+              </View>
+            </CardSection>
+          </TouchableOpacity>
+        </Card>
+      )}
 
       {/* Safety & legal */}
       <Card variant="noPad">

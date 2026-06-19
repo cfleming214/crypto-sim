@@ -33,6 +33,11 @@ export interface PayoutAccount {
   payoutsEnabled: boolean;
   detailsSubmitted: boolean;
   status: 'onboarding' | 'enabled' | 'restricted' | string;
+  // Withdrawable balance (cents) + chosen payout method, surfaced by
+  // refreshPayoutStatus so the Profile/Withdraw screens don't need a separate read.
+  balanceCents: number;
+  preferredMethodId?: string | null;
+  preferredMethodLabel?: string | null;
 }
 
 export interface PayoutRow {
@@ -78,6 +83,9 @@ export async function refreshStatus(): Promise<PayoutAccount | null> {
       payoutsEnabled: !!res.payoutsEnabled,
       detailsSubmitted: !!res.detailsSubmitted,
       status: res.status ?? 'onboarding',
+      balanceCents: Number(res.balanceCents ?? 0),
+      preferredMethodId: res.preferredMethodId ?? null,
+      preferredMethodLabel: res.preferredMethodLabel ?? null,
     };
   } catch (e) {
     console.warn('refreshStatus failed', e);

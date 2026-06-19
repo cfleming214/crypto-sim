@@ -21,6 +21,7 @@ import { QuestsScreen } from '../screens/QuestsScreen';
 import { SeasonScreen } from '../screens/SeasonScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
 import { PayoutSetupScreen } from '../screens/PayoutSetupScreen';
+import { WithdrawScreen } from '../screens/WithdrawScreen';
 import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
@@ -53,6 +54,7 @@ export type RootStackParamList = {
   Season: undefined;
   Activity: undefined;
   PayoutSetup: undefined;
+  Withdraw: undefined;
   NewsDetail: { article: NewsArticle };
   BlockedUsers: undefined;
 };
@@ -117,6 +119,7 @@ export function RootNavigator() {
       <Stack.Screen name="Season" component={SeasonScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
       <Stack.Screen name="PayoutSetup" component={PayoutSetupScreen} />
+      <Stack.Screen name="Withdraw" component={WithdrawScreen} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen

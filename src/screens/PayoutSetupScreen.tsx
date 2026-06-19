@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, ActivityIndicator, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Text } from '../components/ui/Text';
 import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
@@ -16,6 +17,7 @@ import { Banknote, CheckCircle2, AlertCircle } from 'lucide-react-native';
 // this screen wraps it with status + entry/return handling.
 export function PayoutSetupScreen() {
   const { colors } = useTheme();
+  const nav = useNavigation<any>();
   const { status: authStatus } = useAuth();
   const [account, setAccount] = useState<PayoutAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,12 @@ export function PayoutSetupScreen() {
           <Button variant="brand" fullWidth loading={starting} disabled={starting} onPress={beginOnboarding}>
             {enabled ? 'Update payout details' : account?.detailsSubmitted ? 'Continue setup' : 'Set up payouts'}
           </Button>
+
+          {enabled && (
+            <Button variant="ghost" fullWidth onPress={() => nav.navigate('Withdraw')}>
+              Balance, method &amp; withdrawals
+            </Button>
+          )}
 
           <Text style={{ fontSize: 12, color: colors.ink4, textAlign: 'center', paddingHorizontal: 20 }}>
             Payouts are handled securely by Stripe. We never see your bank details.
