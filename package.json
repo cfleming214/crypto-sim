@@ -79,6 +79,7 @@
     "seed:contests:clean": "node scripts/seed-contests-clean.mjs",
     "seed:payout-test": "node scripts/seed-payout-test.mjs",
     "diag:payouts": "node scripts/diag-payouts.mjs",
+    "topup:test": "node scripts/stripe-topup.mjs",
     "stress:contest": "node scripts/stress-test-contest.mjs"
   },
   "private": true
