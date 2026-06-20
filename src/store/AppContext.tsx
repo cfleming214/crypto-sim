@@ -1366,9 +1366,11 @@ function reducer(state: AppState, action: Action): AppState {
     case 'DISMISS_NUDGE':
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
-      // Truly clean: $100K cash, no holdings/trades/orders/joined comps, fresh
-      // XP. Keeps profile identity (handle, avatar, createdAt) and current coin
-      // prices. resetAt re-anchors the equity graph (see the reset effect).
+      // Reset ONLY the practice TRADING portfolio: fresh $100K, no holdings,
+      // trades, or position orders. It must NEVER wipe the account — so online
+      // stats (xp/league/division/streak), achievements, joined contests +
+      // their portfolios, quests, season, predictions, cosmetics, watchlist, and
+      // price alerts are all preserved. resetAt re-anchors the equity graph.
       return {
         ...state,
         resetAt: Date.now(),
@@ -1377,16 +1379,9 @@ function reducer(state: AppState, action: Action): AppState {
         holdings: [],
         trades: [],
         pendingOrders: [],
-        joinedTournamentIds: [],
-        activeTournament: null,
-        leaderboard: {},
         stopLosses: {},
-        priceAlerts: [],
-        triggeredAlerts: [],
-        coachNudges: [],
-        dismissedNudgeIds: [],
+        buyStops: {},
         riskScore: 100,
-        user: { ...state.user, xp: 0, streak: 0, league: 'Bronze', division: 1 },
       };
     default:
       return state;
