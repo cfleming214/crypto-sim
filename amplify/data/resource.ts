@@ -436,6 +436,7 @@ const schema = a.schema({
   WithdrawalRequest: a.model({
     userId:           a.string().required(),  // Cognito sub of the requester
     handle:           a.string(),
+    email:            a.string(),             // captured at request time → confirmation + "paid" emails
     amountCents:      a.integer().required(),
     status:           a.string().required(),  // 'pending'|'processing'|'paid'|'failed'|'rejected'
     method:           a.string(),             // preferred external-account id at request time

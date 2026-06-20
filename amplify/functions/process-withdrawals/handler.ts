@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import Stripe from 'stripe';
+import { sendEmail, emailShell } from '../lib/sendEmail';
 
 const ddb = new DynamoDBClient({});
 // MOCK MODE when no Stripe key is configured: transfers get a synthetic id and
@@ -172,6 +173,16 @@ async function processRequest(req: any) {
     }
   }
   await finishRequest(reqId, { status: 'paid', stripeTransferId: transferId, verificationJson });
+
+  // "Payout sent" email — best-effort, never blocks settlement.
+  const dollars = (amountCents / 100).toFixed(2);
+  const methodLine = req.methodLabel ? ` to ${req.methodLabel}` : ' to your connected account';
+  await sendEmail({
+    to: req.email,
+    subject: `Payout sent — $${dollars}`,
+    html: emailShell('Your payout is on its way 🎉', `We've sent your <b>$${dollars}</b> withdrawal${methodLine}. Depending on your bank it can take 1–3 business days to arrive. Stripe transfer reference: <code>${transferId}</code>.`),
+    text: `We've sent your $${dollars} withdrawal${methodLine}. It can take 1–3 business days to arrive. Stripe transfer reference: ${transferId}.`,
+  });
 }
 
 // Runs daily on an EventBridge schedule. Pays out every pending withdrawal.

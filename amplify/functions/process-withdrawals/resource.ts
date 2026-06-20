@@ -14,5 +14,9 @@ export const processWithdrawals = defineFunction({
   timeoutSeconds: 120,
   environment: {
     STRIPE_SECRET_KEY: secret('STRIPE_SECRET_KEY'),
+    // Transactional email (payout-sent notification). Set before deploy:
+    //   ampx sandbox secret set RESEND_API_KEY --identifier cflem
+    RESEND_API_KEY: secret('RESEND_API_KEY'),
+    PAYOUT_EMAIL_FROM: 'CryptoComp <noreply@cryptocomp.app>',
   },
 });

@@ -15,6 +15,10 @@ export const stripeConnect = defineFunction({
   timeoutSeconds: 30,
   environment: {
     STRIPE_SECRET_KEY: secret('STRIPE_SECRET_KEY'),
+    // Transactional email (withdrawal-requested confirmation). Set before deploy:
+    //   ampx sandbox secret set RESEND_API_KEY --identifier cflem
+    RESEND_API_KEY: secret('RESEND_API_KEY'),
+    PAYOUT_EMAIL_FROM: 'CryptoComp <noreply@cryptocomp.app>',
   },
   // This function is BOTH an AppSync resolver (the data stack depends on it, via
   // the startPayoutOnboarding/refreshPayoutStatus/claimPayout mutations) AND a

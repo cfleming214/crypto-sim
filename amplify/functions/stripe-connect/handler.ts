@@ -8,6 +8,7 @@ import {
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
+import { sendEmail, emailShell } from '../lib/sendEmail';
 
 const ddb = new DynamoDBClient({});
 // MOCK MODE when no Stripe key is configured: onboarding instantly "enables"
@@ -213,7 +214,7 @@ async function claimPrize(userId: string, payoutId: string) {
 // once the user is Stripe-onboarded (they can win + claim without it, but not
 // withdraw). Gathers every claimed, un-withdrawn, un-reserved Payout, reserves
 // each to the new request (race-safe conditional), and decrements the balance.
-async function requestWithdrawal(userId: string) {
+async function requestWithdrawal(userId: string, email?: string) {
   const acct = await getStripeAccountRow(userId);
   if (!acct?.stripeAccountId || !acct.payoutsEnabled) {
     return { ok: false, error: 'Verify your payout details with Stripe first', needsOnboarding: true };
@@ -261,6 +262,7 @@ async function requestWithdrawal(userId: string) {
       __typename: 'WithdrawalRequest',
       owner: ownerStr ?? userId,
       userId,
+      email: email ?? null,
       amountCents,
       status: 'pending',
       method: acct.preferredMethodId ?? null,
@@ -272,6 +274,17 @@ async function requestWithdrawal(userId: string) {
   }));
 
   const balanceCents = await adjustBalance(userId, -amountCents);
+
+  // Confirmation email — best-effort, never blocks the withdrawal.
+  const dollars = (amountCents / 100).toFixed(2);
+  const methodLine = acct.preferredMethodLabel ? ` to ${acct.preferredMethodLabel}` : '';
+  await sendEmail({
+    to: email,
+    subject: `Withdrawal requested — $${dollars}`,
+    html: emailShell('Withdrawal requested', `We've received your request to withdraw <b>$${dollars}</b>${methodLine}. It'll be reviewed and paid out on our next daily payout run — you'll get another email once it's sent.`),
+    text: `We've received your request to withdraw $${dollars}${methodLine}. It'll be paid out on our next daily payout run; you'll get another email once it's sent.`,
+  });
+
   return { ok: true, requestId: reqId, amountCents, balanceCents };
 }
 
@@ -364,7 +377,7 @@ export const handler = async (event: ResolverEvent): Promise<any> => {
       case 'claimPrize':
         return await claimPrize(userId, String(event.arguments?.payoutId));
       case 'requestWithdrawal':
-        return await requestWithdrawal(userId);
+        return await requestWithdrawal(userId, email);
       case 'listPayoutMethods':
         return await listPayoutMethods(userId);
       case 'setPayoutMethod':
