@@ -23,6 +23,7 @@ interface Props {
 
 export function StripeOnboarding({ url, onExit }: Props) {
   const { colors } = useTheme();
+  const webRef = React.useRef<WebView>(null);
   const handled = React.useRef(false);
   const finish = () => { if (!handled.current) { handled.current = true; onExit(); } };
 
@@ -45,8 +46,25 @@ export function StripeOnboarding({ url, onExit }: Props) {
             <ActivityIndicator color={colors.brand} />
           </View>
         )}
+        // Stripe's hosted onboarding (phone verification in particular) opens
+        // steps via target=_blank / window.open. With multiple-windows support on
+        // (the default) and no handler, the WebView silently drops them, so the
+        // "Continue" after the phone number did nothing. Force such navigations
+        // into the main frame, and grant the storage/cookies Stripe's JS needs.
+        setSupportMultipleWindows={false}
+        javaScriptCanOpenWindowsAutomatically
+        javaScriptEnabled
+        domStorageEnabled
+        thirdPartyCookiesEnabled
+        sharedCookiesEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
         keyboardDisplayRequiresUserAction={false}
         originWhitelist={['https://*']}
+        // If WKWebView's content process dies (iOS can kill it on memory
+        // pressure), reload instead of leaving a blank, unresponsive page.
+        onContentProcessDidTerminate={() => webRef.current?.reload()}
+        ref={webRef}
         style={{ flex: 1, backgroundColor: 'transparent' }}
       />
     </View>
