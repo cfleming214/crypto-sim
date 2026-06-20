@@ -17,6 +17,9 @@ export const processWithdrawals = defineFunction({
     // Transactional email (payout-sent notification). Set before deploy:
     //   ampx sandbox secret set RESEND_API_KEY --identifier cflem
     RESEND_API_KEY: secret('RESEND_API_KEY'),
-    PAYOUT_EMAIL_FROM: 'CryptoComp <noreply@cryptocomp.app>',
+    // TEMP: Resend's test sender (no domain verification needed, but only
+    // delivers to your Resend account email). Switch back to
+    // 'CryptoComp <noreply@cryptocomp.app>' once cryptocomp.app is verified.
+    PAYOUT_EMAIL_FROM: 'CryptoComp <onboarding@resend.dev>',
   },
 });
