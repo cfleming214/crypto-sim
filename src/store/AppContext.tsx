@@ -69,6 +69,7 @@ const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
 // per-account): a user's block choices persist across sign-out/sign-in so
 // abusive traders stay hidden. Cleared only on account deletion.
 const BLOCKED_KEY = 'blocked.v1';
+const DISMISSED_NUDGES_KEY = 'dismissedNudges.v1';
 
 // A market-sentiment nudge derived from the Fear & Greed index. Extreme greed
 // (>=75) warns about froth; extreme fear (<=25) encourages sticking to a plan.
@@ -295,6 +296,7 @@ type Action =
   | { type: 'BLOCK_USER'; user: BlockedUser }
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
+  | { type: 'HYDRATE_DISMISSED_NUDGES'; ids: string[] }
   | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests']; season?: AppState['season']; cosmetics?: AppState['cosmetics'] } };
 
 function tickPrices(coins: Coin[]): Coin[] {
@@ -989,6 +991,9 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, blockedUsers: state.blockedUsers.filter(b => b.owner !== action.owner) };
     case 'HYDRATE_BLOCKED':
       return { ...state, blockedUsers: action.blockedUsers };
+    case 'HYDRATE_DISMISSED_NUDGES':
+      // Union so a dismissal that happened before hydration completed isn't lost.
+      return { ...state, dismissedNudgeIds: [...new Set([...action.ids, ...state.dismissedNudgeIds])] };
     case 'RECORD_PREDICTION': {
       if (action.outcome === 'push') return state;  // tie → no win/loss, no XP, streak unchanged
       const won = action.outcome === 'win';
@@ -1422,6 +1427,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
   const blockedHydratedRef = useRef(false);      // gate blocked-users saves until we've loaded the stored list
+  const nudgesHydratedRef = useRef(false);       // gate dismissed-nudge saves until we've loaded the stored list
   const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
   stateRef.current = state;
   const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (~15 min)
@@ -1943,6 +1949,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!blockedHydratedRef.current) return;
     AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify(state.blockedUsers)).catch(() => {});
   }, [state.blockedUsers]);
+
+  // Dismissed coach-nudge ids persistence — same pattern. Coach nudges are
+  // recomputed from the portfolio on every launch, so without persisting which
+  // ones were dismissed (the X), every dismissed tip reappeared on reopen.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DISMISSED_NUDGES_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            dispatch({ type: 'HYDRATE_DISMISSED_NUDGES', ids: parsed.filter((x: any) => typeof x === 'string') });
+          }
+        }
+      } catch {
+        // Corrupt/absent → leave the empty default.
+      }
+      nudgesHydratedRef.current = true;
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!nudgesHydratedRef.current) return;
+    AsyncStorage.setItem(DISMISSED_NUDGES_KEY, JSON.stringify(state.dismissedNudgeIds)).catch(() => {});
+  }, [state.dismissedNudgeIds]);
 
   // Auth-gated leaderboard subscriptions, one per joined competition.
   // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.
