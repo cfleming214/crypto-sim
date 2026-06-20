@@ -196,7 +196,11 @@ async function main() {
       id: randomUUID(),
       competitionId: compId,
       handle: BOTS[i],
-      owner: `${CREATED_BY}::${BOTS[i]}`,
+      // Unique synthetic sub per bot — owner is "<sub>::<name>" and settlement
+      // derives userId = owner.split('::')[0]. Using the same prefix for every
+      // bot collapsed them to one userId, so the payout id "<comp>#<sub>"
+      // collided and only one bot prize survived the idempotent insert.
+      owner: `${CREATED_BY}-${i}-${BOTS[i]}::${BOTS[i]}`,
       bankroll,
       pnlPct: Number((((bankroll - STARTING_CASH) / STARTING_CASH) * 100).toFixed(2)),
       rank: i + 2,
