@@ -6,8 +6,7 @@ import { useToast } from './ui/Toast';
 import { configureNotifications, requestNotificationPermission, notifyNow } from '../lib/notifications';
 import { registerDevice } from '../services/pushDeviceService';
 import { navigationRef } from '../navigation/RootNavigator';
-import { leagueRank } from '../services/gamification';
-import { Bell, Clock, Award } from 'lucide-react-native';
+import { Bell, Clock } from 'lucide-react-native';
 
 // Route a tapped push to the relevant screen using the data payload the sending
 // Lambda attached. Guards on navigationRef readiness (cold-start taps can fire
@@ -21,21 +20,28 @@ function routeFromResponse(resp: Notifications.NotificationResponse | null) {
       if (attempts++ < 20) setTimeout(go, 300); // cap retries (~6s) so a failed mount can't loop forever
       return;
     }
-    switch (data.type) {
-      case 'contest_result':
-        if (data.competitionId) navigationRef.navigate('TournamentDetail', { id: String(data.competitionId) });
-        break;
-      case 'rank_change':
-        navigationRef.navigate('TopTraders');
-        break;
-      case 'price_alert':
-      case 'limit_fill':
-        if (data.symbol) navigationRef.navigate('Trade', { symbol: String(data.symbol) });
-        break;
-      case 'announcement':
-      default:
-        navigationRef.navigate('Notifications');
-        break;
+    // NEVER let a tap-route throw — this runs at cold start (from a launching
+    // push), so an exception here would crash the app on open. A bad/stale route
+    // should be a no-op, not a launch crash.
+    try {
+      switch (data.type) {
+        case 'contest_result':
+          if (data.competitionId) navigationRef.navigate('TournamentDetail', { id: String(data.competitionId) });
+          break;
+        case 'rank_change':
+          navigationRef.navigate('TopTraders');
+          break;
+        case 'price_alert':
+        case 'limit_fill':
+          if (data.symbol) navigationRef.navigate('Trade', { symbol: String(data.symbol) });
+          break;
+        case 'announcement':
+        default:
+          navigationRef.navigate('Notifications');
+          break;
+      }
+    } catch (err) {
+      console.warn('notification route failed', err);
     }
   };
   go();
@@ -52,8 +58,6 @@ export function EventWatcher() {
   const seenTrades = useRef<Set<string>>(new Set());
   const seenAlerts = useRef<Set<string>>(new Set());
   const armedRef = useRef(false);
-  const prevLeagueRef = useRef<{ league: string; division: number } | null>(null);
-  const leagueArmedRef = useRef(false);
 
   // Seed with whatever exists at mount so only post-mount events toast; also
   // set up OS notifications + request permission (no-ops until a native rebuild).
@@ -67,10 +71,7 @@ export function EventWatcher() {
     const sub = Notifications.addNotificationResponseReceivedListener(routeFromResponse);
     // Cold start: app launched directly from a notification tap.
     Notifications.getLastNotificationResponseAsync().then(routeFromResponse).catch(() => {});
-    // Delay-arm league toasts so the initial cloud profile load (which sets the
-    // league for the first time) doesn't read as a promotion.
-    const t = setTimeout(() => { leagueArmedRef.current = true; }, 4000);
-    return () => { clearTimeout(t); sub.remove(); };
+    return () => { sub.remove(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Register this device for server-sent push once signed in (PushDevice is
@@ -84,22 +85,13 @@ export function EventWatcher() {
     requestNotificationPermission().then(granted => { if (granted) registerDevice(userId); });
   }, [userId]);
 
-  // League promotion / relegation (set by the weekly settle-season cron, arrives
-  // via LOAD_PROFILE). Toast the change once the warm-up has passed.
-  useEffect(() => {
-    const cur = { league: state.user.league, division: state.user.division };
-    const prev = prevLeagueRef.current;
-    prevLeagueRef.current = cur;
-    if (!leagueArmedRef.current || !prev) return;
-    if (prev.league === cur.league && prev.division === cur.division) return;
-    const promoted = leagueRank(cur.league, cur.division) > leagueRank(prev.league, prev.division);
-    show({
-      title: promoted ? 'Promoted!' : 'League updated',
-      subtitle: `${cur.league} ${cur.division}`.trim(),
-      icon: Award,
-      variant: promoted ? 'up' : 'warn',
-    });
-  }, [state.user.league, state.user.division]); // eslint-disable-line react-hooks/exhaustive-deps
+  // NOTE: the old league promotion/relegation toast was removed. League/division
+  // are now a pure function of lifetime XP (assignLeague → levelForXp), so they
+  // shift on routine XP gains (every trade, quest claim, etc.) — the toast fired
+  // on each of those (and flapped against the cloud value), reading as a spurious
+  // "Promoted!" pop-up. Deliberate reward celebrations still live in RewardModal
+  // (Quests / Season claims). Reintroduce a real promotion banner only behind an
+  // explicit settle-season signal, not the live XP ladder.
 
   useEffect(() => {
     if (!armedRef.current) return;
