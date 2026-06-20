@@ -1451,6 +1451,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
     'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION', 'CLAIM_CONTEST_XP', 'INCREMENT_DUELS_CREATED',
+    // Daily-quest + season-pass progress: without these, claims persisted only to
+    // local storage and the stale cloud gamificationJson overwrote them on the
+    // next LOAD_PROFILE — so quests/season tiers were claimable again every
+    // session. Rolls persist the new day/season baseline too.
+    'CLAIM_QUEST', 'CLAIM_QUEST_CHEST', 'CLAIM_SEASON_TIER', 'ROLL_QUEST_DAY', 'ROLL_SEASON',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
