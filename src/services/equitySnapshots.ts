@@ -118,6 +118,31 @@ export function resampleSeries(points: EquityPoint[], endT: number, stepMs: numb
   return out;
 }
 
+// Remove isolated single-point spikes from an equity series. A recorded balance
+// can momentarily spike when a snapshot is captured against a transiently bad
+// price (a CoinGecko outlier, an app-open before live prices settle, a stale
+// tick) — it shows as a thin vertical spike on the chart even though the real
+// portfolio didn't move. A point that deviates from BOTH of its time-neighbors
+// in the SAME direction by more than `tol` (relative) is such an artifact, so we
+// snap it onto the line between them. Genuine sustained moves aren't isolated
+// (their neighbors moved the same way), so they survive untouched. Display-only:
+// the stored series keeps the raw points; we just don't draw the spikes.
+export function despikeSeries(points: EquityPoint[], tol = 0.015): EquityPoint[] {
+  if (points.length < 3) return points;
+  const out = points.slice();
+  for (let i = 1; i < points.length - 1; i++) {
+    const a = points[i - 1], c = points[i + 1], cur = points[i];
+    const dPrev = (cur.v - a.v) / Math.max(1, Math.abs(a.v));
+    const dNext = (cur.v - c.v) / Math.max(1, Math.abs(c.v));
+    if (Math.sign(dPrev) === Math.sign(dNext) && Math.min(Math.abs(dPrev), Math.abs(dNext)) > tol) {
+      const span = c.t - a.t;
+      const interp = span > 0 ? a.v + (c.v - a.v) * ((cur.t - a.t) / span) : (a.v + c.v) / 2;
+      out[i] = { ...cur, v: interp };
+    }
+  }
+  return out;
+}
+
 export async function loadSnapshots(portfolioId: string): Promise<EquityPoint[]> {
   try {
     const raw = await AsyncStorage.getItem(KEY(portfolioId));

@@ -19,7 +19,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { fetchLivePrices } from '../services/tokenCatalog';
-import { loadSnapshots, backfillGap, resampleSeries, type EquityPoint } from '../services/equitySnapshots';
+import { loadSnapshots, backfillGap, resampleSeries, despikeSeries, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
 import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
@@ -357,13 +357,16 @@ export function PortfolioScreen() {
     const windowMs = TF_WINDOW_MS[tf] ?? 0;
     const now = Date.now();
     const cutoff = tf === 'MAX' ? 0 : now - windowMs;
-    const windowed = history.filter(p => p.t >= cutoff);
+    // Drop isolated bad-capture spikes (a balance snapshotted against a transient
+    // bad price) so the chart shows real movement, not thin vertical spikes.
+    const clean = despikeSeries(history);
+    const windowed = clean.filter(p => p.t >= cutoff);
 
     // Intraday: resample to a uniform 1-min grid (1H → 60 points). Falls through
     // to the raw/sparse path when there are no recorded points yet.
     const stepMs = TF_STEP_MS[tf];
     if (stepMs) {
-      const grid = resampleSeries(history, now, stepMs, Math.round(windowMs / stepMs));
+      const grid = resampleSeries(clean, now, stepMs, Math.round(windowMs / stepMs));
       if (grid.length >= 2) {
         const vals = grid.map(p => p.v);
         vals[vals.length - 1] = totalEquity; // live right edge — matches the header $
