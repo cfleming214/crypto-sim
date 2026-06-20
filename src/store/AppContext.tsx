@@ -1680,6 +1680,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authStatus === 'unauthenticated') {
       dispatch({ type: 'CLEAR_USER_DATA' });
+      // The equity-snapshot store is keyed "main" for both the signed-in user
+      // and the guest, so without this the guest's portfolio chart shows the
+      // previous user's recorded balance history. Safe to wipe — a returning
+      // user's cloud backup (equityHistoryJson) re-seeds it on next sign-in.
+      clearSnapshots('main').catch(() => {});
       // Reset the price-trigger sync gates so the NEXT user to sign in hydrates
       // their own cloud alerts/orders (the hydrate ref is "once per session") and
       // doesn't inherit the previous user's mirrored ids.
@@ -1766,6 +1771,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // recomputes. Skipping no-op updates breaks the loop.
     let lastSig = '';
     const accept = (profile: any) => {
+      // The observeQuery subscription can emit one last cached event AFTER
+      // sign-out (before unsub lands), which would re-run LOAD_PROFILE on top of
+      // CLEAR_USER_DATA and restore the previous user's handle/avatar on the
+      // guest home. Drop any emission once we're no longer authenticated.
+      if (authRef.current !== 'authenticated') return;
       const sig = JSON.stringify([
         profile.cash,
         (profile.holdings ?? []).map((h: any) => [h.symbol, h.units, h.avgCost]),
@@ -1852,6 +1862,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               activePrediction: g.activePrediction && typeof g.activePrediction === 'object' ? g.activePrediction : undefined,
               claimedContestIds: Array.isArray(g.claimedContestIds) ? g.claimedContestIds.filter((x: any) => typeof x === 'string') : undefined,
               duelsCreated: typeof g.duelsCreated === 'number' ? g.duelsCreated : undefined,
+              // These were SAVED but never restored here, so daily-quest claims,
+              // season-pass tier claims, and earned cosmetics reset on every
+              // launch (QuestWatcher then rolled a fresh day/season). Restore them.
+              quests: g.quests && typeof g.quests === 'object' ? g.quests : undefined,
+              season: g.season && typeof g.season === 'object' ? g.season : undefined,
+              cosmetics: g.cosmetics && typeof g.cosmetics === 'object' ? g.cosmetics : undefined,
             },
           });
         }

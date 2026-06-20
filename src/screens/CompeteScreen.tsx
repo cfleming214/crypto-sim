@@ -551,6 +551,20 @@ export function CompeteScreen() {
         </View>
       </View>
 
+      {/* Season Pass — directly under the level card for quick access to tier rewards */}
+      <TouchableOpacity testID="compete-season-pass" onPress={() => nav.navigate('Season')} activeOpacity={0.85}>
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center' }}>
+            <Trophy color={colors.brand} size={22} strokeWidth={1.75} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>Season Pass</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }} numberOfLines={1}>Claim tier rewards as you level up</Text>
+          </View>
+          <ChevronRight color={colors.ink3} size={18} strokeWidth={1.75} />
+        </Card>
+      </TouchableOpacity>
+
       {/* Live tournaments — one at a time; swipe left/right to cycle (wraps). */}
       {currentLive && (
         <View {...livePan.panHandlers}>
