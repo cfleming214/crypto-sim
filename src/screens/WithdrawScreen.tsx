@@ -12,9 +12,10 @@ import { useAuth } from '../store/AuthContext';
 import { refreshStatus, type PayoutAccount } from '../services/stripeService';
 import {
   fetchWithdrawals, requestWithdrawal, listPayoutMethods, setPayoutMethod,
-  type WithdrawalRow, type PayoutMethod,
+  fetchPayoutHistory, claimPrize,
+  type WithdrawalRow, type PayoutMethod, type PayoutHistoryRow,
 } from '../services/walletService';
-import { Banknote, Building2, CreditCard, CheckCircle2, Clock, AlertCircle } from 'lucide-react-native';
+import { Banknote, Building2, CreditCard, CheckCircle2, Clock, AlertCircle, Trophy } from 'lucide-react-native';
 
 // Status → chip variant + label for a withdrawal request.
 function statusChip(status: string): { variant: 'up' | 'warn' | 'down'; label: string } {
@@ -43,18 +44,21 @@ export function WithdrawScreen() {
   const [methods, setMethods] = useState<PayoutMethod[]>([]);
   const [preferredId, setPreferredId] = useState<string | null>(null);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [prizes, setPrizes] = useState<PayoutHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
   const [settingId, setSettingId] = useState<string | null>(null);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [acct, rows] = await Promise.all([refreshStatus(), fetchWithdrawals()]);
+      const [acct, rows, prizeRows] = await Promise.all([refreshStatus(), fetchWithdrawals(), fetchPayoutHistory()]);
       if (cancelled) return;
       setAccount(acct);
       setWithdrawals(rows);
+      setPrizes(prizeRows);
       setPreferredId(acct?.preferredMethodId ?? null);
       // Methods only exist once a Connect account is created.
       if (acct?.payoutsEnabled) {
@@ -103,6 +107,25 @@ export function WithdrawScreen() {
     if (res.ok) setPreferredId(res.preferredMethodId ?? m.id);
     else Alert.alert('Could not set method', res.error ?? 'Please try again.');
   };
+
+  const handleClaim = async (p: PayoutHistoryRow) => {
+    if (claimingId) return;
+    setClaimingId(p.payoutId);
+    const res = await claimPrize(p.payoutId);
+    setClaimingId(null);
+    if (res.ok) {
+      Alert.alert('Prize claimed 🎉', `$${(p.amountCents / 100).toFixed(2)} was added to your balance.`);
+      load();
+    } else {
+      Alert.alert('Could not claim', res.error ?? 'Please try again in a moment.');
+    }
+  };
+
+  // Status chip for a prize's lifecycle.
+  const prizeChip = (p: PayoutHistoryRow): { variant: 'up' | 'brand' | 'warn'; label: string } =>
+    p.withdrawn ? { variant: 'up', label: 'Withdrawn' }
+      : p.claimed ? { variant: 'brand', label: 'In balance' }
+      : { variant: 'warn', label: 'Unclaimed' };
 
   if (authStatus !== 'authenticated') {
     return <AuthWall icon={Banknote} title="Sign in to withdraw" subtitle="Claim contest prizes and withdraw them to your bank." />;
@@ -184,6 +207,51 @@ export function WithdrawScreen() {
                 You can win and claim prizes without connecting Stripe, but you must verify your
                 identity and bank details with Stripe before withdrawing.
               </Text>
+            </Card>
+          )}
+
+          {/* Prize history — every win with its lifecycle status, claim inline */}
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink, marginTop: 4 }}>Prizes</Text>
+          {prizes.length === 0 ? (
+            <Card variant="tinted">
+              <Text style={{ color: colors.ink3, fontSize: 13 }}>
+                No prizes yet — finish a cash contest in the prize positions and it shows up here.
+              </Text>
+            </Card>
+          ) : (
+            <Card variant="noPad">
+              {prizes.map((p, i) => {
+                const pc = prizeChip(p);
+                return (
+                  <CardSection key={p.payoutId} last={i === prizes.length - 1}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: p.withdrawn ? colors.upSoft : p.claimed ? `${colors.brand}1A` : colors.warnSoft }}>
+                        <Trophy color={p.withdrawn ? colors.up : p.claimed ? colors.brand : colors.warn} size={18} strokeWidth={1.75} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontWeight: '600', color: colors.ink }} numberOfLines={1}>{p.competitionName || 'Contest prize'}</Text>
+                          <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>${(p.amountCents / 100).toFixed(2)}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                          <Text style={{ fontSize: 12, color: colors.ink3 }}>
+                            {p.rank ? `Rank #${p.rank}` : 'Prize'} · {fmtDate(p.createdAt)}
+                          </Text>
+                          {p.claimed || p.withdrawn ? (
+                            <Chip variant={pc.variant}>{pc.label}</Chip>
+                          ) : (
+                            <TouchableOpacity testID={`withdraw-claim-${p.payoutId}`} disabled={claimingId === p.payoutId} onPress={() => handleClaim(p)}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.brand }}>
+                                {claimingId === p.payoutId ? 'Claiming…' : 'Claim'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  </CardSection>
+                );
+              })}
             </Card>
           )}
 

@@ -33,6 +33,17 @@ export interface UnclaimedPrize {
   amountCents: number;
 }
 
+export interface PayoutHistoryRow {
+  payoutId: string;
+  competitionName: string;
+  rank: number | null;
+  amountCents: number;
+  status: 'unclaimed' | 'claimed' | 'withdrawn' | string;
+  claimed: boolean;
+  withdrawn: boolean;
+  createdAt: string;
+}
+
 export interface WithdrawalRow {
   id: string;
   amountCents: number;
@@ -72,6 +83,31 @@ export async function fetchUnclaimed(): Promise<UnclaimedPrize[]> {
       .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   } catch (e) {
     console.warn('fetchUnclaimed failed', e);
+    return [];
+  }
+}
+
+// Every prize the user has won, with its lifecycle status (unclaimed → claimed →
+// withdrawn). Drives the payout-history card.
+export async function fetchPayoutHistory(): Promise<PayoutHistoryRow[]> {
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    const { data } = await client.models.Payout.list();
+    return (data as any[])
+      .map((p) => ({
+        payoutId: p.id,
+        competitionName: p.competitionName ?? '',
+        rank: p.rank ?? null,
+        amountCents: p.amountCents ?? 0,
+        status: p.status ?? 'unclaimed',
+        claimed: p.claimed === true,
+        withdrawn: p.withdrawn === true,
+        createdAt: p.createdAt,
+      }))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  } catch (e) {
+    console.warn('fetchPayoutHistory failed', e);
     return [];
   }
 }

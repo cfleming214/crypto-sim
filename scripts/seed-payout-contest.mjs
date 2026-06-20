@@ -31,7 +31,9 @@ const HANDLE = argVal('--handle', 'chrisf');
 const EMAIL = argVal('--email', null);
 const OWNER_ARG = argVal('--owner', null);
 const MINUTES = Math.max(1, Number(argVal('--minutes', '60')));
-const PRIZES = [10, 5, 1];               // 1st / 2nd / 3rd, in dollars
+// Podium prizes in dollars, e.g. --prizes 10,5,2 (default 10,5,1). numberOfPrizes
+// is derived from the count.
+const PRIZES = argVal('--prizes', '10,5,1').split(',').map(s => Number(s.trim())).filter(n => n > 0);
 const MAX_PLAYERS = 20;
 const CREATED_BY = 'payout-contest';
 const NAME_PREFIX = '💸 Payout Contest';   // stable across prize amounts — used to sweep orphan payouts
