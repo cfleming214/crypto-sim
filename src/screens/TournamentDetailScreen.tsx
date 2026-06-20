@@ -14,8 +14,10 @@ import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useCompetitions } from '../hooks/useCompetitions';
 import { fetchEntryPortfolio, type ContestPortfolio } from '../services/competitionService';
+import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
+import type { Competition } from '../store/types';
 import { LEGAL_URLS } from '../constants/legal';
 import { Bell, MoreHorizontal, Trophy, X } from 'lucide-react-native';
 
@@ -45,22 +47,17 @@ export function TournamentDetailScreen() {
   };
 
   const competitionId: string = route.params?.id ?? '';
-  const competition = getById(competitionId);
-
-  if (!competition) {
-    return (
-      <ScreenShell title="Contest not found">
-        <Card variant="tinted">
-          <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>
-            This contest doesn't exist
-          </Text>
-          <Text style={{ color: colors.ink3, fontSize: 13 }}>
-            It may have been removed. Head back to Compete to see what's live.
-          </Text>
-        </Card>
-      </ScreenShell>
-    );
-  }
+  const realCompetition = getById(competitionId);
+  // Fallback keeps EVERY hook below unconditional even when the contest is
+  // missing — e.g. opened from a stale "you won" push for a contest that's since
+  // been removed. The not-found UI renders AFTER all hooks (just before the main
+  // return), so the hook count never changes between renders (an early return
+  // here would drop the hooks below and crash with "rendered fewer hooks").
+  const competition: Competition = realCompetition ?? ({
+    id: competitionId, name: '', type: 'featured', status: 'finished',
+    prizePool: '', maxPlayers: 0, stake: 'Free', startAt: Date.now(), endAt: Date.now(),
+    entryCount: 0, numberOfPrizes: 0, prizes: [], prizeXp: 0, lockAfterStart: false,
+  } as unknown as Competition);
 
   const joined = isJoined(competitionId);
   // A lock-after-start contest that's already begun no longer accepts new
@@ -167,6 +164,34 @@ export function TournamentDetailScreen() {
     refreshLeaderboard(competitionId);
   }, [competitionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Cash-prize claim: if this contest has an unclaimed Payout for the user, show
+  // a Claim CTA here too (not just the Compete "Unclaimed" pill) — that's where a
+  // "you won" push lands. Claiming credits the in-app balance.
+  const [wonPrize, setWonPrize] = useState<UnclaimedPrize | null>(null);
+  const [claimingPrize, setClaimingPrize] = useState(false);
+  useEffect(() => {
+    if (!CONTEST_CASH_PRIZES || !competitionId) return;
+    let cancelled = false;
+    fetchUnclaimed()
+      .then(list => { if (!cancelled) setWonPrize(list.find(p => p.competitionId === competitionId) ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [competitionId]);
+  const handleClaimCash = async () => {
+    if (!wonPrize || claimingPrize) return;
+    setClaimingPrize(true);
+    const res = await claimPrize(wonPrize.payoutId);
+    setClaimingPrize(false);
+    if (res.ok) {
+      const amt = (wonPrize.amountCents / 100).toFixed(2);
+      setWonPrize(null);
+      celebrate();
+      Alert.alert('Prize claimed 🎉', `$${amt} was added to your balance. Withdraw it from Profile once your payout details are set up.`);
+    } else {
+      Alert.alert('Could not claim', res.error ?? 'Please try again in a moment.');
+    }
+  };
+
   const handleJoinLeave = () => {
     if (joined) {
       Alert.alert(
@@ -210,6 +235,31 @@ export function TournamentDetailScreen() {
     ? 'Finished'
     : `${competition.status === 'live' ? 'Live · ' : ''}${timeRemaining(competition)}`;
 
+  // Contest genuinely missing (deleted / not yet synced) — render after all the
+  // hooks above so the hook count is stable and React never crashes.
+  if (!realCompetition) {
+    return (
+      <ScreenShell title="Contest not found">
+        <Card variant="tinted">
+          <Text style={{ color: colors.ink, fontWeight: '600', marginBottom: 4 }}>
+            This contest doesn't exist
+          </Text>
+          <Text style={{ color: colors.ink3, fontSize: 13 }}>
+            It may have been removed. Head back to Compete to see what's live.
+          </Text>
+        </Card>
+        {wonPrize && (
+          <Card style={{ gap: 10, borderWidth: 1, borderColor: colors.up, marginTop: 12 }}>
+            <Text style={{ fontWeight: '700', color: colors.ink }}>You have an unclaimed ${(wonPrize.amountCents / 100).toFixed(2)} prize</Text>
+            <Button variant="brand" loading={claimingPrize} disabled={claimingPrize} onPress={handleClaimCash}>
+              {claimingPrize ? 'Claiming…' : `Claim $${(wonPrize.amountCents / 100).toFixed(2)} to balance`}
+            </Button>
+          </Card>
+        )}
+      </ScreenShell>
+    );
+  }
+
   return (
     <ScreenShell
       eyebrow={competition.name}
@@ -248,6 +298,33 @@ export function TournamentDetailScreen() {
           </View>
         ))}
       </Card>
+
+      {/* Won an unclaimed cash prize → claim it straight from the contest. */}
+      {CONTEST_CASH_PRIZES && wonPrize && (
+        <Card style={{ gap: 10, borderWidth: 1, borderColor: colors.up }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.upSoft }}>
+              <Trophy color={colors.up} size={20} strokeWidth={1.75} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontWeight: '700', color: colors.ink }}>You won this contest! 🏆</Text>
+              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                ${(wonPrize.amountCents / 100).toFixed(2)} prize ready to claim
+              </Text>
+            </View>
+          </View>
+          <Button
+            testID="contest-claim-prize"
+            variant="brand"
+            fullWidth
+            loading={claimingPrize}
+            disabled={claimingPrize}
+            onPress={handleClaimCash}
+          >
+            {claimingPrize ? 'Claiming…' : `Claim $${(wonPrize.amountCents / 100).toFixed(2)} to balance`}
+          </Button>
+        </Card>
+      )}
 
       {/* Equity chart */}
       <Card variant="noPad">
