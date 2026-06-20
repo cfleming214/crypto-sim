@@ -34,13 +34,22 @@ function generatePath(data: number[], w: number, h: number, closed = false): str
     y: h - ((v - min) / range) * h * 0.85 - h * 0.075,
   }));
 
+  // Catmull-Rom spline → cubic beziers: a smooth curve through every point whose
+  // tangents come from the NEIGHBORING points. The old scheme used horizontal
+  // tangents at each point (cp1y = prevY, cp2y = curY), which flattened the line
+  // at every vertex and rendered dense intraday data (60 one-min points) as a
+  // staircase. Neighbor-based tangents give a natural flowing line instead.
   let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) {
-    const cp1x = points[i - 1].x + (points[i].x - points[i - 1].x) * 0.5;
-    const cp1y = points[i - 1].y;
-    const cp2x = points[i - 1].x + (points[i].x - points[i - 1].x) * 0.5;
-    const cp2y = points[i].y;
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[i].x} ${points[i].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? points[i + 1];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
 
   if (closed) {
