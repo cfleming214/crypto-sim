@@ -2,7 +2,7 @@
   "expo": {
     "name": "CryptoComp",
     "slug": "cryptocomp",
-    "version": "1.3.2",
+    "version": "1.3.3",
     "scheme": "cryptocomp",
     "orientation": "portrait",
     "icon": "./assets/app-icon-1024.png",
