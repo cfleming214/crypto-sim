@@ -17,10 +17,24 @@ import { PredictionWatcher } from './src/components/PredictionWatcher';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
+import * as Sentry from '@sentry/react-native';
 
 configureAmplify();
 
-export default function App() {
+// Crash + error reporting. DSN comes from EXPO_PUBLIC_SENTRY_DSN (inlined at
+// build time via eas.json), so it only activates in real builds — never in dev /
+// Expo Go where the env is unset. Errors-only (no perf tracing) to stay within
+// the free tier; native crash handling is on by default.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    tracesSampleRate: 0,
+    enableAutoSessionTracking: true,
+  });
+}
+
+function App() {
   // Production-safe OTA "hot reload": pull the latest JS bundle on launch +
   // foreground (no-op in dev / Expo Go). See src/lib/otaUpdates.ts.
   React.useEffect(() => startOtaUpdates(), []);
@@ -62,3 +76,6 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+// Sentry.wrap adds the error boundary + touch/navigation context to crash reports.
+export default Sentry.wrap(App);
