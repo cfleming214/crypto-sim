@@ -1580,6 +1580,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await saveEquityHistory(downsampleForCloud(series, Date.now()));
   };
   useEffect(() => {
+    let lastPresence = 0;
     const capture = async () => {
       const s = stateRef.current;
       if (!(s.bankroll > 0)) return;
@@ -1594,10 +1595,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         flushEquityToCloud(series);
       }
       // Presence heartbeat — refresh lastActiveAt while foregrounded so other
-      // viewers see an accurate online dot (one cheap single-field write/min).
-      if (authRef.current === 'authenticated') touchPresence();
+      // viewers see an accurate online dot. Kept at ~60s even though capture now
+      // runs every 30s, so the finer equity sampling doesn't double these writes.
+      if (authRef.current === 'authenticated' && Date.now() - lastPresence > 55_000) {
+        lastPresence = Date.now();
+        touchPresence();
+      }
     };
-    const id = setInterval(capture, 60_000);
+    // Every 30s → ~2 points/min, so Live (30 pts) and 1H (120 pts) are denser.
+    const id = setInterval(capture, 30_000);
     return () => clearInterval(id);
   }, []);
 

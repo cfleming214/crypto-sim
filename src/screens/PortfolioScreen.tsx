@@ -302,8 +302,8 @@ export function PortfolioScreen() {
   // honest (the AreaChart spaces points evenly in X) — the 1H view is exactly
   // 60 one-minute points, not the uneven mix of 60s captures + gap-backfill.
   const TF_STEP_MS: Record<string, number> = {
-    'Live': 60 * 1000,  // 15 points
-    '1H':   60 * 1000,  // 60 points
+    'Live': 30 * 1000,  // 30 points (15 min / 30s)
+    '1H':   30 * 1000,  // 120 points (60 min / 30s)
   };
 
   const [history, setHistory] = useState<EquityPoint[]>([]);

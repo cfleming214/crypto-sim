@@ -175,14 +175,17 @@ export async function clearSnapshots(portfolioId: string): Promise<void> {
   }
 }
 
-// Append one live-balance reading. Coalesces sub-minute repeats (the capture
-// timer fires ~1/min, but a foreground/blur burst could fire sooner) by
-// overwriting the last point when it's <~minute old, so we keep ~1 point/min.
+// Append one live-balance reading. Coalesces near-duplicate readings (a
+// foreground/blur burst can fire sooner than the capture timer) by overwriting
+// the last point when it's under CAPTURE_COALESCE_MS old. The threshold sits
+// just under the 30s capture cadence so genuine 30s-apart readings are KEPT
+// (≈2 points/min for the Live/1H charts) while sub-cadence bursts still collapse.
+const CAPTURE_COALESCE_MS = 27_000;
 export async function appendSnapshot(portfolioId: string, point: EquityPoint): Promise<EquityPoint[]> {
   if (!Number.isFinite(point.v) || point.v <= 0) return loadSnapshots(portfolioId);
   const points = await loadSnapshots(portfolioId);
   const last = points[points.length - 1];
-  if (last && point.t - last.t < 0.9 * MINUTE) points[points.length - 1] = point;
+  if (last && point.t - last.t < CAPTURE_COALESCE_MS) points[points.length - 1] = point;
   else points.push(point);
   const trimmed = downsample(points, point.t);
   await saveSnapshots(portfolioId, trimmed);
