@@ -5,6 +5,7 @@ import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingO
 import { replayPriceAt } from '../services/replayPricing';
 import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence, fetchMyContestWins } from '../services/portfolioService';
+import { recordLiveTrade } from '../services/liveTradeService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
 import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
@@ -2046,6 +2047,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // survives reload (the reconstruction reads symbol 'USD' as a cash event).
       if ((action.type === 'BUY' || action.type === 'SELL' || action.type === 'CLAIM_DAILY_REWARD') && state.trades.length > 0) {
         saveTrade(state.trades[0]);
+      }
+      // Broadcast real coin buys/sells to the global live-trades ticker (Compete).
+      if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
+        recordLiveTrade(state.trades[0], state.user);
       }
     } else {
       const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;

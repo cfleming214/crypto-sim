@@ -71,6 +71,13 @@ const entryTable        = backend.data.resources.tables['CompetitionEntry'];
 const stripeAccountTable = backend.data.resources.tables['StripeAccount'];
 const payoutTable        = backend.data.resources.tables['Payout'];
 const withdrawalReqTable = backend.data.resources.tables['WithdrawalRequest'];
+
+// Live-trades feed self-prunes via DynamoDB TTL on `expiresAt` (epoch seconds),
+// so the global ticker table can't grow unbounded.
+backend.data.resources.cfnResources.amplifyDynamoDbTables['LiveTrade'].timeToLiveAttribute = {
+  attributeName: 'expiresAt',
+  enabled: true,
+};
 const tokenTable         = backend.data.resources.tables['Token'];
 const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 // Device push tokens — read by the notification-sending Lambdas; write access

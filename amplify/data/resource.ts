@@ -449,6 +449,33 @@ const schema = a.schema({
     processedAt:      a.string(),
   }).authorization(allow => [allow.owner().to(['read'])]),
 
+  // Global "live trades" ticker — a public feed of recent trades across all
+  // users, shown on the Compete tab. Each user writes their own rows (owner
+  // auth); everyone reads. `feed` is a constant ('global') so a single secondary
+  // index sorted by `tradedAt` can return the latest N with one query (no scan).
+  // `expiresAt` (epoch seconds) drives a DynamoDB TTL so the feed self-prunes
+  // (see backend.ts). Only broadcast for users who are visible on the
+  // leaderboard — the client gates the write on that opt-in.
+  LiveTrade: a.model({
+    feed:        a.string().required(),   // always 'global'
+    handle:      a.string().required(),
+    symbol:      a.string().required(),
+    side:        a.string().required(),   // 'buy' | 'sell'
+    amountUsd:   a.float(),
+    units:       a.float(),
+    price:       a.float(),
+    avatarColor: a.string(),
+    tradedAt:    a.string().required(),   // ISO — sort key for recency
+    expiresAt:   a.integer(),             // epoch seconds — DynamoDB TTL
+  })
+    .secondaryIndexes((index) => [
+      index('feed').sortKeys(['tradedAt']).queryField('liveTradesByFeed'),
+    ])
+    .authorization(allow => [
+      allow.authenticated().to(['read']),
+      allow.owner(),
+    ]),
+
   // --- Stripe payout custom mutations (client -> stripeConnect Lambda) ---
   // AppSync passes the authenticated identity (event.identity) to the handler,
   // which disambiguates by event.fieldName. Each returns an a.json() blob.

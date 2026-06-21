@@ -8,7 +8,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { PressableScale } from '../components/ui/PressableScale';
-import { Avatar } from '../components/ui/Avatar';
+import { Avatar, CoinGlyph } from '../components/ui/Avatar';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { AuthWall } from '../components/AuthWall';
 import { useTheme } from '../theme/ThemeContext';
@@ -21,6 +21,7 @@ import { useCompetitions } from '../hooks/useCompetitions';
 import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
+import { fetchLiveTrades, type LiveTradeRow } from '../services/liveTradeService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X, Rewind, ChevronRight } from 'lucide-react-native';
@@ -46,6 +47,19 @@ function startsInLabel(startAt: number): string {
   const h = Math.floor(ms / 3600000);
   if (h >= 1) return `in ${h}h`;
   return `in ${Math.max(1, Math.floor(ms / 60000))}m`;
+}
+
+// "12s" / "5m" / "2h" / "3d" since a trade executed.
+function tradeAgo(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return 'now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -234,6 +248,16 @@ export function CompeteScreen() {
     const base = [...CONTEST_TABS];
     base.splice(1, 0, { label: 'Unclaimed', type: null });
     return base;
+  }, []);
+
+  // Global live-trades ticker — latest 25 across all users. Reload on focus and
+  // every 20s so it feels live; the time-ago labels also re-render on the 1s tick.
+  const [liveTrades, setLiveTrades] = useState<LiveTradeRow[]>([]);
+  const reloadLiveTrades = useCallback(() => { fetchLiveTrades(25).then(setLiveTrades).catch(() => {}); }, []);
+  useFocusEffect(reloadLiveTrades);
+  useEffect(() => {
+    const id = setInterval(() => fetchLiveTrades(25).then(setLiveTrades).catch(() => {}), 20_000);
+    return () => clearInterval(id);
   }, []);
 
   const handleClaimPrize = async (p: UnclaimedPrize) => {
@@ -804,6 +828,45 @@ export function CompeteScreen() {
         </Wrapper>
         );
       })()}
+
+      {/* Live trades — the last 25 trades executed across all players */}
+      {liveTrades.length > 0 && (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.up }} />
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Live trades</Text>
+          </View>
+          <Card variant="noPad">
+            <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              {liveTrades.map((t, i) => {
+                const buy = t.side === 'buy';
+                const units = t.units < 1 ? t.units.toFixed(4) : t.units.toFixed(2);
+                return (
+                  <CardSection key={t.id} last={i === liveTrades.length - 1}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <CoinGlyph symbol={t.symbol} size={30} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink }} numberOfLines={1}>
+                          {t.handle}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }} numberOfLines={1}>
+                          {buy ? 'Bought' : 'Sold'} {units} {t.symbol}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: buy ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
+                          {buy ? '+' : '−'}${t.amountUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.ink4, marginTop: 1 }}>{tradeAgo(t.tradedAt)} ago</Text>
+                      </View>
+                    </View>
+                  </CardSection>
+                );
+              })}
+            </ScrollView>
+          </Card>
+        </View>
+      )}
 
       {/* Top traders entry point — previews the leaderboard's top 3 */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>
