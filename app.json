@@ -44,7 +44,14 @@
     },
     "plugins": [
       "expo-notifications",
-      "@sentry/react-native"
+      [
+        "@sentry/react-native",
+        {
+          "organization": "simple-design",
+          "project": "javascript-react",
+          "url": "https://sentry.io/"
+        }
+      ]
     ],
     "extra": {
       "eas": {
