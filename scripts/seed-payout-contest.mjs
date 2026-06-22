@@ -161,6 +161,7 @@ async function main() {
     entryCount: 1 + BOTS.length,
     numberOfPrizes: PRIZES.length,                 // ranks 1-3 paid
     prizesJson: JSON.stringify(PRIZES),
+    cashPrize: true,                               // real-money contest → hidden on payments-off builds
     prizeXp: 0,
     lockAfterStart: false,
     createdBy: CREATED_BY,

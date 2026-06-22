@@ -69,6 +69,10 @@ export interface Competition {
   // When true, no new entries are accepted once the contest has started
   // (now >= startAt). Default false = players can still join live.
   lockAfterStart?: boolean;
+  // True for real-money cash-prize contests. Payments-off builds filter these
+  // out (query + client guard) so they never appear there. Legacy/XP contests
+  // are false/undefined and show on every build.
+  cashPrize?: boolean;
 }
 
 export interface CompetitionEntry {

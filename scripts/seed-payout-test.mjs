@@ -147,6 +147,7 @@ async function main() {
     entryCount: 5,
     numberOfPrizes: 1,                 // only rank 1 (you) is paid
     prizesJson: JSON.stringify([PRIZE]),
+    cashPrize: true,
     prizeXp: 0,
     lockAfterStart: false,
     createdBy: CREATED_BY,

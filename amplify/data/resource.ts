@@ -83,6 +83,9 @@ const schema = a.schema({
     createdBy: a.string(),
     numberOfPrizes: a.integer(),    // length of the prizes array
     prizesJson: a.string(),         // JSON array of dollar amounts, e.g. "[100,50,20,10,5]"
+    // True for real-money cash-prize contests. Payments-off builds query
+    // `cashPrize <> true` so these rows never reach those devices.
+    cashPrize: a.boolean(),
     // Headline XP awarded to the winner when cash prizes are off (the podium
     // splits it 100/50/25%). Null on legacy rows → client falls back to
     // DEFAULT_PRIZE_XP (5000).
@@ -121,6 +124,7 @@ const schema = a.schema({
     numberOfPrizes: a.integer(),
     prizesJson: a.string(),
     prizeXp: a.integer(),
+    cashPrize: a.boolean(),          // mirrors Competition.cashPrize (carried on archive)
     allowedTokenSymbols: a.string().array(),
     inviteCode: a.string(),
     challengerHandle: a.string(),

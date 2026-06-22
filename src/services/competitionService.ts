@@ -1,6 +1,15 @@
 import { isAmplifyConfigured } from '../lib/amplify';
 import type { Competition, CompetitionEntry, Holding } from '../store/types';
-import { DEFAULT_PRIZE_XP, STARTING_CASH } from '../constants/featureFlags';
+import { DEFAULT_PRIZE_XP, STARTING_CASH, CONTEST_CASH_PRIZES } from '../constants/featureFlags';
+
+// A payments-off build must never surface cash-prize contests. We filter at the
+// QUERY (so those rows never even reach the device — cleaner than downloading +
+// hiding) and keep a client-side guard as a safety net. `cashPrize: { ne: true }`
+// keeps legacy rows that have no flag (null) visible everywhere — no migration.
+const CASH_QUERY = CONTEST_CASH_PRIZES ? {} : { filter: { cashPrize: { ne: true } } };
+function visibleHere(comps: Competition[]): Competition[] {
+  return CONTEST_CASH_PRIZES ? comps : comps.filter(c => c.cashPrize !== true);
+}
 
 // A player's portfolio within a single contest, read from their CompetitionEntry
 // row (holdings/cash are public-readable). Used by the leaderboard balance popup.
@@ -79,6 +88,7 @@ function mapCompetition(d: any): Competition {
     inviteCode: d.inviteCode ?? undefined,
     challengerHandle: d.challengerHandle ?? undefined,
     lockAfterStart: d.lockAfterStart ?? false,
+    cashPrize: d.cashPrize === true,
   };
 }
 
@@ -115,9 +125,9 @@ export async function fetchCompetitions(): Promise<Competition[]> {
   const client = await getClient();
   if (!client) return withSeeds([]);
   try {
-    const { data } = await client.models.Competition.list();
+    const { data } = await client.models.Competition.list(CASH_QUERY);
     const remote = (data as any[]).map(mapCompetition);
-    return withSeeds(await layerEntryCounts(client, remote));
+    return visibleHere(withSeeds(await layerEntryCounts(client, remote)));
   } catch {
     return withSeeds([]);
   }
@@ -129,8 +139,8 @@ export async function fetchFinishedCompetitions(): Promise<Competition[]> {
   const client = await getClient();
   if (!client?.models?.FinishedCompetition) return [];
   try {
-    const { data } = await client.models.FinishedCompetition.list();
-    return (data as any[]).filter(Boolean).map(mapCompetition).sort((a, b) => b.endAt - a.endAt);
+    const { data } = await client.models.FinishedCompetition.list(CASH_QUERY);
+    return visibleHere((data as any[]).filter(Boolean).map(mapCompetition)).sort((a, b) => b.endAt - a.endAt);
   } catch {
     return [];
   }
@@ -148,11 +158,11 @@ export async function subscribeToCompetitions(
   const client = await getClient();
   if (!client) return () => {};
   try {
-    const sub = client.models.Competition.observeQuery().subscribe({
+    const sub = client.models.Competition.observeQuery(CASH_QUERY).subscribe({
       next: async ({ items }: { items: any[] }) => {
         const comps = (items ?? []).map(mapCompetition);
         const layered = await layerEntryCounts(client, comps);
-        onUpdate(withSeeds(layered));
+        onUpdate(visibleHere(withSeeds(layered)));
       },
       error: (err: unknown) => console.warn('Competition subscription error:', err),
     });
