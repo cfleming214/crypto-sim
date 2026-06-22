@@ -807,7 +807,7 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'sell', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+          timestamp: Date.now(), xpEarned: 10, slippage: 0.001, kind: 'rebalance',
         });
       }
 
@@ -827,7 +827,7 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'buy', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+          timestamp: Date.now(), xpEarned: 25, slippage: 0.001, kind: 'rebalance',
         });
       }
 

@@ -67,7 +67,13 @@ export function computeQuestMetrics(state: AppState, now: number): Record<QuestM
     tradesToday: today.length,
     distinctCoinsToday: new Set(today.map(t => t.symbol)).size,
     buysToday: today.filter(t => t.side === 'buy').length,
-    predictionsToday: Math.max(0, (state.predictionWins + state.predictionLosses) - b.predictionsTotal),
+    // "Make a price prediction" must complete the moment one is STARTED. The
+    // win/loss counters only move when a round RESOLVES — and only if the resolver
+    // fires — which previously left the quest (and the bonus chest) stuck after the
+    // user clearly made a prediction. Count a prediction started today (live or
+    // not) on top of any resolved today; the quest target caps it downstream.
+    predictionsToday: Math.max(0, (state.predictionWins + state.predictionLosses) - b.predictionsTotal)
+      + (state.activePrediction && state.activePrediction.startedAt >= dayStart ? 1 : 0),
     lessonsToday: Math.max(0, state.academyCompleted.length - b.lessonsTotal),
     watchlistToday: Math.max(0, state.watchlist.length - b.watchlistCount),
     dailyClaimed: state.lastClaimDay === todayKey(now) ? 1 : 0,

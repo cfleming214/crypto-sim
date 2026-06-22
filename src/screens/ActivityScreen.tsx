@@ -17,6 +17,12 @@ import { ArrowUp, ArrowDown, Shield, User, Clock, Gift, Trophy } from 'lucide-re
 // sentinel trade with symbol 'USD' / kind 'reward' — not a coin trade.
 const isReward = (t: { symbol: string; kind?: string }) => t.kind === 'reward' || t.symbol === 'USD';
 
+// Trade-row title: "Bought BTC" / "Sold ETH (rebalanced)" / "Daily reward".
+const tradeTitle = (t: { symbol: string; side: string; kind?: string }) =>
+  isReward(t)
+    ? 'Daily reward'
+    : `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.symbol}${t.kind === 'rebalance' ? ' (rebalanced)' : ''}`;
+
 function TradeIcon({ side, type }: { side: 'buy' | 'sell'; type?: string }) {
   const { colors } = useTheme();
   if (type === 'reward') return (
@@ -142,7 +148,7 @@ export function ActivityScreen() {
                           <TradeIcon side={t.side} type={isReward(t) ? 'reward' : undefined} />
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                              <Text style={{ fontWeight: '600', color: colors.ink }}>{isReward(t) ? 'Daily reward' : `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.symbol}`}</Text>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{tradeTitle(t)}</Text>
                               <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
@@ -174,7 +180,7 @@ export function ActivityScreen() {
                           <TradeIcon side={t.side} type={isReward(t) ? 'reward' : undefined} />
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                              <Text style={{ fontWeight: '600', color: colors.ink }}>{isReward(t) ? 'Daily reward' : `${t.side === 'buy' ? 'Bought' : 'Sold'} ${t.symbol}`}</Text>
+                              <Text style={{ fontWeight: '600', color: colors.ink }}>{tradeTitle(t)}</Text>
                               <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }}>${t.amount.toFixed(2)}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
