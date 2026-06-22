@@ -27,10 +27,20 @@ const DAY = 24 * HOUR;
 
 const KEY = (portfolioId: string) => `equitySnapshots.v1:${portfolioId}`;
 
-// Tiered retention so the series can't grow unbounded: full 1-min resolution
-// for the last 24h, one point per hour out to 30d, one per day beyond. A year
-// of history is then only a few hundred points. Within a bucket the LATEST
-// point wins (overwrite), so the most recent value in each window survives.
+// Keep every point only for the last 3h — that's all the Live (15m) and 1H
+// windows ever read at full fidelity. Anything we keep beyond that is purely for
+// the wider 24H/7D/30D zooms, which are massively oversampled, so coarser buckets
+// look identical there.
+const RECENT_FULL = 3 * HOUR;
+// Absolute backstop on the local series length. The tiers below already bound a
+// year of use to ~2k points; this guarantees the array (which is serialized to
+// native storage every 30s) can never blow up from clock skew / corruption.
+const MAX_POINTS = 2500;
+
+// Tiered retention so the series can't grow unbounded: full 30s resolution for
+// the last 3h, 2-min out to 24h, hourly out to 30d, daily beyond. A year of
+// history is then ~2k points. Within a bucket the LATEST point wins (overwrite),
+// so the most recent value in each window survives.
 export function downsample(points: EquityPoint[], now: number): EquityPoint[] {
   const sorted = [...points].filter(p => Number.isFinite(p.t) && Number.isFinite(p.v))
     .sort((a, b) => a.t - b.t);
@@ -38,16 +48,19 @@ export function downsample(points: EquityPoint[], now: number): EquityPoint[] {
   const bucketIdx = new Map<string, number>();
   for (const p of sorted) {
     const age = now - p.t;
-    const bucket = age <= DAY
-      ? `m:${p.t}`                              // recent: keep every distinct point
-      : age <= 30 * DAY
-        ? `h:${Math.floor(p.t / HOUR)}`         // mid: hourly
-        : `d:${Math.floor(p.t / DAY)}`;         // old: daily
+    const bucket = age <= RECENT_FULL
+      ? `m:${p.t}`                                  // last 3h: every distinct point
+      : age <= DAY
+        ? `f:${Math.floor(p.t / (2 * MINUTE))}`     // 3-24h: 2-min
+        : age <= 30 * DAY
+          ? `h:${Math.floor(p.t / HOUR)}`           // mid: hourly
+          : `d:${Math.floor(p.t / DAY)}`;           // old: daily
     const idx = bucketIdx.get(bucket);
     if (idx === undefined) { bucketIdx.set(bucket, out.length); out.push(p); }
-    else out[idx] = p;                          // latest in bucket wins
+    else out[idx] = p;                              // latest in bucket wins
   }
-  return out;
+  // Hard backstop — keep only the most recent MAX_POINTS (out is ascending by t).
+  return out.length > MAX_POINTS ? out.slice(out.length - MAX_POINTS) : out;
 }
 
 // Cloud backup is a coarser copy than the local store — drop the 1-min recent
