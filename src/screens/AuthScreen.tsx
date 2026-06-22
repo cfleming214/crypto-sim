@@ -12,6 +12,7 @@ import { Card } from '../components/ui/Card';
 import { FeatureHero } from '../components/FeatureHero';
 import { useAuth } from '../store/AuthContext';
 import { LEGAL_URLS } from '../constants/legal';
+import { openExternal } from '../lib/linking';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -162,17 +163,17 @@ export function AuthScreen() {
               </CheckRow>
               <CheckRow testID="auth-terms-checkbox" checked={acceptedTerms} onToggle={() => setAcceptedTerms(v => !v)}>
                 I agree to the{' '}
-                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => openExternal(LEGAL_URLS.terms)}>Terms of Use</Text>
                 {' '}and{' '}
-                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => openExternal(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
               </CheckRow>
               </>
             ) : (
               <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 18, marginTop: 2 }}>
                 By signing in you agree to the{' '}
-                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>Terms of Use</Text>
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => openExternal(LEGAL_URLS.terms)}>Terms of Use</Text>
                 {' '}and{' '}
-                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
+                <Text style={{ color: colors.brand, fontWeight: '600' }} onPress={() => openExternal(LEGAL_URLS.privacy)}>Privacy Policy</Text>.
               </Text>
             )}
 

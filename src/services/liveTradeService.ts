@@ -1,4 +1,5 @@
 import { isAmplifyConfigured } from '../lib/amplify';
+import { hasAuthSession } from '../lib/authState';
 
 // Global "live trades" ticker. Each user writes their own LiveTrade rows
 // (owner-auth); everyone reads the latest 25 via the `liveTradesByFeed` index.
@@ -40,6 +41,7 @@ export async function recordLiveTrade(
 ): Promise<void> {
   if (trade.kind === 'reward' || trade.symbol === 'USD') return; // not a real coin trade
   if (user.leaderboardVisible === false) return;                  // respect the opt-out
+  if (!(await hasAuthSession())) return;                          // guests can't write LiveTrade
   const client = await getClient();
   if (!client) return;
   try {
@@ -62,6 +64,7 @@ export async function recordLiveTrade(
 
 // The latest `limit` trades across all users, newest first.
 export async function fetchLiveTrades(limit = 25): Promise<LiveTradeRow[]> {
+  if (!(await hasAuthSession())) return [];                        // userPool-only read
   const client = await getClient();
   if (!client) return [];
   try {

@@ -19,6 +19,7 @@ import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
 import type { Competition } from '../store/types';
 import { LEGAL_URLS } from '../constants/legal';
+import { openExternal } from '../lib/linking';
 import { Bell, MoreHorizontal, Trophy, X } from 'lucide-react-native';
 
 
@@ -381,7 +382,7 @@ export function TournamentDetailScreen() {
         ))}
         {CONTEST_CASH_PRIZES && (
           <TouchableOpacity
-            onPress={() => Linking.openURL(LEGAL_URLS.rules)}
+            onPress={() => openExternal(LEGAL_URLS.rules)}
             style={{ marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.hairline }}
           >
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>

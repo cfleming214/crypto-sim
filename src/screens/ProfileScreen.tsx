@@ -26,6 +26,7 @@ import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolio
 import { registerDevice, deactivateDevices } from '../services/pushDeviceService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
+import { openExternal } from '../lib/linking';
 import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
 
@@ -678,7 +679,7 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
 
-        <TouchableOpacity testID="profile-terms" onPress={() => Linking.openURL(LEGAL_URLS.terms)}>
+        <TouchableOpacity testID="profile-terms" onPress={() => openExternal(LEGAL_URLS.terms)}>
           <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -690,7 +691,7 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
 
-        <TouchableOpacity testID="profile-privacy" onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>
+        <TouchableOpacity testID="profile-privacy" onPress={() => openExternal(LEGAL_URLS.privacy)}>
           <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -702,7 +703,7 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
 
-        <TouchableOpacity testID="profile-rules" onPress={() => Linking.openURL(LEGAL_URLS.rules)}>
+        <TouchableOpacity testID="profile-rules" onPress={() => openExternal(LEGAL_URLS.rules)}>
           <CardSection last>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
