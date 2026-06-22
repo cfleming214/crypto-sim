@@ -103,7 +103,11 @@ async function settleCompetition(compTable: string, entryTable: string, comp: an
 }
 
 // Runs on EventBridge schedule every 10 minutes.
-// Closes any 'live' competitions whose endAt has passed, paying out prizes.
+// Closes any non-finished competition whose endAt has passed, paying out prizes.
+// We settle 'open' as well as 'live': a contest created with a future start is
+// 'open' until something flips it to 'live', and if nothing does before it ends,
+// it would otherwise be stranded 'open' forever (ended on screen, never settled,
+// XP/prizes never awarded). endAt <= now means it has definitely ended either way.
 export const handler = async (): Promise<void> => {
   const compTable = process.env.COMPETITION_TABLE_NAME;
   const entryTable = process.env.COMPETITION_ENTRY_TABLE_NAME;
@@ -113,9 +117,9 @@ export const handler = async (): Promise<void> => {
 
   const { Items = [] } = await ddb.send(new ScanCommand({
     TableName: compTable,
-    FilterExpression: '#s = :live AND endAt <= :now',
+    FilterExpression: '(#s = :live OR #s = :open) AND endAt <= :now',
     ExpressionAttributeNames: { '#s': 'status' },
-    ExpressionAttributeValues: marshall({ ':live': 'live', ':now': now }),
+    ExpressionAttributeValues: marshall({ ':live': 'live', ':open': 'open', ':now': now }),
   }));
 
   const finishedTable = process.env.FINISHED_COMPETITION_TABLE_NAME;
