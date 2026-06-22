@@ -58,10 +58,15 @@ function App() {
           <AppProvider>
             <ThemeProvider>
               <ToastProvider>
-                <AchievementWatcher />
-                <QuestWatcher />
-                <EventWatcher />
-                <PredictionWatcher />
+                {/* The watchers run effects on every state change but render
+                    nothing — isolate them so a gamification bug disables just the
+                    watchers (and reports to Sentry) instead of blanking the app. */}
+                <ErrorBoundary fallback={null} label="watchers">
+                  <AchievementWatcher />
+                  <QuestWatcher />
+                  <EventWatcher />
+                  <PredictionWatcher />
+                </ErrorBoundary>
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>
                     <RootNavigator />

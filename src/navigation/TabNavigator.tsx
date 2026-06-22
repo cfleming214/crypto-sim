@@ -11,6 +11,7 @@ import { MarketsScreen } from '../screens/MarketsScreen';
 import { CompeteScreen } from '../screens/CompeteScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NewsScreen } from '../screens/NewsScreen';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Home, BarChart2, Trophy, User, Bell, Search, Newspaper, LucideIcon } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator();
@@ -61,6 +62,9 @@ export function TabNavigator() {
 
   return (
     <Tab.Navigator
+      // Each tab in its own boundary — a crash in one tab shows a recoverable
+      // fallback there while the tab bar and other tabs keep working.
+      screenLayout={({ children }) => <ErrorBoundary>{children}</ErrorBoundary>}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {

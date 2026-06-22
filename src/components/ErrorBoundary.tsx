@@ -1,9 +1,13 @@
 import React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
+import * as Sentry from '@sentry/react-native';
 import { Text } from './ui/Text';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-interface Props { children: React.ReactNode }
+// `fallback` lets non-UI subtrees (e.g. the background watchers) fail silently —
+// pass `fallback={null}` so a crash there disables just that subtree (and reports
+// to Sentry) instead of showing the full-screen error card. `label` tags reports.
+interface Props { children: React.ReactNode; label?: string; fallback?: React.ReactNode }
 interface State { error: Error | null }
 
 // Catches render crashes anywhere below it so a bug can never leave the app
@@ -20,11 +24,19 @@ export class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     // Surfaces in Metro / device logs for diagnosis.
     console.error('App crash caught by ErrorBoundary:', error, info?.componentStack);
+    // Report to Sentry too — this boundary handles the error before Sentry's own
+    // wrap can see it, so without this the caught render crash is invisible.
+    try {
+      Sentry.captureException(error, { extra: { componentStack: info?.componentStack, boundary: this.props.label ?? 'root' } });
+    } catch { /* never let reporting throw */ }
   }
 
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
+    // Silent fallback for non-UI subtrees (watchers): render it instead of the
+    // full-screen error card. `fallback={null}` is the common case.
+    if (this.props.fallback !== undefined) return <>{this.props.fallback}</>;
     return (
       <View style={{ flex: 1, backgroundColor: '#0A0A0B', paddingHorizontal: 24, paddingTop: 80, paddingBottom: 32 }}>
         <Text style={{ color: '#FF6F61', fontSize: 20, fontWeight: '800', marginBottom: 10 }}>Something went wrong</Text>

@@ -1582,24 +1582,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let lastPresence = 0;
     const capture = async () => {
-      const s = stateRef.current;
-      if (!(s.bankroll > 0)) return;
-      // Don't record the INITIAL_STATE $100k placeholder before real data has
-      // loaded — that produces a spurious dip-to-$100k on the equity chart.
-      // Authenticated: wait for the cloud profile; guest: wait for local hydrate.
-      const ready = (authRef.current === 'authenticated' && profileLoadedRef.current)
-        || (authRef.current === 'unauthenticated' && offlineHydratedRef.current);
-      if (!ready) return;
-      const series = await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
-      if (s.activePortfolioId === 'main' && Date.now() - lastCloudFlushRef.current >= CLOUD_FLUSH_MS) {
-        flushEquityToCloud(series);
-      }
-      // Presence heartbeat — refresh lastActiveAt while foregrounded so other
-      // viewers see an accurate online dot. Kept at ~60s even though capture now
-      // runs every 30s, so the finer equity sampling doesn't double these writes.
-      if (authRef.current === 'authenticated' && Date.now() - lastPresence > 55_000) {
-        lastPresence = Date.now();
-        touchPresence();
+      // This runs on a background timer, so any throw here (e.g. a native
+      // AsyncStorage failure) would otherwise surface as an UNHANDLED rejection.
+      // Contain it: a dropped snapshot is harmless; a crashed app is not.
+      try {
+        const s = stateRef.current;
+        if (!(s.bankroll > 0)) return;
+        // Don't record the INITIAL_STATE $100k placeholder before real data has
+        // loaded — that produces a spurious dip-to-$100k on the equity chart.
+        // Authenticated: wait for the cloud profile; guest: wait for local hydrate.
+        const ready = (authRef.current === 'authenticated' && profileLoadedRef.current)
+          || (authRef.current === 'unauthenticated' && offlineHydratedRef.current);
+        if (!ready) return;
+        const series = await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
+        if (s.activePortfolioId === 'main' && Date.now() - lastCloudFlushRef.current >= CLOUD_FLUSH_MS) {
+          flushEquityToCloud(series);
+        }
+        // Presence heartbeat — refresh lastActiveAt while foregrounded so other
+        // viewers see an accurate online dot. Kept at ~60s even though capture now
+        // runs every 30s, so the finer equity sampling doesn't double these writes.
+        if (authRef.current === 'authenticated' && Date.now() - lastPresence > 55_000) {
+          lastPresence = Date.now();
+          touchPresence();
+        }
+      } catch (e) {
+        console.warn('equity capture tick failed (ignored):', e);
       }
     };
     // Every 30s → ~2 points/min, so Live (30 pts) and 1H (120 pts) are denser.

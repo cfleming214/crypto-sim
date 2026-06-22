@@ -26,6 +26,7 @@ import { NewsDetailScreen } from '../screens/NewsDetailScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { AuthScreen } from '../screens/AuthScreen';
 import { SplashLogo } from '../components/SplashLogo';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { OnboardingWalkthrough } from '../screens/OnboardingWalkthrough';
 import { OldWalkthroughScreen } from '../screens/OldWalkthroughScreen';
 import type { NewsArticle } from '../services/newsService';
@@ -98,7 +99,13 @@ export function RootNavigator() {
   if (!state.hasOnboarded) return <OnboardingWalkthrough />;
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      // Wrap every screen in its own error boundary so a render crash on one
+      // screen shows a recoverable fallback there instead of taking down the
+      // whole app (the root boundary in App.tsx still backstops everything else).
+      screenLayout={({ children }) => <ErrorBoundary>{children}</ErrorBoundary>}
+    >
       <Stack.Screen name="MainTabs" component={TabNavigator} />
       <Stack.Screen name="Trade" component={TradeScreen} />
       <Stack.Screen name="TradeDetail" component={TradeDetailScreen} />
