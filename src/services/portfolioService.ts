@@ -815,9 +815,25 @@ export async function saveTrade(trade: Trade): Promise<void> {
   }
 }
 
+// Delete the user's cloud Trade rows on a portfolio reset. Without this, a reload
+// re-fetches the pre-reset trades (loadProfileIfExists) and re-pins their markers
+// on the freshly reset equity chart. Owner-auth lets the client delete its own
+// rows; paginates so it clears more than one page of history.
 export async function resetDemoCloud(): Promise<void> {
   if (!isAmplifyConfigured) return;
-  // Reset is handled client-side via RESET_DEMO action; cloud reset would invoke the resetDemo Lambda.
+  const client = await getClient();
+  if (!client) return;
+  try {
+    let nextToken: string | null | undefined;
+    do {
+      const res: any = await client.models.Trade.list({ limit: 200, nextToken: nextToken ?? undefined });
+      const rows = (res.data ?? []) as any[];
+      await Promise.all(rows.map((t) => client.models.Trade.delete({ id: t.id }).catch(() => {})));
+      nextToken = res.nextToken;
+    } while (nextToken);
+  } catch (e) {
+    console.warn('resetDemoCloud failed', e);
+  }
 }
 
 export async function fetchLeaderboard(tournamentId: string) {

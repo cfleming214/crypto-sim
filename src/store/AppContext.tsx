@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser, ReplayMeta, ReplayContestSummary } from './types';
 import { replayPriceAt } from '../services/replayPricing';
 import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type PriceData } from '../services/priceService';
-import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence, fetchMyContestWins } from '../services/portfolioService';
+import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence, fetchMyContestWins, resetDemoCloud } from '../services/portfolioService';
 import { recordLiveTrade } from '../services/liveTradeService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
@@ -2057,6 +2057,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Broadcast real coin buys/sells to the global live-trades ticker (Compete).
       if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
         recordLiveTrade(state.trades[0], state.user);
+      }
+      // A reset wipes the cloud Trade rows too, so a reload can't restore the
+      // pre-reset trades (which would re-pin old markers on the reset chart).
+      if (action.type === 'RESET_DEMO') {
+        resetDemoCloud();
       }
     } else {
       const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
