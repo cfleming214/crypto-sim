@@ -18,7 +18,7 @@ import { levelForXp } from '../services/gamification';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { createDuel, acceptDuel, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
+import { createDuel, acceptDuel, isJoinLocked, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { fetchLiveTrades, type LiveTradeRow } from '../services/liveTradeService';
@@ -495,11 +495,11 @@ export function CompeteScreen() {
       Alert.alert(`${comp.name} has ended`, 'This contest is over — you can no longer join it.');
       return;
     }
-    // Locked contests stop accepting players once they've started. (Other
-    // contests can be joined live, and any contest can be pre-joined before it
-    // opens.)
-    if (comp.lockAfterStart && Date.now() >= comp.startAt) {
-      Alert.alert(`${comp.name} is locked`, 'This contest already started and isn’t accepting new players.');
+    // Joining closes once the contest locks at start or passes its join cutoff
+    // (e.g. only 10% of the duration left). Contests can otherwise be joined live
+    // or pre-joined before they open.
+    if (isJoinLocked(comp)) {
+      Alert.alert(`${comp.name} — joining closed`, 'This contest is no longer accepting new players.');
       return;
     }
     Alert.alert(
@@ -781,10 +781,10 @@ export function CompeteScreen() {
               key={comp.id}
               testID={`compete-card-${comp.id}`}
               onPress={() => {
-                // Finished, already joined, or locked-after-start → open the
-                // detail screen read-only (the join CTA is hidden there). Only an
-                // open, joinable contest routes through handleJoin's prompt.
-                const isLocked = comp.lockAfterStart && Date.now() >= comp.startAt;
+                // Finished, already joined, or join-locked → open the detail
+                // screen read-only (the join CTA is hidden there). Only an open,
+                // joinable contest routes through handleJoin's prompt.
+                const isLocked = isJoinLocked(comp);
                 if (comp.status === 'finished' || isJoined(comp.id) || isLocked) {
                   nav.navigate('TournamentDetail', { id: comp.id });
                 } else {
@@ -814,7 +814,8 @@ export function CompeteScreen() {
                   <Clock color={colors.ink3} size={12} strokeWidth={1.75} />
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>
                     {comp.startAt > Date.now() ? `Starts ${startsInLabel(comp.startAt)}` : timeRemaining(comp)}
-                    {comp.lockAfterStart ? (comp.startAt > Date.now() ? ' · 🔒 locks at start' : ' · 🔒 locked') : ''}
+                    {comp.startAt > Date.now() && comp.lockAfterStart ? ' · 🔒 locks at start'
+                      : isJoinLocked(comp) ? ' · 🔒 joining closed' : ''}
                   </Text>
                 </View>
                 {isJoined(comp.id) && renderJoinedStanding(comp.id)}

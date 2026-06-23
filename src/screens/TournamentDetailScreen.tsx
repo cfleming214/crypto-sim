@@ -13,7 +13,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { fetchEntryPortfolio, type ContestPortfolio } from '../services/competitionService';
+import { fetchEntryPortfolio, isJoinLocked, type ContestPortfolio } from '../services/competitionService';
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
@@ -61,9 +61,10 @@ export function TournamentDetailScreen() {
   } as unknown as Competition);
 
   const joined = isJoined(competitionId);
-  // A lock-after-start contest that's already begun no longer accepts new
-  // players — viewable read-only, but the Join CTA is hidden for non-members.
-  const lockedOut = !joined && !!competition.lockAfterStart && Date.now() >= competition.startAt;
+  // A contest whose join window has closed (locks at start, or past its join
+  // cutoff) no longer accepts new players — viewable read-only, but the Join CTA
+  // is hidden for non-members.
+  const lockedOut = !joined && isJoinLocked(competition);
   // Blocked users are removed from the live leaderboard instantly.
   const entries = (leaderboard[competitionId] ?? [])
     .filter(e => !state.blockedUsers.some(b => b.handle === e.handle));
@@ -205,8 +206,8 @@ export function TournamentDetailScreen() {
       );
     } else if (competition.status === 'finished' || Date.now() >= competition.endAt) {
       Alert.alert('Contest ended', 'This contest is over — you can no longer join it.');
-    } else if (competition.lockAfterStart && Date.now() >= competition.startAt) {
-      Alert.alert('Contest locked', 'This contest already started and isn’t accepting new players.');
+    } else if (isJoinLocked(competition)) {
+      Alert.alert('Joining closed', 'This contest is no longer accepting new players.');
     } else {
       Alert.alert(
         `Join ${competition.name}`,

@@ -88,8 +88,22 @@ function mapCompetition(d: any): Competition {
     inviteCode: d.inviteCode ?? undefined,
     challengerHandle: d.challengerHandle ?? undefined,
     lockAfterStart: d.lockAfterStart ?? false,
+    joinCutoffPct: typeof d.joinCutoffPct === 'number' ? d.joinCutoffPct : undefined,
     cashPrize: d.cashPrize === true,
   };
+}
+
+// Whether NEW entries are currently blocked for a contest. True when either the
+// contest locks at start and has started, OR enough of the duration has elapsed
+// to pass its join cutoff (joinCutoffPct, e.g. 0.9 = "until 10% remains").
+// Centralizes the gate used by the Join CTAs on Compete + the contest detail.
+export function isJoinLocked(c: Competition, now: number = Date.now()): boolean {
+  if (c.lockAfterStart && now >= c.startAt) return true;
+  if (typeof c.joinCutoffPct === 'number' && c.endAt > c.startAt) {
+    const elapsed = (now - c.startAt) / (c.endAt - c.startAt);
+    if (elapsed >= c.joinCutoffPct) return true;
+  }
+  return false;
 }
 
 function mapEntry(d: any): CompetitionEntry {

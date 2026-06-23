@@ -72,6 +72,10 @@ export interface Competition {
   // When true, no new entries are accepted once the contest has started
   // (now >= startAt). Default false = players can still join live.
   lockAfterStart?: boolean;
+  // Fraction of elapsed time (0..1) after which joining closes — e.g. 0.9 means
+  // "joinable until only 10% of the duration remains". Undefined = joinable until
+  // the contest ends. See isJoinLocked() in competitionService.
+  joinCutoffPct?: number;
   // True for real-money cash-prize contests. Payments-off builds filter these
   // out (query + client guard) so they never appear there. Legacy/XP contests
   // are false/undefined and show on every build.

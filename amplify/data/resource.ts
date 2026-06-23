@@ -101,6 +101,10 @@ const schema = a.schema({
     // (now >= startAt). Null/false (default, legacy rows) = players can still
     // join live after the start.
     lockAfterStart: a.boolean(),
+    // Fraction of elapsed time (0..1) after which joining closes. e.g. 0.9 =
+    // "joinable until only 10% of the duration remains". Null (default/legacy) =
+    // joinable until the contest ends. Enforced client-side (see isJoinLocked).
+    joinCutoffPct: a.float(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
@@ -129,6 +133,7 @@ const schema = a.schema({
     inviteCode: a.string(),
     challengerHandle: a.string(),
     lockAfterStart: a.boolean(),
+    joinCutoffPct: a.float(),         // mirrors Competition.joinCutoffPct (carried on archive)
     finishedAt: a.string(),          // ISO timestamp the contest was archived
   }).authorization(allow => [
     allow.authenticated().to(['read']),
