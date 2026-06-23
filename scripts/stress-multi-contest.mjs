@@ -109,8 +109,10 @@ async function mapLimit(items, limit, fn) {
   return out;
 }
 
+let liveTradeTable = null; // set in main() — the global "Live trades" feed table
+
 async function findTables() {
-  const want = ['Competition', 'FinishedCompetition', 'CompetitionEntry', 'UserProfile', 'Trade', 'Token'];
+  const want = ['Competition', 'FinishedCompetition', 'CompetitionEntry', 'UserProfile', 'Trade', 'LiveTrade', 'Token'];
   const out = {};
   let next;
   do {
@@ -283,6 +285,25 @@ function applyRebalance(p, coins) {
 }
 const holdingsJson = (p) => JSON.stringify(p.holdings.map((h) => ({ symbol: h.symbol, units: round6(h.units), avgCost: round2(h.avgCost) })));
 
+// Mirror each executed trade into the global "Live trades" feed (the Compete
+// card reads the LiveTrade table). The app does this via recordLiveTrade(); the
+// bots write the rows directly. Best-effort — never fails the action.
+async function writeLiveTrades(s, fresh) {
+  if (!liveTradeTable) return;
+  const ttl = Math.floor(Date.now() / 1000) + 2 * 86400;
+  for (const tr of fresh) {
+    const iso = new Date(tr.t).toISOString();
+    try {
+      await ddb.send(new PutItemCommand({ TableName: liveTradeTable, Item: marshall({
+        id: randomUUID(), __typename: 'LiveTrade', owner: s.bot.owner, feed: 'global',
+        handle: s.bot.handle, symbol: tr.symbol, side: tr.side, amountUsd: tr.amount,
+        units: tr.units, price: tr.price, avatarColor: s.bot.color,
+        tradedAt: iso, expiresAt: ttl, createdAt: iso, updatedAt: iso,
+      }, { removeUndefinedValues: true }) }));
+    } catch { /* feed write is best-effort */ }
+  }
+}
+
 // One action: pick a portfolio + a random trade type, apply it, persist.
 async function doAction(s, coins, totals) {
   const key = pick(['main', 'h1', 'h24']);
@@ -317,6 +338,7 @@ async function doAction(s, coins, totals) {
       } });
       totals.trades += fresh.length;
     }
+    await writeLiveTrades(s, fresh); // surface in the Compete "Live trades" feed
     totals.ok++; totals.lat.push(Date.now() - t0);
   } catch (e) {
     totals.fail++; const m = (e.message || 'error').slice(0, 48); totals.errs[m] = (totals.errs[m] || 0) + 1;
@@ -351,19 +373,21 @@ async function cleanup(tables) {
     if (!tables[m]) continue;
     for await (const c of scanAll(tables[m])) if (c.createdBy === CREATED_BY) { compIds.add(c.id); await ddb.send(new DeleteItemCommand({ TableName: tables[m], Key: marshall({ id: c.id }) })); }
   }
-  let entries = 0, profiles = 0, trades = 0;
+  let entries = 0, profiles = 0, trades = 0, live = 0;
   for await (const e of scanAll(tables.CompetitionEntry)) if (compIds.has(e.competitionId) || ownedByBot(e.owner)) { await ddb.send(new DeleteItemCommand({ TableName: tables.CompetitionEntry, Key: marshall({ id: e.id }) })); entries++; }
   for await (const p of scanAll(tables.UserProfile)) if (String(p.handle || '').startsWith(HANDLE_PREFIX) || ownedByBot(p.owner)) { await ddb.send(new DeleteItemCommand({ TableName: tables.UserProfile, Key: marshall({ id: p.id }) })); profiles++; }
   if (tables.Trade) for await (const t of scanAll(tables.Trade)) if (ownedByBot(t.owner)) { await ddb.send(new DeleteItemCommand({ TableName: tables.Trade, Key: marshall({ id: t.id }) })); trades++; }
+  if (tables.LiveTrade) for await (const t of scanAll(tables.LiveTrade)) if (String(t.handle || '').startsWith(HANDLE_PREFIX) || ownedByBot(t.owner)) { await ddb.send(new DeleteItemCommand({ TableName: tables.LiveTrade, Key: marshall({ id: t.id }) })); live++; }
   let users = 0;
   for (const b of bots) { try { await cog.send(new AdminDeleteUserCommand({ UserPoolId: USER_POOL, Username: b.email })); users++; } catch { /* gone */ } }
-  console.log(`  deleted ${compIds.size} contests · ${entries} entries · ${profiles} profiles · ${trades} trades · ${users} users`);
+  console.log(`  deleted ${compIds.size} contests · ${entries} entries · ${profiles} profiles · ${trades} trades · ${live} live-feed rows · ${users} users`);
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
 async function main() {
   console.log(`Stress-multi → ${USERS} users · 2 XP contests · ${MINUTES} min${DRY ? '  (dry-run)' : ''}`);
   const tables = await findTables();
+  liveTradeTable = tables.LiveTrade ?? null;
   for (const m of ['Competition', 'CompetitionEntry', 'UserProfile', 'Trade']) if (!tables[m]) throw new Error(`table for ${m} not found — deploy the backend first`);
   if (CLEAN) { await cleanup(tables); return; }
 
