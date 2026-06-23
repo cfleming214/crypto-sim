@@ -83,6 +83,7 @@
     "diag:payouts": "node scripts/diag-payouts.mjs",
     "topup:test": "node scripts/stripe-topup.mjs",
     "loadtest:trades": "node scripts/loadtest-trades.mjs",
+    "stress:multi": "node scripts/stress-multi-contest.mjs",
     "stress:contest": "node scripts/stress-test-contest.mjs"
   },
   "private": true
