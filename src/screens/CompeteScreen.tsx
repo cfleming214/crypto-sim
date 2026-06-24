@@ -254,11 +254,12 @@ export function CompeteScreen() {
   // every 20s so it feels live; the time-ago labels also re-render on the 1s tick.
   const [liveTrades, setLiveTrades] = useState<LiveTradeRow[]>([]);
   const reloadLiveTrades = useCallback(() => { fetchLiveTrades(25).then(setLiveTrades).catch(() => {}); }, []);
-  useFocusEffect(reloadLiveTrades);
-  useEffect(() => {
-    const id = setInterval(() => fetchLiveTrades(25).then(setLiveTrades).catch(() => {}), 20_000);
+  // Poll the live-trade feed every 2s, but only while this screen is focused.
+  useFocusEffect(useCallback(() => {
+    reloadLiveTrades();
+    const id = setInterval(reloadLiveTrades, 2_000);
     return () => clearInterval(id);
-  }, []);
+  }, [reloadLiveTrades]));
 
   const handleClaimPrize = async (p: UnclaimedPrize) => {
     if (claimingId) return;
