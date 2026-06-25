@@ -30,7 +30,7 @@ export interface LiveTradeRow {
 }
 
 const FEED = 'global';
-const TTL_DAYS = 2;
+const TTL_DAYS = 30; // keep the feed populated on low-traffic days (was 2)
 
 // Broadcast one executed trade to the global feed. No-op for reward/cash sentinel
 // trades and when the user is hidden from the leaderboard (privacy opt-out). Best

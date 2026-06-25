@@ -831,13 +831,20 @@ export function CompeteScreen() {
         );
       })()}
 
-      {/* Live trades — the last 25 trades executed across all players */}
-      {liveTrades.length > 0 && (
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.up }} />
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Live trades</Text>
-          </View>
+      {/* Live trades — the last 25 trades executed across all players. Always
+          rendered so the feature never silently vanishes when the feed is empty. */}
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.up }} />
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Live trades</Text>
+        </View>
+        {liveTrades.length === 0 ? (
+          <Card variant="tinted">
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              No trades yet — be the first to trade and you'll show up here.
+            </Text>
+          </Card>
+        ) : (
           <Card variant="noPad">
             <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
               {liveTrades.map((t, i) => {
@@ -867,8 +874,8 @@ export function CompeteScreen() {
               })}
             </ScrollView>
           </Card>
-        </View>
-      )}
+        )}
+      </View>
 
       {/* Top traders entry point — previews the leaderboard's top 3 */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>

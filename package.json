@@ -73,6 +73,7 @@
     "test:e2e:multi-user": "node scripts/run-multi-user-e2e.mjs --users 5 --cleanup",
     "test:e2e:cleanup": "node scripts/cleanup-test-data.mjs",
     "test:e2e:lint": "node scripts/lint-e2e.mjs",
+    "check:amplify-outputs": "node scripts/check-amplify-outputs.mjs",
     "fetch:replay": "node scripts/fetch-replay-data.mjs",
     "seed:replays": "node scripts/seed-replay-contests.mjs",
     "seed:tokens": "node scripts/seed-tokens.mjs",
