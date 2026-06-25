@@ -109,8 +109,6 @@ async function mapLimit(items, limit, fn) {
   return out;
 }
 
-let liveTradeTable = null; // set in main() — the global "Live trades" feed table
-
 async function findTables() {
   const want = ['Competition', 'FinishedCompetition', 'CompetitionEntry', 'UserProfile', 'Trade', 'LiveTrade', 'Token'];
   const out = {};
@@ -187,6 +185,7 @@ const M_UPDATE_PROFILE = `mutation P($input: UpdateUserProfileInput!) { updateUs
 const M_CREATE_ENTRY = `mutation E($input: CreateCompetitionEntryInput!) { createCompetitionEntry(input: $input) { id } }`;
 const M_UPDATE_ENTRY = `mutation E($input: UpdateCompetitionEntryInput!) { updateCompetitionEntry(input: $input) { id } }`;
 const M_CREATE_TRADE = `mutation T($input: CreateTradeInput!) { createTrade(input: $input) { id } }`;
+const M_CREATE_LIVE_TRADE = `mutation L($input: CreateLiveTradeInput!) { createLiveTrade(input: $input) { id } }`;
 
 // ── coins ─────────────────────────────────────────────────────────────────────
 async function loadCoins(tokenTable) {
@@ -286,20 +285,19 @@ function applyRebalance(p, coins) {
 const holdingsJson = (p) => JSON.stringify(p.holdings.map((h) => ({ symbol: h.symbol, units: round6(h.units), avgCost: round2(h.avgCost) })));
 
 // Mirror each executed trade into the global "Live trades" feed (the Compete
-// card reads the LiveTrade table). The app does this via recordLiveTrade(); the
-// bots write the rows directly. Best-effort — never fails the action.
+// card reads liveTradesByFeed). Goes through the SAME path the app uses —
+// the createLiveTrade AppSync mutation with the bot's JWT (owner-auth), exactly
+// like recordLiveTrade() — so it load-tests the real resolver, not a raw DDB
+// write. feed:'global' is what the Compete card queries. Best-effort.
 async function writeLiveTrades(s, fresh) {
-  if (!liveTradeTable) return;
   const ttl = Math.floor(Date.now() / 1000) + 2 * 86400;
   for (const tr of fresh) {
-    const iso = new Date(tr.t).toISOString();
     try {
-      await ddb.send(new PutItemCommand({ TableName: liveTradeTable, Item: marshall({
-        id: randomUUID(), __typename: 'LiveTrade', owner: s.bot.owner, feed: 'global',
-        handle: s.bot.handle, symbol: tr.symbol, side: tr.side, amountUsd: tr.amount,
-        units: tr.units, price: tr.price, avatarColor: s.bot.color,
-        tradedAt: iso, expiresAt: ttl, createdAt: iso, updatedAt: iso,
-      }, { removeUndefinedValues: true }) }));
+      await gqlRetry(s, M_CREATE_LIVE_TRADE, { input: {
+        feed: 'global', handle: s.bot.handle, symbol: tr.symbol, side: tr.side,
+        amountUsd: tr.amount, units: tr.units, price: tr.price, avatarColor: s.bot.color,
+        tradedAt: new Date(tr.t).toISOString(), expiresAt: ttl,
+      } });
     } catch { /* feed write is best-effort */ }
   }
 }
@@ -387,7 +385,6 @@ async function cleanup(tables) {
 async function main() {
   console.log(`Stress-multi → ${USERS} users · 2 XP contests · ${MINUTES} min${DRY ? '  (dry-run)' : ''}`);
   const tables = await findTables();
-  liveTradeTable = tables.LiveTrade ?? null;
   for (const m of ['Competition', 'CompetitionEntry', 'UserProfile', 'Trade']) if (!tables[m]) throw new Error(`table for ${m} not found — deploy the backend first`);
   if (CLEAN) { await cleanup(tables); return; }
 
