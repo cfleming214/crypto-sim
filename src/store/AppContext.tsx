@@ -221,6 +221,7 @@ const INITIAL_STATE: AppState = {
   duelsCreated: 0,
   quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
   season: { id: null, baselineXp: 0, claimedTiers: [] },
+  passes: { balance: 0, lastWeeklyGrantKey: null },
   cosmetics: { titles: [], frames: [], equippedTitle: null, equippedFrame: null },
   activePrediction: null,
   blockedUsers: [],
@@ -291,6 +292,10 @@ type Action =
   | { type: 'CLAIM_QUEST'; questId: string; xp: number }
   | { type: 'CLAIM_QUEST_CHEST'; xp: number; cash: number }
   | { type: 'ROLL_SEASON'; id: number; baselineXp: number }
+  | { type: 'GRANT_WEEKLY_PASSES'; weekKey: string; amount: number }
+  | { type: 'ADD_PASS'; amount: number }
+  | { type: 'SPEND_PASS' }
+  | { type: 'GRANT_BONUS_CASH'; amount: number; xp?: number }
   | { type: 'CLAIM_SEASON_TIER'; tier: number; kind: 'xp' | 'cash' | 'title' | 'frame'; value: number | string }
   | { type: 'EQUIP_COSMETIC'; slot: 'title' | 'frame'; id: string | null }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
@@ -298,7 +303,11 @@ type Action =
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
   | { type: 'HYDRATE_DISMISSED_NUDGES'; ids: string[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests']; season?: AppState['season']; cosmetics?: AppState['cosmetics'] } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests']; season?: AppState['season']; cosmetics?: AppState['cosmetics']; passes?: AppState['passes'] } };
+
+// Exposed so feature modules (e.g. the rewarded-reward registry) can type a
+// dispatch parameter without re-declaring the action union.
+export type AppDispatch = React.Dispatch<Action>;
 
 function tickPrices(coins: Coin[]): Coin[] {
   return coins.map(coin => {
@@ -976,6 +985,7 @@ function reducer(state: AppState, action: Action): AppState {
         quests: action.data.quests ?? state.quests,
         season: action.data.season ?? state.season,
         cosmetics: action.data.cosmetics ?? state.cosmetics,
+        passes: action.data.passes ?? state.passes,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -1127,6 +1137,40 @@ function reducer(state: AppState, action: Action): AppState {
       // Cosmetics are intentionally preserved. No-op if already on this season.
       if (state.season.id === action.id) return state;
       return { ...state, season: { id: action.id, baselineXp: action.baselineXp, claimedTiers: [] } };
+    case 'GRANT_WEEKLY_PASSES':
+      // Free weekly Lane-A pass grant — lands once per week (idempotent on weekKey).
+      if (state.passes.lastWeeklyGrantKey === action.weekKey) return state;
+      return { ...state, passes: { balance: state.passes.balance + action.amount, lastWeeklyGrantKey: action.weekKey } };
+    case 'ADD_PASS':
+      // Earned by watching a rewarded ad (never purchased).
+      return { ...state, passes: { ...state.passes, balance: state.passes.balance + action.amount } };
+    case 'SPEND_PASS':
+      // Consumed when joining a Lane-A contest. No-op if empty (caller gates first).
+      if (state.passes.balance <= 0) return state;
+      return { ...state, passes: { ...state.passes, balance: state.passes.balance - 1 } };
+    case 'GRANT_BONUS_CASH': {
+      // Virtual play-money top-up from a rewarded ad. Same sentinel-trade pattern
+      // as the daily reward; main portfolio only (contests have their own bankroll).
+      if (state.activePortfolioId !== 'main') return state;
+      if (!(action.amount > 0)) return state;
+      const bonusTrade: Trade = {
+        id: `RAD-${Date.now()}`,
+        symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.amount,
+        units: 0, price: 0, timestamp: Date.now(), xpEarned: action.xp ?? 0, slippage: 0, kind: 'reward',
+      };
+      const newCash = state.cash + action.amount;
+      const holdingsValue = state.holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+      return {
+        ...state,
+        cash: newCash,
+        bankroll: newCash + holdingsValue,
+        trades: [bonusTrade, ...state.trades],
+        user: action.xp ? { ...state.user, xp: state.user.xp + action.xp } : state.user,
+      };
+    }
     case 'CLAIM_SEASON_TIER': {
       if (state.season.claimedTiers.includes(action.tier)) return state;
       const season = { ...state.season, claimedTiers: [...state.season.claimedTiers, action.tier] };
@@ -1452,6 +1496,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // next LOAD_PROFILE — so quests/season tiers were claimable again every
     // session. Rolls persist the new day/season baseline too.
     'CLAIM_QUEST', 'CLAIM_QUEST_CHEST', 'CLAIM_SEASON_TIER', 'ROLL_QUEST_DAY', 'ROLL_SEASON',
+    // Contest-pass economy (Lane A): weekly grant, rewarded-ad earns, spends on
+    // join, and rewarded virtual-cash top-ups all persist like the rest.
+    'GRANT_WEEKLY_PASSES', 'ADD_PASS', 'SPEND_PASS', 'GRANT_BONUS_CASH',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1882,6 +1929,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               quests: g.quests && typeof g.quests === 'object' ? g.quests : undefined,
               season: g.season && typeof g.season === 'object' ? g.season : undefined,
               cosmetics: g.cosmetics && typeof g.cosmetics === 'object' ? g.cosmetics : undefined,
+              passes: g.passes && typeof g.passes === 'object' ? g.passes : undefined,
             },
           });
         }
@@ -1909,7 +1957,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       && !state.quests.chestClaimed
       && state.season.claimedTiers.length === 0
       && state.cosmetics.titles.length === 0
-      && state.cosmetics.frames.length === 0;
+      && state.cosmetics.frames.length === 0
+      && state.passes.balance === 0
+      && state.passes.lastWeeklyGrantKey === null;
     if (empty) return;
     AsyncStorage.setItem(
       GAMIFICATION_KEY,
@@ -1927,9 +1977,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         quests: state.quests,
         season: state.season,
         cosmetics: state.cosmetics,
+        passes: state.passes,
       }),
     ).catch(() => {});
-  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated, state.quests, state.season, state.cosmetics]);
+  }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated, state.quests, state.season, state.cosmetics, state.passes]);
 
   // Tier sync. Lifetime XP maps directly onto a fixed 10-level ladder (see
   // assignLeague), so whenever XP changes — or the stored tier/division is stale

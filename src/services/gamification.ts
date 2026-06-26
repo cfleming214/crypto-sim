@@ -21,6 +21,15 @@ export function todayKey(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+// UTC week key — whole 7-day periods since the Unix epoch ("W2901"). Drives the
+// free weekly contest-pass grant: exactly once per week, timezone-independent.
+export function weekKey(now: number): string {
+  return `W${Math.floor(now / (7 * DAY_MS))}`;
+}
+
+// Free Lane-A contest passes granted at the start of each week.
+export const WEEKLY_PASS_GRANT = 1;
+
 // Difference in whole UTC days between two day-keys (b - a). Both are
 // "YYYY-MM-DD". Returns a signed integer.
 function dayDiff(a: string, b: string): number {

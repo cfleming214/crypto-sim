@@ -12,6 +12,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { REPLAY_ERAS, type ReplayEraId } from '../data/replayHistory';
 import { STARTING_CASH } from '../constants/featureFlags';
+import { showInterstitial } from '../lib/adManager';
 import { useApp } from '../store/AppContext';
 import { fetchReplayContestScenario, submitReplayScore, fetchReplayLeaderboard } from '../services/replayService';
 import { loadReplaySessions, saveReplaySession, type ReplaySession, type ReplaySessionTrade } from '../services/replayHistoryStore';
@@ -147,6 +148,16 @@ export function ReplayScreen() {
     if (days === 0 || day < days) return;
     persistRun();
   }, [activeEraId, day, days, contestId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Replay-end interstitial — a natural transition (the playthrough finished).
+  // Replays are always Lane A (virtual), so no money-surface concern; fire once.
+  const replayEndFiredRef = useRef(false);
+  useEffect(() => {
+    if (days > 0 && day >= days && !replayEndFiredRef.current) {
+      replayEndFiredRef.current = true;
+      showInterstitial('replayEnd', { lane: 'A', surface: 'replay-end' });
+    }
+  }, [day, days]);
 
   // Playback: advance one step per tick at the chosen speed.
   useEffect(() => {

@@ -287,6 +287,15 @@ export interface AppState {
     equippedTitle: string | null;
     equippedFrame: string | null;
   };
+  // Lane-A (virtual) contest entry passes. `balance` is spent to join a virtual
+  // contest; topped up by a free weekly grant and by watching rewarded ads (never
+  // bought — no IAP). `lastWeeklyGrantKey` is the weekKey() of the last free grant
+  // so it lands once per week. Cash (Lane B) contests are NEVER gated on passes.
+  // Persisted in the gamification.v1 blob.
+  passes: {
+    balance: number;
+    lastWeeklyGrantKey: string | null;
+  };
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

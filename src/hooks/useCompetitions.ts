@@ -10,6 +10,9 @@ import {
 } from '../services/competitionService';
 import type { Competition } from '../store/types';
 import { STARTING_CASH } from '../constants/featureFlags';
+import { requiresPassToJoin } from '../lib/contestLane';
+
+export type JoinResult = { ok: boolean; reason?: 'ended' | 'needs-pass' };
 
 export function useCompetitions() {
   const { state, dispatch } = useApp();
@@ -35,12 +38,19 @@ export function useCompetitions() {
     [state.competitions, state.finishedCompetitions],
   );
 
-  const join = useCallback(async (competitionId: string) => {
+  const join = useCallback(async (competitionId: string): Promise<JoinResult> => {
     // Defensive backstop: never enroll into an ended contest, even if a stale
     // screen slipped past the UI guards (e.g. it ended between render and tap).
     const comp = state.competitions.find(c => c.id === competitionId)
       ?? state.finishedCompetitions.find(c => c.id === competitionId);
-    if (comp && (comp.status === 'finished' || Date.now() >= comp.endAt)) return;
+    if (comp && (comp.status === 'finished' || Date.now() >= comp.endAt)) return { ok: false, reason: 'ended' };
+    // Lane A (virtual) contests cost an entry pass; Lane B (cash) entry is ALWAYS
+    // free — zero consideration, the compliance firewall. Spend only after the
+    // other guards, and let the caller offer a rewarded-ad pass if the user's out.
+    if (requiresPassToJoin(comp)) {
+      if (state.passes.balance <= 0) return { ok: false, reason: 'needs-pass' };
+      dispatch({ type: 'SPEND_PASS' });
+    }
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: competitionId });
     dispatch({ type: 'ADD_XP', amount: 10 });
     // Every contest starts with a fresh $100K portfolio (JOIN_TOURNAMENT spawns
@@ -48,7 +58,8 @@ export function useCompetitions() {
     // state.bankroll, which is the active (usually main) portfolio's balance and
     // would wrongly seed the leaderboard with the user's personal balance.
     await joinCloud(competitionId, state.user.handle, STARTING_CASH);
-  }, [state.competitions, state.finishedCompetitions, state.user.handle, dispatch]);
+    return { ok: true };
+  }, [state.competitions, state.finishedCompetitions, state.passes.balance, state.user.handle, dispatch]);
 
   const leave = useCallback(async (competitionId: string, entryId?: string) => {
     dispatch({ type: 'LEAVE_TOURNAMENT', tournamentId: competitionId });
@@ -93,6 +104,7 @@ export function useCompetitions() {
     finishedCompetitions: state.finishedCompetitions,
     joinedTournamentIds: state.joinedTournamentIds,
     leaderboard: state.leaderboard,
+    passes: state.passes,
     isJoined,
     getLive,
     getOpen,
