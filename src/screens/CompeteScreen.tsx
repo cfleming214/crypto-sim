@@ -495,7 +495,7 @@ export function CompeteScreen() {
     if (res.reason === 'needs-pass') {
       Alert.alert(
         'Out of contest passes',
-        `You get ${1} free pass each week. Watch a short video to earn another and join ${comp.name} now?`,
+        `You get free passes each week. Watch a short video to earn another and join ${comp.name} now?`,
         [
           { text: 'Not now', style: 'cancel' },
           {
@@ -712,7 +712,7 @@ export function CompeteScreen() {
               <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>
                 {passes.balance} contest {passes.balance === 1 ? 'pass' : 'passes'}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>1 free each week · watch to earn more</Text>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>Free passes weekly · watch to earn more</Text>
             </View>
           </View>
           <Button

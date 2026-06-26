@@ -205,7 +205,7 @@ export function TournamentDetailScreen() {
     if (res.reason === 'needs-pass') {
       Alert.alert(
         'Out of contest passes',
-        `You get 1 free pass each week. Watch a short video to earn another and join ${competition.name} now?`,
+        `You get free passes each week. Watch a short video to earn another and join ${competition.name} now?`,
         [
           { text: 'Not now', style: 'cancel' },
           {

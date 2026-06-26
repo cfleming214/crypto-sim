@@ -222,6 +222,7 @@ const INITIAL_STATE: AppState = {
   quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
   season: { id: null, baselineXp: 0, claimedTiers: [] },
   passes: { balance: 0, lastWeeklyGrantKey: null },
+  isSubscriber: false,
   cosmetics: { titles: [], frames: [], equippedTitle: null, equippedFrame: null },
   activePrediction: null,
   blockedUsers: [],

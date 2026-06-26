@@ -296,6 +296,11 @@ export interface AppState {
     balance: number;
     lastWeeklyGrantKey: string | null;
   };
+  // Premium subscriber entitlement. Drives the larger weekly pass grant (and, in
+  // future, no-ads + the $1M balance perk). Source of truth will be the store /
+  // RevenueCat entitlement once IAP ships (future scope) — never trust a local
+  // value for anything that costs real money. Defaults false; no setter yet.
+  isSubscriber: boolean;
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

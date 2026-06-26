@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useApp } from '../store/AppContext';
-import { todayKey, nextClaimAt, seasonId, weekKey, WEEKLY_PASS_GRANT } from '../services/gamification';
+import { todayKey, nextClaimAt, seasonId, weekKey, weeklyPassGrant } from '../services/gamification';
 import { scheduleAt } from '../lib/notifications';
 
 // Rolls the Daily Quests over at UTC midnight (re-snapshots baselines, clears
@@ -19,14 +19,17 @@ export function QuestWatcher() {
       if (state.quests.dayKey !== k) dispatch({ type: 'ROLL_QUEST_DAY', dayKey: k });
       const sid = seasonId(now);
       if (state.season.id !== sid) dispatch({ type: 'ROLL_SEASON', id: sid, baselineXp: state.user.xp });
-      // Free weekly Lane-A contest pass — lands once per week (idempotent on weekKey).
+      // Free weekly Lane-A contest passes — lands once per week (idempotent on
+      // weekKey). Subscribers get the larger grant (20 vs 5).
       const wk = weekKey(now);
-      if (state.passes.lastWeeklyGrantKey !== wk) dispatch({ type: 'GRANT_WEEKLY_PASSES', weekKey: wk, amount: WEEKLY_PASS_GRANT });
+      if (state.passes.lastWeeklyGrantKey !== wk) {
+        dispatch({ type: 'GRANT_WEEKLY_PASSES', weekKey: wk, amount: weeklyPassGrant(state.isSubscriber) });
+      }
     };
     check();
     const id = setInterval(check, 60_000);
     return () => clearInterval(id);
-  }, [state.quests.dayKey, state.season.id, state.user.xp, state.passes.lastWeeklyGrantKey, dispatch]);
+  }, [state.quests.dayKey, state.season.id, state.user.xp, state.passes.lastWeeklyGrantKey, state.isSubscriber, dispatch]);
 
   // (Re)schedule the next-day reminder whenever the quest day changes.
   useEffect(() => {

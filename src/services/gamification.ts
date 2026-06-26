@@ -27,8 +27,14 @@ export function weekKey(now: number): string {
   return `W${Math.floor(now / (7 * DAY_MS))}`;
 }
 
-// Free Lane-A contest passes granted at the start of each week.
-export const WEEKLY_PASS_GRANT = 1;
+// Free Lane-A contest passes granted at the start of each week. Subscribers get a
+// larger grant; the subscription that sets isSubscriber is future-scope IAP, so
+// today everyone effectively gets the free tier.
+export const WEEKLY_PASS_GRANT_FREE = 5;
+export const WEEKLY_PASS_GRANT_SUBSCRIBER = 20;
+export function weeklyPassGrant(isSubscriber: boolean): number {
+  return isSubscriber ? WEEKLY_PASS_GRANT_SUBSCRIBER : WEEKLY_PASS_GRANT_FREE;
+}
 
 // Difference in whole UTC days between two day-keys (b - a). Both are
 // "YYYY-MM-DD". Returns a signed integer.
