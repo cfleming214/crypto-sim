@@ -129,32 +129,37 @@ export async function showInterstitial(placement: AdPlacement, ctx: AdContext): 
   });
 }
 
-// Show a rewarded ad. Resolves { earned: true } only if the user watched to the
-// reward callback. Caller grants the (always-virtual) reward on earned === true.
-export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean }> {
+// Show a rewarded ad. Returns:
+//   earned — user watched to the reward callback (grant the reward).
+//   shown  — an ad actually displayed. When false, no ad was available (no-fill,
+//            error, blocked, or native module absent) — the user never got a
+//            chance to watch, which callers can treat as a graceful fallback.
+// (earned=false, shown=true) means the user dismissed the ad early — a real decline.
+export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean; shown: boolean }> {
   if (!canShowAd(placement, ctx)) {
     console.warn(`[ads] rewarded blocked by canShowAd: ${placement} lane=${ctx.lane} surface=${ctx.surface}`);
-    return { earned: false };
+    return { earned: false, shown: false };
   }
   const sdk = await loadSdk();
   if (!sdk) {
     console.warn('[ads] rewarded: native module unavailable (Expo Go / web)');
-    return { earned: false };
+    return { earned: false, shown: false };
   }
   const { RewardedAd, RewardedAdEventType, AdEventType, TestIds } = sdk;
   const unitId = AD_UNITS.rewarded ?? TestIds.REWARDED;
   console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
 
-  return await new Promise<{ earned: boolean }>((resolve) => {
+  return await new Promise<{ earned: boolean; shown: boolean }>((resolve) => {
     let earned = false;
+    let shown = false;
     let settled = false;
-    const finish = () => { if (!settled) { settled = true; resolve({ earned }); } };
+    const finish = () => { if (!settled) { settled = true; resolve({ earned, shown }); } };
     try {
       const ad = RewardedAd.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: false });
       const subs: Array<() => void> = [];
       const cleanup = () => subs.forEach((u) => { try { u(); } catch { /* noop */ } });
       subs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        try { ad.show(); } catch (e) { console.warn('[ads] rewarded show() threw', e); cleanup(); finish(); }
+        try { ad.show(); shown = true; } catch (e) { console.warn('[ads] rewarded show() threw', e); cleanup(); finish(); }
       }));
       subs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => { earned = true; }));
       subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));

@@ -381,8 +381,9 @@ export function ProfileScreen() {
                   {
                     text: 'Watch & reset',
                     onPress: async () => {
-                      const earned = await watchForReward('rewardedReset', dispatch);
-                      if (!earned) Alert.alert('Not reset', "The video didn't finish, so nothing was reset.");
+                      // Graceful fallback: reset even if no ad is available to show.
+                      const { granted } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
+                      if (!granted) Alert.alert('Not reset', "The video didn't finish, so nothing was reset.");
                     },
                   },
                 ]

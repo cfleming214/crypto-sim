@@ -501,9 +501,13 @@ export function CompeteScreen() {
           {
             text: 'Watch & earn a pass',
             onPress: async () => {
-              const earned = await watchForReward('rewardedPass', dispatch);
-              if (earned) finalizeJoin(comp);
-              else Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
+              const { granted, shown } = await watchForReward('rewardedPass', dispatch);
+              if (granted) finalizeJoin(comp);
+              else Alert.alert(
+                shown ? 'No pass earned' : 'No ad available',
+                shown ? "The video didn't finish, so no pass was added."
+                      : 'No rewarded ad is available right now — try again soon. You still get free passes weekly.',
+              );
             },
           },
         ],
@@ -719,8 +723,12 @@ export function CompeteScreen() {
             size="sm"
             variant="surface"
             onPress={async () => {
-              const earned = await watchForReward('rewardedPass', dispatch);
-              if (!earned) Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
+              const { granted, shown } = await watchForReward('rewardedPass', dispatch);
+              if (!granted) Alert.alert(
+                shown ? 'No pass earned' : 'No ad available',
+                shown ? "The video didn't finish, so no pass was added."
+                      : 'No rewarded ad is available right now — try again soon. You still get free passes weekly.',
+              );
             }}
           >
             Watch +1

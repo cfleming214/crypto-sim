@@ -432,9 +432,11 @@ export function PortfolioScreen() {
         {
           text: 'Watch & reset',
           onPress: async () => {
-            // Rewarded ad grants the reset (registry dispatches RESET_DEMO on earn).
-            const earned = await watchForReward('rewardedReset', dispatch);
-            if (!earned) Alert.alert('Not reset', "The video didn't finish, so your portfolio wasn't reset.");
+            // Rewarded ad grants the reset (registry dispatches RESET_DEMO). Graceful
+            // fallback: if AdMob has no ad to show, reset anyway so the user isn't
+            // blocked; only withhold when an ad was shown but dismissed early.
+            const { granted } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
+            if (!granted) Alert.alert('Not reset', "The video didn't finish, so your portfolio wasn't reset.");
           },
         },
       ],

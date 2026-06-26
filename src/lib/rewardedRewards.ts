@@ -44,17 +44,26 @@ export const REWARDED_REWARDS: Partial<Record<AdPlacement, RewardedReward>> = {
   // never anything cash-linked.
 };
 
-// Show a rewarded ad and, only if the user earned it, grant the virtual reward.
-// Lane is always 'A' — rewarded ads never run in Lane B (adManager enforces this
-// too). Returns true iff the reward was granted.
+// Show a rewarded ad and grant the virtual reward. Lane is always 'A' — rewarded
+// ads never run in Lane B (adManager enforces this too).
+//
+// Result:
+//   granted — the reward was given (earned the ad, OR graceful fallback below).
+//   shown   — an ad actually displayed.
+//
+// graceful fallback (opts.grantOnUnavailable): when AdMob has no ad to show
+// (no-fill / error / native module absent — i.e. shown === false), grant anyway
+// so the user isn't blocked by something outside their control. We still withhold
+// the reward when an ad WAS shown but the user dismissed it early (a real decline).
 export async function watchForReward(
   placement: AdPlacement,
   dispatch: AppDispatch,
-  surface: string = 'rewarded',
-): Promise<boolean> {
+  opts: { surface?: string; grantOnUnavailable?: boolean } = {},
+): Promise<{ granted: boolean; shown: boolean }> {
   const reward = REWARDED_REWARDS[placement];
-  if (!reward) return false;
-  const { earned } = await showRewarded(placement, { lane: 'A', surface });
-  if (earned) reward.grant(dispatch);
-  return earned;
+  if (!reward) return { granted: false, shown: false };
+  const { earned, shown } = await showRewarded(placement, { lane: 'A', surface: opts.surface ?? 'rewarded' });
+  const granted = earned || (!!opts.grantOnUnavailable && !shown);
+  if (granted) reward.grant(dispatch);
+  return { granted, shown };
 }
