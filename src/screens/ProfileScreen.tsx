@@ -29,6 +29,7 @@ import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
+import { watchForReward } from '../lib/rewardedRewards';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -374,10 +375,16 @@ export function ProfileScreen() {
               text: `Reset demo ($${(STARTING_CASH / 1000).toFixed(0)}K)`,
               onPress: () => Alert.alert(
                 'Reset demo?',
-                `Your bankroll and trades will be reset to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`,
+                `Watch a short video to reset — your bankroll and trades go back to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`,
                 [
                   { text: 'Cancel', style: 'cancel' },
-                  { text: 'Reset', style: 'destructive', onPress: () => dispatch({ type: 'RESET_DEMO' }) },
+                  {
+                    text: 'Watch & reset',
+                    onPress: async () => {
+                      const earned = await watchForReward('rewardedReset', dispatch);
+                      if (!earned) Alert.alert('Not reset', "The video didn't finish, so nothing was reset.");
+                    },
+                  },
                 ]
               ),
             },

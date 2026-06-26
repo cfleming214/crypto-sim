@@ -1412,6 +1412,10 @@ function reducer(state: AppState, action: Action): AppState {
     case 'DISMISS_NUDGE':
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
     case 'RESET_DEMO':
+      // Offline/main practice portfolio ONLY. The top-level cash/holdings/trades
+      // are whatever portfolio is active, so guard against resetting a contest or
+      // replay portfolio by accident — those are never resettable.
+      if (state.activePortfolioId !== 'main') return state;
       // Reset ONLY the practice TRADING portfolio: fresh $100K, no holdings,
       // trades, or position orders. It must NEVER wipe the account — so online
       // stats (xp/league/division/streak), achievements, joined contests +

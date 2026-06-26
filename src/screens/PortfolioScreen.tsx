@@ -18,6 +18,7 @@ import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
+import { watchForReward } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
 import { loadSnapshots, backfillGap, despikeSeries, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
@@ -421,12 +422,21 @@ export function PortfolioScreen() {
   };
 
   const handleResetPortfolio = () => {
+    // Offline/main practice portfolio only — never a contest/replay portfolio.
+    if (state.activePortfolioId !== 'main') return;
     Alert.alert(
       'Reset portfolio?',
-      `This clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`,
+      `Watch a short video to reset — this clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: () => dispatch({ type: 'RESET_DEMO' }) },
+        {
+          text: 'Watch & reset',
+          onPress: async () => {
+            // Rewarded ad grants the reset (registry dispatches RESET_DEMO on earn).
+            const earned = await watchForReward('rewardedReset', dispatch);
+            if (!earned) Alert.alert('Not reset', "The video didn't finish, so your portfolio wasn't reset.");
+          },
+        },
       ],
     );
   };
