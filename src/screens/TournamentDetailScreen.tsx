@@ -211,13 +211,9 @@ export function TournamentDetailScreen() {
           {
             text: 'Watch & earn a pass',
             onPress: async () => {
-              const { granted, shown } = await watchForReward('rewardedPass', dispatch);
+              const { granted } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
               if (granted) doJoin();
-              else Alert.alert(
-                shown ? 'No pass earned' : 'No ad available',
-                shown ? "The video didn't finish, so no pass was added."
-                      : 'No rewarded ad is available right now — try again soon. You still get free passes weekly.',
-              );
+              else Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
             },
           },
         ],
