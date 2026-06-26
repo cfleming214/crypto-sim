@@ -2,7 +2,7 @@
   "expo": {
     "name": "CryptoComp",
     "slug": "cryptocomp",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "scheme": "cryptocomp",
     "orientation": "portrait",
     "icon": "./assets/app-icon-1024.png",
@@ -50,6 +50,28 @@
           "organization": "simple-design",
           "project": "javascript-react",
           "url": "https://sentry.io/"
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "userTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you.",
+          "skAdNetworkItems": [
+            "cstr6suwn9.skadnetwork",
+            "4fzdc2evr5.skadnetwork",
+            "2fnua5tdw4.skadnetwork",
+            "ydx93a7ass.skadnetwork",
+            "p78axxw29g.skadnetwork",
+            "v72qych5uu.skadnetwork"
+          ]
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
         }
       ]
     ],
