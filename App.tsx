@@ -17,6 +17,7 @@ import { PredictionWatcher } from './src/components/PredictionWatcher';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
+import { initAds } from './src/lib/ads';
 import * as Sentry from '@sentry/react-native';
 
 configureAmplify();
@@ -38,6 +39,9 @@ function App() {
   // Production-safe OTA "hot reload": pull the latest JS bundle on launch +
   // foreground (no-op in dev / Expo Go). See src/lib/otaUpdates.ts.
   React.useEffect(() => startOtaUpdates(), []);
+
+  // Boot the AdMob SDK (+ iOS ATT prompt) once at launch. No-op in Expo Go / web.
+  React.useEffect(() => { initAds(); }, []);
 
   // Load Geist (the app typeface) before first paint so text never flashes in a
   // system fallback. The faces are bundled assets, so they load near-instantly
