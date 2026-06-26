@@ -94,6 +94,13 @@ export function WithdrawScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Set up', onPress: () => nav.navigate('PayoutSetup') },
       ]);
+    } else if (res.needsW9) {
+      // IRS 1099-MISC: $600+ in annual winnings requires a W-9 before payout.
+      Alert.alert(
+        'Tax form required',
+        'Once you win $600 or more in a year, the IRS requires a W-9 on file before we can pay out. Complete your W-9 to withdraw.',
+        [{ text: 'OK' }],
+      );
     } else {
       Alert.alert('Could not withdraw', res.error ?? 'Please try again later.');
     }

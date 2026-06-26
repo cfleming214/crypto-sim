@@ -48,12 +48,39 @@ const withdrawalTable = () => {
   return t;
 };
 
+const annualWinningsTable = () => {
+  const t = process.env.ANNUAL_WINNINGS_TABLE_NAME;
+  if (!t) throw new Error('ANNUAL_WINNINGS_TABLE_NAME not set');
+  return t;
+};
+const taxFormTable = () => {
+  const t = process.env.TAX_FORM_TABLE_NAME;
+  if (!t) throw new Error('TAX_FORM_TABLE_NAME not set');
+  return t;
+};
+
 async function getStripeAccountRow(userId: string): Promise<any | null> {
   const { Item } = await ddb.send(new GetItemCommand({
     TableName: accountTable(),
     Key: marshall({ id: userId }),
   }));
   return Item ? unmarshall(Item) : null;
+}
+
+// IRS 1099-MISC: once a payee's winnings cross $600 in a calendar year, we must
+// have a W-9 on file before paying out. Returns true if the user has crossed the
+// threshold this year but has no W-9 recorded yet.
+const W9_THRESHOLD_CENTS = 60_000;
+async function needsW9(userId: string, acct: any | null): Promise<boolean> {
+  if (acct?.w9CollectedAt) return false; // already on file
+  const taxYear = new Date().getUTCFullYear();
+  const { Item } = await ddb.send(new GetItemCommand({
+    TableName: annualWinningsTable(),
+    Key: marshall({ id: `${userId}#${taxYear}` }),
+  }));
+  if (!Item) return false;
+  const row = unmarshall(Item);
+  return Boolean(row.w9Required) || Number(row.totalCents ?? 0) >= W9_THRESHOLD_CENTS;
 }
 
 // Map a Stripe account's capability state onto our coarse status string.
@@ -219,6 +246,10 @@ async function requestWithdrawal(userId: string, email?: string) {
   if (!acct?.stripeAccountId || !acct.payoutsEnabled) {
     return { ok: false, error: 'Verify your payout details with Stripe first', needsOnboarding: true };
   }
+  // Tax gate: $600+ in annual winnings requires a W-9 before any payout leaves.
+  if (await needsW9(userId, acct)) {
+    return { ok: false, error: 'A W-9 is required before withdrawing once you win $600 or more in a year.', needsW9: true };
+  }
 
   const { Items = [] } = await ddb.send(new ScanCommand({
     TableName: payoutTable(),
@@ -360,6 +391,33 @@ async function claimPayout(userId: string, payoutId: string) {
   return { ok: true, transferId: transfer.id };
 }
 
+// Record that the user's W-9 was collected (called after the real Stripe-side
+// W-9/TIN capture). Sets StripeAccount.w9CollectedAt and writes a TaxForm row —
+// this opens the withdrawal gate for $600+ winners. We store only a provider
+// reference, never the raw TIN.
+async function setW9Collected(userId: string, providerRef?: string) {
+  const now = new Date().toISOString();
+  const taxYear = new Date().getUTCFullYear();
+  await upsertStripeAccountRow(userId, { w9CollectedAt: now });
+  await ddb.send(new PutItemCommand({
+    TableName: taxFormTable(),
+    Item: marshall({
+      id: `${userId}#${taxYear}`,
+      __typename: 'TaxForm',
+      owner: userId, // bare sub — matches the StripeAccount owner-auth convention here
+      userId,
+      taxYear,
+      type: 'W9',
+      status: 'collected',
+      providerRef: providerRef ?? null,
+      capturedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }, { removeUndefinedValues: true }),
+  }));
+  return { ok: true, w9CollectedAt: now };
+}
+
 export const handler = async (event: ResolverEvent): Promise<any> => {
   const userId = event.identity?.sub;
   if (!userId) throw new Error('Unauthenticated');
@@ -382,6 +440,8 @@ export const handler = async (event: ResolverEvent): Promise<any> => {
         return await listPayoutMethods(userId);
       case 'setPayoutMethod':
         return await setPayoutMethod(userId, String(event.arguments?.externalAccountId));
+      case 'setW9Collected':
+        return await setW9Collected(userId, event.arguments?.providerRef ? String(event.arguments.providerRef) : undefined);
       default:
         throw new Error(`Unknown field: ${field}`);
     }

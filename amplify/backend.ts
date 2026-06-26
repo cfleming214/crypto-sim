@@ -169,6 +169,11 @@ closeFn.addEnvironment('FINISHED_COMPETITION_TABLE_NAME', finishedTable.tableNam
 pushDeviceTable.grantReadWriteData(closeFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 closeFn.addEnvironment('PUSH_TOKEN_TABLE_NAME', pushDeviceTable.tableName);
+// 1099 tracking: roll each prize into the winner's per-tax-year winnings total.
+const annualWinningsTable = backend.data.resources.tables['AnnualWinnings'];
+annualWinningsTable.grantReadWriteData(closeFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeFn.addEnvironment('ANNUAL_WINNINGS_TABLE_NAME', annualWinningsTable.tableName);
 
 new Rule(Stack.of(closeFn), 'CloseCompetitionRule', {
   schedule: Schedule.rate(Duration.minutes(10)),
@@ -329,6 +334,15 @@ stripeConnectFn.addEnvironment('STRIPE_ACCOUNT_TABLE_NAME', stripeAccountTable.t
 stripeConnectFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 stripeConnectFn.addEnvironment('WITHDRAWAL_REQUEST_TABLE_NAME', withdrawalReqTable.tableName);
+// W-9 gate: read the payee's annual winnings before allowing a withdrawal.
+annualWinningsTable.grantReadData(stripeConnectFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeConnectFn.addEnvironment('ANNUAL_WINNINGS_TABLE_NAME', annualWinningsTable.tableName);
+// W-9 capture: setW9Collected writes the TaxForm record + flips w9CollectedAt.
+const taxFormTable = backend.data.resources.tables['TaxForm'];
+taxFormTable.grantReadWriteData(stripeConnectFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+stripeConnectFn.addEnvironment('TAX_FORM_TABLE_NAME', taxFormTable.tableName);
 
 // --- stripeWebhook: public Function URL, syncs account + payout state ---
 const stripeWebhookFn = backend.stripeWebhook.resources.lambda;

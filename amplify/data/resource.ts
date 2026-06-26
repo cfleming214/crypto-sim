@@ -403,6 +403,10 @@ const schema = a.schema({
     // claimPrize upserts this row even before onboarding, so a winner can build a
     // balance and only needs Stripe to WITHDRAW. The client reads its own row.
     balanceCents:     a.integer(),
+    // ISO timestamp of when the user's W-9 was collected (tax form on file). The
+    // payout Lambdas require this before a transfer that would cross $600 in
+    // winnings for the calendar year (IRS 1099-MISC threshold). Null = not on file.
+    w9CollectedAt:    a.string(),
   }).authorization(allow => [allow.owner().to(['read'])]),
 
   // One row per prize owed to a winner, id "<competitionId>#<userId>". Created
@@ -457,6 +461,35 @@ const schema = a.schema({
     createdAt:        a.string().required(),
     processedAt:      a.string(),
   }).authorization(allow => [allow.owner().to(['read'])]),
+
+  // Per-user, per-tax-year cash-winnings rollup for IRS 1099-MISC reporting.
+  // id = "<userId>#<taxYear>". close-competition adds each prize's amountCents
+  // here (UpdateItem ADD) at settlement, and flips `w9Required` once the year's
+  // total crosses $600. The export-1099 script scans this for filing. Lambdas
+  // write directly via DynamoDB; the client reads its own rows (owner-auth).
+  AnnualWinnings: a.model({
+    userId:     a.string().required(),  // Cognito sub
+    taxYear:    a.integer().required(),
+    totalCents: a.integer().required(), // cumulative cash winnings this tax year
+    w9Required: a.boolean(),            // true once totalCents >= $600
+    updatedAt:  a.string(),
+  })
+    .secondaryIndexes((index) => [
+      index('userId').queryField('annualWinningsByUser'),
+    ])
+    .authorization(allow => [allow.owner().to(['read'])]),
+
+  // Tax form (W-9) capture record. We do NOT store raw SSN/TIN here — collection
+  // happens via Stripe (tax/identity) and we keep only a reference + status. One
+  // row per user per tax year. `providerRef` points at the Stripe-side record.
+  TaxForm: a.model({
+    userId:      a.string().required(),  // Cognito sub
+    taxYear:     a.integer().required(),
+    type:        a.string().required(),  // 'W9'
+    status:      a.string().required(),  // 'pending' | 'collected'
+    providerRef: a.string(),             // Stripe tax-form / file reference (never the raw TIN)
+    capturedAt:  a.string(),
+  }).authorization(allow => [allow.owner()]),
 
   // Global "live trades" ticker — a public feed of recent trades across all
   // users, shown on the Compete tab. Each user writes their own rows (owner
@@ -527,6 +560,16 @@ const schema = a.schema({
   // Set the chosen external account as the default payout method.
   setPayoutMethod: a.mutation()
     .arguments({ externalAccountId: a.string().required() })
+    .returns(a.json())
+    .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  // Record that the user's W-9 was collected (called after the real W-9/TIN
+  // capture completes via Stripe). Sets StripeAccount.w9CollectedAt and writes a
+  // TaxForm row, which opens the withdrawal gate for $600+ winners. `providerRef`
+  // points at the Stripe-side record — never the raw TIN.
+  setW9Collected: a.mutation()
+    .arguments({ providerRef: a.string() })
     .returns(a.json())
     .handler(a.handler.function(stripeConnect))
     .authorization(allow => [allow.authenticated()]),
