@@ -928,8 +928,8 @@ export function CompeteScreen() {
         )}
       </View>
 
-      {/* Test AdMob banner (TestIds.BANNER) — placed here to verify ads render in a
-          dev build. Move/remove freely; it no-ops in Expo Go / web. */}
+      {/* AdMob banner — real unit in production (AD_UNITS.banner), test ad in dev.
+          No-ops in Expo Go / web. */}
       <AdBanner />
 
       {/* Top traders entry point — previews the leaderboard's top 3 */}
