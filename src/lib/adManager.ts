@@ -116,9 +116,14 @@ export async function showInterstitial(placement: AdPlacement, ctx: AdContext): 
         try { ad.show(); } catch { cleanup(); finish(); }
       }));
       subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
-      subs.push(ad.addAdEventListener(AdEventType.ERROR, () => { cleanup(); finish(); }));
+      subs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+        console.warn('[ads] interstitial failed to load/show:', error?.message ?? error);
+        cleanup();
+        finish();
+      }));
       ad.load();
-    } catch {
+    } catch (e) {
+      console.warn('[ads] interstitial threw', e);
       finish();
     }
   });
@@ -127,11 +132,18 @@ export async function showInterstitial(placement: AdPlacement, ctx: AdContext): 
 // Show a rewarded ad. Resolves { earned: true } only if the user watched to the
 // reward callback. Caller grants the (always-virtual) reward on earned === true.
 export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean }> {
-  if (!canShowAd(placement, ctx)) return { earned: false };
+  if (!canShowAd(placement, ctx)) {
+    console.warn(`[ads] rewarded blocked by canShowAd: ${placement} lane=${ctx.lane} surface=${ctx.surface}`);
+    return { earned: false };
+  }
   const sdk = await loadSdk();
-  if (!sdk) return { earned: false };
+  if (!sdk) {
+    console.warn('[ads] rewarded: native module unavailable (Expo Go / web)');
+    return { earned: false };
+  }
   const { RewardedAd, RewardedAdEventType, AdEventType, TestIds } = sdk;
   const unitId = AD_UNITS.rewarded ?? TestIds.REWARDED;
+  console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
 
   return await new Promise<{ earned: boolean }>((resolve) => {
     let earned = false;
@@ -142,13 +154,18 @@ export async function showRewarded(placement: AdPlacement, ctx: AdContext): Prom
       const subs: Array<() => void> = [];
       const cleanup = () => subs.forEach((u) => { try { u(); } catch { /* noop */ } });
       subs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        try { ad.show(); } catch { cleanup(); finish(); }
+        try { ad.show(); } catch (e) { console.warn('[ads] rewarded show() threw', e); cleanup(); finish(); }
       }));
       subs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => { earned = true; }));
       subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
-      subs.push(ad.addAdEventListener(AdEventType.ERROR, () => { cleanup(); finish(); }));
+      subs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+        console.warn('[ads] rewarded failed to load/show:', error?.message ?? error);
+        cleanup();
+        finish();
+      }));
       ad.load();
-    } catch {
+    } catch (e) {
+      console.warn('[ads] rewarded threw', e);
       finish();
     }
   });
