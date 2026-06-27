@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { isAdTestMode } from '../lib/adTestMode';
 
 // AdMob ad unit IDs. Real units come from build-time env (EXPO_PUBLIC_ADMOB_*),
 // inlined by Expo and set in eas.json (production + preview env blocks). When
@@ -23,25 +24,22 @@ import { Platform } from 'react-native';
 // This file is import-safe in Expo Go / web: it only reads env strings and never
 // touches the native module.
 //
-// OTA TEST MODE: set EXPO_PUBLIC_ADMOB_TEST_MODE="true" to force Google's TEST
-// units app-wide (every format falls back to TestIds). Because it's a JS flag,
-// you can flip it WITHOUT a rebuild: change the EAS env var and run
-// `eas update --environment <env>` — the re-bundled JS carries the new value.
-// Real ads ↔ test ads with no store submission. (Test ads work fine with the real
-// App ID, so nothing native changes.)
+// TEST MODE: when isAdTestMode() is on (the OTA build flag
+// EXPO_PUBLIC_ADMOB_TEST_MODE, or the in-app dev toggle — see lib/adTestMode), the
+// unit getters return undefined so every format falls back to Google's TestIds.
+// The getters re-evaluate on each access, so flipping the in-app toggle affects
+// the NEXT ad that loads — no rebuild. Test ads work with the real App ID.
 
-export const ADMOB_TEST_MODE = process.env.EXPO_PUBLIC_ADMOB_TEST_MODE === 'true';
-
-function pick(ios?: string, android?: string): string | undefined {
-  if (ADMOB_TEST_MODE) return undefined; // force TestIds everywhere (OTA-toggleable)
+function resolve(ios?: string, android?: string): string | undefined {
+  if (isAdTestMode()) return undefined; // force TestIds everywhere
   const v = Platform.OS === 'ios' ? ios : android;
   return v && v.length > 0 ? v : undefined;
 }
 
 export const AD_UNITS = {
-  banner: pick(process.env.EXPO_PUBLIC_ADMOB_BANNER_IOS, process.env.EXPO_PUBLIC_ADMOB_BANNER_ANDROID),
-  interstitial: pick(process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID),
-  rewarded: pick(process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID),
-  rewardedInterstitial: pick(process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_ANDROID),
-  native: pick(process.env.EXPO_PUBLIC_ADMOB_NATIVE_IOS, process.env.EXPO_PUBLIC_ADMOB_NATIVE_ANDROID),
+  get banner() { return resolve(process.env.EXPO_PUBLIC_ADMOB_BANNER_IOS, process.env.EXPO_PUBLIC_ADMOB_BANNER_ANDROID); },
+  get interstitial() { return resolve(process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID); },
+  get rewarded() { return resolve(process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID); },
+  get rewardedInterstitial() { return resolve(process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_ANDROID); },
+  get native() { return resolve(process.env.EXPO_PUBLIC_ADMOB_NATIVE_IOS, process.env.EXPO_PUBLIC_ADMOB_NATIVE_ANDROID); },
 };

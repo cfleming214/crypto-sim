@@ -30,6 +30,7 @@ import { openExternal } from '../lib/linking';
 import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
+import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -388,6 +389,18 @@ export function ProfileScreen() {
                   },
                 ]
               ),
+            },
+            {
+              text: `Test ads (QA): ${isAdTestMode() ? 'ON' : 'OFF'}`,
+              onPress: () => {
+                if (isAdTestModeForcedByEnv()) {
+                  Alert.alert('Test ads forced on', "Test mode is forced by the build/OTA flag and can't be turned off in-app.");
+                  return;
+                }
+                const next = !isAdTestMode();
+                setAdTestMode(next);
+                Alert.alert(`Test ads ${next ? 'ON' : 'OFF'}`, `Newly loaded ads will use ${next ? 'TEST' : 'REAL'} units.`);
+              },
             },
             {
               text: 'Sign out',

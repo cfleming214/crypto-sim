@@ -18,6 +18,8 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
 import { initAds } from './src/lib/ads';
+import { loadAdTestMode } from './src/lib/adTestMode';
+import { AdsTestBadge } from './src/components/AdsTestBadge';
 import * as Sentry from '@sentry/react-native';
 
 configureAmplify();
@@ -42,6 +44,9 @@ function App() {
 
   // Boot the AdMob SDK (+ iOS ATT prompt) once at launch. No-op in Expo Go / web.
   React.useEffect(() => { initAds(); }, []);
+
+  // Load the persisted AdMob test-mode override (QA dev toggle).
+  React.useEffect(() => { loadAdTestMode(); }, []);
 
   // Load Geist (the app typeface) before first paint so text never flashes in a
   // system fallback. The faces are bundled assets, so they load near-instantly
@@ -82,6 +87,8 @@ function App() {
         </AuthProvider>
       </SafeAreaProvider>
       </ErrorBoundary>
+      {/* QA overlay — only visible when AdMob test mode is on. */}
+      <AdsTestBadge />
     </GestureHandlerRootView>
   );
 }
