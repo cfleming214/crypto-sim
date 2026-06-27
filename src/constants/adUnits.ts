@@ -22,8 +22,18 @@ import { Platform } from 'react-native';
 //
 // This file is import-safe in Expo Go / web: it only reads env strings and never
 // touches the native module.
+//
+// OTA TEST MODE: set EXPO_PUBLIC_ADMOB_TEST_MODE="true" to force Google's TEST
+// units app-wide (every format falls back to TestIds). Because it's a JS flag,
+// you can flip it WITHOUT a rebuild: change the EAS env var and run
+// `eas update --environment <env>` — the re-bundled JS carries the new value.
+// Real ads ↔ test ads with no store submission. (Test ads work fine with the real
+// App ID, so nothing native changes.)
+
+export const ADMOB_TEST_MODE = process.env.EXPO_PUBLIC_ADMOB_TEST_MODE === 'true';
 
 function pick(ios?: string, android?: string): string | undefined {
+  if (ADMOB_TEST_MODE) return undefined; // force TestIds everywhere (OTA-toggleable)
   const v = Platform.OS === 'ios' ? ios : android;
   return v && v.length > 0 ? v : undefined;
 }
