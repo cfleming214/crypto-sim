@@ -1496,6 +1496,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
     'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION', 'CLAIM_CONTEST_XP', 'INCREMENT_DUELS_CREATED',
+    'ADD_XP', // persist XP grants (e.g. the rewarded-ad "triple daily XP")
     // Daily-quest + season-pass progress: without these, claims persisted only to
     // local storage and the stale cloud gamificationJson overwrote them on the
     // next LOAD_PROFILE — so quests/season tiers were claimable again every

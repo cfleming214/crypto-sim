@@ -73,3 +73,18 @@ export async function watchForReward(
   if (granted) reward.grant(dispatch);
   return { granted, shown };
 }
+
+// Watch a rewarded ad to grant a DYNAMIC amount of XP (e.g. tripling the daily
+// bonus, where the amount depends on streak). XP is always virtual. Same graceful-
+// fallback semantics as watchForReward.
+export async function watchForBonusXp(
+  dispatch: AppDispatch,
+  xp: number,
+  opts: { surface?: string; grantOnUnavailable?: boolean } = {},
+): Promise<{ granted: boolean; shown: boolean }> {
+  if (!(xp > 0)) return { granted: false, shown: false };
+  const { earned, shown } = await showRewarded('rewardedBonusXp', { lane: 'A', surface: opts.surface ?? 'rewarded-xp' });
+  const granted = earned || (!!opts.grantOnUnavailable && !shown);
+  if (granted) dispatch({ type: 'ADD_XP', amount: xp });
+  return { granted, shown };
+}

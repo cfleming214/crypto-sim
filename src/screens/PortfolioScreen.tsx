@@ -18,7 +18,7 @@ import { ConfettiBurst } from '../components/ui/ConfettiBurst';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
-import { watchForReward } from '../lib/rewardedRewards';
+import { watchForReward, watchForBonusXp } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
 import { loadSnapshots, backfillGap, despikeSeries, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
@@ -491,11 +491,32 @@ export function PortfolioScreen() {
   const nextClaimMs = nextClaimAt(now) - now;
   const handleClaim = () => {
     if (!claimable) return;
+    const bonusXp = claimPreview.xp; // XP this claim grants (1×)
     dispatch({ type: 'CLAIM_DAILY_REWARD' });
     setConfettiTrigger(t => t + 1);
     // Pre-schedule a reminder for the next claim window (fires even if the app
     // is closed). No-ops until the app is rebuilt with expo-notifications.
     scheduleAt('daily-reward', nextClaimAt(Date.now()), 'Daily reward ready 🎁', 'Claim your reward and keep your streak alive.');
+    // Offer to TRIPLE the claimed XP via a rewarded ad. The claim already gave 1×,
+    // so the ad grants 2× more. Once-daily (gated by the claim), so the no-fill
+    // fallback can't be farmed.
+    if (bonusXp > 0) {
+      Alert.alert(
+        'Triple your XP?',
+        `Watch a short video to turn your +${bonusXp.toLocaleString()} XP into +${(bonusXp * 3).toLocaleString()} XP.`,
+        [
+          { text: 'No thanks', style: 'cancel' },
+          {
+            text: 'Watch & triple',
+            onPress: async () => {
+              const { granted } = await watchForBonusXp(dispatch, bonusXp * 2, { grantOnUnavailable: true });
+              if (granted) Alert.alert('XP tripled 🎉', `+${(bonusXp * 2).toLocaleString()} bonus XP added.`);
+              else Alert.alert('Not tripled', "The video didn't finish, so the bonus XP wasn't added.");
+            },
+          },
+        ],
+      );
+    }
   };
 
   // Dynamic risk card
