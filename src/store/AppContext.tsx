@@ -1477,6 +1477,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state;
   const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (server batch every 30s)
   const equityBatchCountRef = useRef(0);         // # of 4s captures buffered since the last server flush
+  const lastFlushedValueRef = useRef(0);         // last balance sent to the server — skip the flush when unchanged
   const triggersHydratedRef = useRef(false);     // gate: load cloud alerts/orders once per auth session
   const seenAlertIds = useRef<Set<string>>(new Set());  // alert ids already mirrored to the cloud
   const seenOrderIds = useRef<Set<string>>(new Set());  // order ids already mirrored to the cloud
@@ -1621,11 +1622,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Always-on: record the live portfolio balance every 4s (CAPTURE_MS) so the
   // equity/Live chart is driven by ACTUAL observed values, not reconstruction —
   // the Live window then has many inputs instead of a couple. The fine 4s points
-  // are buffered locally and BATCH-flushed to the server every 30s (SERVER_FLUSH_MS)
-  // in a single call. Reads the latest state at fire time (stateRef). Time the app
-  // is closed is filled by backfillGap on next PortfolioScreen load.
+  // are buffered locally and BATCH-flushed to the server once a minute
+  // (SERVER_FLUSH_MS) in a single call — and only when the balance actually changed
+  // since the last flush, so an idle portfolio makes no server calls. Reads the
+  // latest state at fire time (stateRef). Closed-app time is filled by backfillGap.
   const CAPTURE_MS = 4_000;
-  const SERVER_FLUSH_MS = 30_000;
+  const SERVER_FLUSH_MS = 60_000;
   const flushEquityToCloud = async (series: { t: number; v: number }[]) => {
     // Coarse (hourly/daily) copy to keep the DynamoDB write small. Caller gates
     // on auth/main and resets the window.
@@ -1649,19 +1651,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const series = await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
         equityBatchCountRef.current += 1;
 
-        // Every 30s, batch-flush the buffered captures to the server in one call.
+        // Once a minute, batch-flush the buffered captures to the server in one
+        // call — but only if the balance changed since the last flush.
         if (Date.now() - lastCloudFlushRef.current >= SERVER_FLUSH_MS) {
           const batched = equityBatchCountRef.current;
           equityBatchCountRef.current = 0;
           lastCloudFlushRef.current = Date.now();         // reset the window either way
-          const canFlush = s.activePortfolioId === 'main' && authRef.current === 'authenticated';
-          if (canFlush) {
+          const eligible = s.activePortfolioId === 'main' && authRef.current === 'authenticated';
+          const changed = s.bankroll !== lastFlushedValueRef.current;
+          if (eligible && changed) {
             await flushEquityToCloud(series);
+            lastFlushedValueRef.current = s.bankroll;
             console.log(`[equity] server flush: batched ${batched} input(s)`);
           } else {
             // "If no server call is made, say that."
-            const reason = authRef.current !== 'authenticated' ? 'guest (not signed in)' : 'contest portfolio (cloud-synced separately)';
-            console.log(`[equity] no server call this 30s — ${reason}; ${batched} input(s) kept locally`);
+            const reason = !eligible
+              ? (authRef.current !== 'authenticated' ? 'guest (not signed in)' : 'contest portfolio (cloud-synced separately)')
+              : 'balance unchanged';
+            console.log(`[equity] no server call this minute — ${reason}; ${batched} input(s) kept locally`);
           }
         }
         // Presence heartbeat — refresh lastActiveAt while foregrounded so other
