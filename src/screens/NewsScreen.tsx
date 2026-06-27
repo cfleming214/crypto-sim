@@ -10,7 +10,7 @@ import { fetchCryptoNews, timeAgo, type NewsArticle } from '../services/newsServ
 import { NativeAdCard } from '../components/NativeAdCard';
 
 // A native ad slot is interleaved into the feed after every Nth article.
-const ADS_EVERY = 5;
+const ADS_EVERY = 7;
 type FeedItem = { kind: 'article'; article: NewsArticle } | { kind: 'ad'; id: string };
 
 function NewsCard({ article, onPress }: { article: NewsArticle; onPress: () => void }) {

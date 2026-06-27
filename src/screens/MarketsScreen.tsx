@@ -429,11 +429,13 @@ export function MarketsScreen() {
             </CardSection>
           </PressableScale>
           </FadeInUp>
-          {/* Native ad row after every 5 coins (not at the very end). */}
-          {(i + 1) % 5 === 0 && i < sorted.length - 1 && <NativeAdCard variant="row" />}
+          {/* Native ad after the 10th coin (only when there are more than 10). */}
+          {i + 1 === 10 && sorted.length > 10 && <NativeAdCard variant="row" />}
           </React.Fragment>
           );
         })}
+        {/* Native ad at the bottom of the list. */}
+        {sorted.length > 0 && <NativeAdCard variant="row" />}
       </Card>
       <FilterSheet
         visible={filterOpen}
