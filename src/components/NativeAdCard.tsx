@@ -61,79 +61,53 @@ export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' })
 
   if (!NativeAdView || !ad) return null;
 
-  const AdBadge = (
-    <View style={{ backgroundColor: `${colors.brand}1A`, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
-      <Text style={{ fontSize: 10, fontWeight: '800', color: colors.brand }}>Ad</Text>
-    </View>
-  );
+  // AdMob requires the native MEDIA to be at least 120x120. We use a FULL-WIDTH
+  // media at a fixed height ≥120 (native media views ignore aspectRatio/%, so we
+  // pin the height), with overflow hidden and every asset nested inside the
+  // NativeAdView so the validator's "assets inside the ad view" check passes.
+  // One card layout for all placements; 'row' just insets it within seamless lists.
+  const MEDIA_HEIGHT = 160; // ≥120 minimum
+  const inset = variant === 'row' ? { marginHorizontal: 12, marginVertical: 8 } : {};
 
-  // FIXED-height containers + overflow hidden are the reliable combo here: native
-  // media/ad views ignore aspectRatio/% and don't always size to RN content, so we
-  // pin the height to match the surrounding feed element and keep all assets within
-  // that frame (so the AdMob validator stays happy and nothing clips/overflows).
-
-  // ----- Compact row (markets / live-trades): matches a coin/trade row. -----
-  if (variant === 'row') {
-    return (
-      <NativeAdView
-        nativeAd={ad}
-        style={{ height: 72, backgroundColor: colors.surface, overflow: 'hidden', borderBottomWidth: 1, borderBottomColor: colors.hairline }}
-      >
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16 }}>
-          <NativeMediaView style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: colors.surface2 }} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {AdBadge}
-              {!!ad.advertiser && (
-                <NativeAsset assetType={NativeAssetType.ADVERTISER}>
-                  <Text style={{ fontSize: 11, color: colors.ink3 }} numberOfLines={1}>{ad.advertiser}</Text>
-                </NativeAsset>
-              )}
-            </View>
-            <NativeAsset assetType={NativeAssetType.HEADLINE}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink, marginTop: 2 }} numberOfLines={1}>{ad.headline}</Text>
-            </NativeAsset>
-          </View>
-          {!!ad.callToAction && (
-            <NativeAsset assetType={NativeAssetType.CALL_TO_ACTION}>
-              <View style={{ backgroundColor: colors.brand, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brandOn }} numberOfLines={1}>{ad.callToAction}</Text>
-              </View>
-            </NativeAsset>
-          )}
-        </View>
-      </NativeAdView>
-    );
-  }
-
-  // ----- Article card (news): matches NewsCard (92px thumbnail + text). -----
   return (
     <NativeAdView
       nativeAd={ad}
-      style={{ height: 116, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.hairline, overflow: 'hidden' }}
+      style={{
+        backgroundColor: colors.surface,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.hairline,
+        overflow: 'hidden',
+        ...inset,
+      }}
     >
-      <View style={{ flex: 1, flexDirection: 'row', gap: 12, padding: 12 }}>
-        <NativeMediaView style={{ width: 92, height: 92, borderRadius: 12, backgroundColor: colors.surface2 }} />
-        <View style={{ flex: 1, minWidth: 0, justifyContent: 'space-between' }}>
-          <View style={{ gap: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {AdBadge}
-              {!!ad.advertiser && (
-                <NativeAsset assetType={NativeAssetType.ADVERTISER}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }} numberOfLines={1}>{ad.advertiser}</Text>
-                </NativeAsset>
-              )}
-            </View>
-            <NativeAsset assetType={NativeAssetType.HEADLINE}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, lineHeight: 19 }} numberOfLines={2}>{ad.headline}</Text>
-            </NativeAsset>
+      <NativeMediaView style={{ width: '100%', height: MEDIA_HEIGHT, backgroundColor: colors.surface2 }} />
+      <View style={{ padding: 12, gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ backgroundColor: `${colors.brand}1A`, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: colors.brand }}>Ad</Text>
           </View>
-          {!!ad.body && (
-            <NativeAsset assetType={NativeAssetType.BODY}>
-              <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 16 }} numberOfLines={1}>{ad.body}</Text>
+          {!!ad.advertiser && (
+            <NativeAsset assetType={NativeAssetType.ADVERTISER}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }} numberOfLines={1}>{ad.advertiser}</Text>
             </NativeAsset>
           )}
         </View>
+        <NativeAsset assetType={NativeAssetType.HEADLINE}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, lineHeight: 19 }} numberOfLines={2}>{ad.headline}</Text>
+        </NativeAsset>
+        {!!ad.body && (
+          <NativeAsset assetType={NativeAssetType.BODY}>
+            <Text style={{ fontSize: 12, color: colors.ink3, lineHeight: 16 }} numberOfLines={2}>{ad.body}</Text>
+          </NativeAsset>
+        )}
+        {!!ad.callToAction && (
+          <NativeAsset assetType={NativeAssetType.CALL_TO_ACTION}>
+            <View style={{ alignSelf: 'flex-start', backgroundColor: colors.brand, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 14, marginTop: 2 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brandOn }}>{ad.callToAction}</Text>
+            </View>
+          </NativeAsset>
+        )}
       </View>
     </NativeAdView>
   );
