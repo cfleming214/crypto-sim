@@ -24,12 +24,17 @@ try {
 
 export function AdBanner({ unitId }: { unitId?: string }) {
   if (!BannerAd) return null;
+  const resolved = unitId ?? AD_UNITS.banner ?? TestIds.BANNER;
   return (
     <View style={{ alignItems: 'center' }}>
       <BannerAd
-        unitId={unitId ?? AD_UNITS.banner ?? TestIds.BANNER}
+        unitId={resolved}
         size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         requestOptions={{ requestNonPersonalizedAdsOnly: false }}
+        onAdLoaded={() => console.log(`[ads] banner loaded (unit=${AD_UNITS.banner ? 'REAL' : 'TEST'} ${resolved})`)}
+        onAdFailedToLoad={(error: any) =>
+          console.warn(`[ads] banner FAILED (unit=${resolved}):`, error?.code ?? '', error?.message ?? error)
+        }
       />
     </View>
   );
