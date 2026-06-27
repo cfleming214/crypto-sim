@@ -21,7 +21,11 @@ import { STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward, watchForBonusXp } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
 import { loadSnapshots, backfillGap, despikeSeries, type EquityPoint } from '../services/equitySnapshots';
-import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification';
+import { applyDailyClaim, canClaim, nextClaimAt, todayKey, dailyXp } from '../services/gamification';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Device-local key: UTC day-key of the last time the user tripled their daily XP.
+const XP_TRIPLE_KEY = 'dailyXpTripleDay';
 import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
@@ -268,6 +272,10 @@ export function PortfolioScreen() {
   const [rebalanceLines, setRebalanceLines] = useState<RebalanceLine[]>([]);
   const [rebalanceTarget, setRebalanceTarget] = useState(0);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  // Device-local "already tripled today's XP" flag (UTC day-key). The daily claim
+  // is cloud-tracked; this just hides the in-card Triple button once used.
+  const [tripleDoneDay, setTripleDoneDay] = useState<string | null>(null);
+  React.useEffect(() => { AsyncStorage.getItem(XP_TRIPLE_KEY).then(setTripleDoneDay).catch(() => {}); }, []);
   // Trades behind a tapped equity-chart marker (a single time bucket). Drives
   // the full-detail popup. null = closed.
   const [markerTrades, setMarkerTrades] = useState<ChartMarker[] | null>(null);
@@ -489,33 +497,33 @@ export function PortfolioScreen() {
   const claimable = !isContest && canClaim(state.lastClaimDay, now);
   const claimPreview = applyDailyClaim({ streak: state.user.streak, lastClaimDay: state.lastClaimDay }, now);
   const nextClaimMs = nextClaimAt(now) - now;
+  // Triple offer: shown in-card after you've claimed today and haven't tripled yet.
+  const todayK = todayKey(now);
+  const tripleAvailable = !isContest && state.lastClaimDay === todayK && tripleDoneDay !== todayK;
   const handleClaim = () => {
     if (!claimable) return;
-    const bonusXp = claimPreview.xp; // XP this claim grants (1×)
     dispatch({ type: 'CLAIM_DAILY_REWARD' });
     setConfettiTrigger(t => t + 1);
     // Pre-schedule a reminder for the next claim window (fires even if the app
     // is closed). No-ops until the app is rebuilt with expo-notifications.
     scheduleAt('daily-reward', nextClaimAt(Date.now()), 'Daily reward ready 🎁', 'Claim your reward and keep your streak alive.');
-    // Offer to TRIPLE the claimed XP via a rewarded ad. The claim already gave 1×,
-    // so the ad grants 2× more. Once-daily (gated by the claim), so the no-fill
-    // fallback can't be farmed.
-    if (bonusXp > 0) {
-      Alert.alert(
-        'Triple your XP?',
-        `Watch a short video to turn your +${bonusXp.toLocaleString()} XP into +${(bonusXp * 3).toLocaleString()} XP.`,
-        [
-          { text: 'No thanks', style: 'cancel' },
-          {
-            text: 'Watch & triple',
-            onPress: async () => {
-              const { granted } = await watchForBonusXp(dispatch, bonusXp * 2, { grantOnUnavailable: true });
-              if (granted) Alert.alert('XP tripled 🎉', `+${(bonusXp * 2).toLocaleString()} bonus XP added.`);
-              else Alert.alert('Not tripled', "The video didn't finish, so the bonus XP wasn't added.");
-            },
-          },
-        ],
-      );
+  };
+
+  // Triple today's claimed XP via a rewarded ad — surfaced as an in-card button
+  // after claiming (see below). The claim already gave 1×, so the ad grants 2×
+  // more. Gated to once per day via a device-local flag (the claim itself is
+  // cloud-tracked), so the no-fill fallback can't be farmed.
+  const handleTripleXp = async () => {
+    const today = todayKey(Date.now());
+    if (state.activePortfolioId !== 'main' || state.lastClaimDay !== today || tripleDoneDay === today) return;
+    const bonusXp = dailyXp(state.user.streak); // XP today's claim granted
+    const { granted } = await watchForBonusXp(dispatch, bonusXp * 2, { grantOnUnavailable: true });
+    if (granted) {
+      setTripleDoneDay(today);
+      AsyncStorage.setItem(XP_TRIPLE_KEY, today).catch(() => {});
+      setConfettiTrigger(t => t + 1);
+    } else {
+      Alert.alert('Not tripled', "The video didn't finish, so the bonus XP wasn't added.");
     }
   };
 
@@ -788,6 +796,10 @@ export function PortfolioScreen() {
                 <Button testID="daily-reward-claim-btn" variant="brand" size="sm" onPress={handleClaim}>
                   {`Claim +${claimPreview.xp} XP`}
                 </Button>
+              ) : tripleAvailable ? (
+                <Button testID="daily-reward-triple-btn" variant="accent" size="sm" onPress={handleTripleXp}>
+                  Triple ⚡
+                </Button>
               ) : (
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>
                   <Chip variant="up">Claimed</Chip>
@@ -799,6 +811,11 @@ export function PortfolioScreen() {
               <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 10 }}>
                 {`Claim today for +${claimPreview.xp} XP and +$${claimPreview.cash} bonus cash`}
                 {state.user.streak > 0 ? ` — keep your ${state.user.streak}-day streak going.` : '.'}
+              </Text>
+            )}
+            {tripleAvailable && (
+              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 10 }}>
+                {`Watch a short video to triple today's reward — +${(dailyXp(state.user.streak) * 3).toLocaleString()} XP total.`}
               </Text>
             )}
           </Card>
