@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, FlatList, Image, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,11 @@ import { useNavigation } from '@react-navigation/native';
 import { Newspaper } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { fetchCryptoNews, timeAgo, type NewsArticle } from '../services/newsService';
+import { NativeAdCard } from '../components/NativeAdCard';
+
+// A native ad slot is interleaved into the feed after every Nth article.
+const ADS_EVERY = 5;
+type FeedItem = { kind: 'article'; article: NewsArticle } | { kind: 'ad'; id: string };
 
 function NewsCard({ article, onPress }: { article: NewsArticle; onPress: () => void }) {
   const { colors } = useTheme();
@@ -89,6 +94,16 @@ export function NewsScreen() {
     try { await load(true); } finally { setRefreshing(false); }
   }, [load]);
 
+  // Interleave a native-ad slot after every ADS_EVERY articles.
+  const feed = useMemo<FeedItem[]>(() => {
+    const out: FeedItem[] = [];
+    articles.forEach((a, i) => {
+      out.push({ kind: 'article', article: a });
+      if ((i + 1) % ADS_EVERY === 0) out.push({ kind: 'ad', id: `native-ad-${i + 1}` });
+    });
+    return out;
+  }, [articles]);
+
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.surface }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -108,10 +123,12 @@ export function NewsScreen() {
         </View>
       ) : (
         <FlatList
-          data={articles}
-          keyExtractor={a => a.id}
+          data={feed}
+          keyExtractor={item => (item.kind === 'ad' ? item.id : item.article.id)}
           renderItem={({ item }) => (
-            <NewsCard article={item} onPress={() => nav.navigate('NewsDetail', { article: item })} />
+            item.kind === 'ad'
+              ? <NativeAdCard />
+              : <NewsCard article={item.article} onPress={() => nav.navigate('NewsDetail', { article: item.article })} />
           )}
           contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 12 }}
           showsVerticalScrollIndicator={false}
