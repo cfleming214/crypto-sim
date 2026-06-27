@@ -32,4 +32,6 @@ export const AD_UNITS = {
   banner: pick(process.env.EXPO_PUBLIC_ADMOB_BANNER_IOS, process.env.EXPO_PUBLIC_ADMOB_BANNER_ANDROID),
   interstitial: pick(process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID),
   rewarded: pick(process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID),
+  rewardedInterstitial: pick(process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_ANDROID),
+  native: pick(process.env.EXPO_PUBLIC_ADMOB_NATIVE_IOS, process.env.EXPO_PUBLIC_ADMOB_NATIVE_ANDROID),
 };

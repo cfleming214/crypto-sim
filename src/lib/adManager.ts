@@ -131,12 +131,50 @@ export async function showInterstitial(placement: AdPlacement, ctx: AdContext): 
   });
 }
 
-// Show a rewarded ad. Returns:
-//   earned — user watched to the reward callback (grant the reward).
-//   shown  — an ad actually displayed. When false, no ad was available (no-fill,
-//            error, blocked, or native module absent) — the user never got a
-//            chance to watch, which callers can treat as a graceful fallback.
-// (earned=false, shown=true) means the user dismissed the ad early — a real decline.
+// Run one rewarded-style ad (RewardedAd or RewardedInterstitialAd — same event
+// API) to completion. Returns { earned, shown }: shown=false means no ad was
+// available (no-fill/error), so the caller can chain or fall back.
+function runRewardedUnit(
+  AdClass: any,
+  RewardedAdEventType: any,
+  AdEventType: any,
+  unitId: string,
+  label: string,
+): Promise<{ earned: boolean; shown: boolean }> {
+  return new Promise((resolve) => {
+    let earned = false;
+    let shown = false;
+    let settled = false;
+    const finish = () => { if (!settled) { settled = true; resolve({ earned, shown }); } };
+    try {
+      const ad = AdClass.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: false });
+      const subs: Array<() => void> = [];
+      const cleanup = () => subs.forEach((u) => { try { u(); } catch { /* noop */ } });
+      subs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        try { ad.show(); shown = true; } catch (e) { console.warn(`[ads] ${label} show() threw`, e); cleanup(); finish(); }
+      }));
+      subs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => { earned = true; }));
+      subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
+      subs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+        console.warn(`[ads] ${label} failed to load/show:`, error?.message ?? error);
+        cleanup();
+        finish();
+      }));
+      ad.load();
+    } catch (e) {
+      console.warn(`[ads] ${label} threw`, e);
+      finish();
+    }
+  });
+}
+
+// Show a rewarded ad, with a fallback chain:
+//   1. Try a Rewarded ad. If it shows (earned OR dismissed), that's the result.
+//   2. If no rewarded ad was available (no-fill), try a Rewarded Interstitial.
+//   3. If that also has no ad, return shown=false so the caller's graceful
+//      fallback (grantOnUnavailable) can decide.
+// Returns { earned, shown } — shown=false only when NEITHER format had an ad.
+// (earned=false, shown=true) means the user dismissed an ad early — a real decline.
 export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean; shown: boolean }> {
   if (!canShowAd(placement, ctx)) {
     console.warn(`[ads] rewarded blocked by canShowAd: ${placement} lane=${ctx.lane} surface=${ctx.surface}`);
@@ -147,33 +185,21 @@ export async function showRewarded(placement: AdPlacement, ctx: AdContext): Prom
     console.warn('[ads] rewarded: native module unavailable (Expo Go / web)');
     return { earned: false, shown: false };
   }
-  const { RewardedAd, RewardedAdEventType, AdEventType, TestIds } = sdk;
-  const unitId = AD_UNITS.rewarded ?? TestIds.REWARDED;
-  console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
+  const { RewardedAd, RewardedInterstitialAd, RewardedAdEventType, AdEventType, TestIds } = sdk;
 
-  return await new Promise<{ earned: boolean; shown: boolean }>((resolve) => {
-    let earned = false;
-    let shown = false;
-    let settled = false;
-    const finish = () => { if (!settled) { settled = true; resolve({ earned, shown }); } };
-    try {
-      const ad = RewardedAd.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: false });
-      const subs: Array<() => void> = [];
-      const cleanup = () => subs.forEach((u) => { try { u(); } catch { /* noop */ } });
-      subs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        try { ad.show(); shown = true; } catch (e) { console.warn('[ads] rewarded show() threw', e); cleanup(); finish(); }
-      }));
-      subs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => { earned = true; }));
-      subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
-      subs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
-        console.warn('[ads] rewarded failed to load/show:', error?.message ?? error);
-        cleanup();
-        finish();
-      }));
-      ad.load();
-    } catch (e) {
-      console.warn('[ads] rewarded threw', e);
-      finish();
-    }
-  });
+  // 1) Rewarded first.
+  console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
+  const r = await runRewardedUnit(RewardedAd, RewardedAdEventType, AdEventType, AD_UNITS.rewarded ?? TestIds.REWARDED, 'rewarded');
+  if (r.shown) return r; // shown (earned or dismissed) — don't chain
+
+  // 2) No rewarded fill → try a rewarded interstitial.
+  if (RewardedInterstitialAd) {
+    console.log(`[ads] no rewarded fill → trying rewarded interstitial: ${placement} unit=${AD_UNITS.rewardedInterstitial ? 'REAL' : 'TEST'}`);
+    const ri = await runRewardedUnit(
+      RewardedInterstitialAd, RewardedAdEventType, AdEventType,
+      AD_UNITS.rewardedInterstitial ?? TestIds.REWARDED_INTERSTITIAL, 'rewarded-interstitial',
+    );
+    return ri; // if still !shown, caller's grantOnUnavailable handles the graceful fallback
+  }
+  return r; // { earned:false, shown:false }
 }
