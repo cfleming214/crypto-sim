@@ -444,12 +444,13 @@ export function PortfolioScreen() {
   };
 
   // Offline/main portfolio only: watch a rewarded ad → +$50K tradeable balance.
-  // Strict (no fallback) — it's a pure bonus, so it must actually be watched.
+  // Graceful fallback: if no ad is available, grant anyway (only withhold when an
+  // ad was shown but dismissed early).
   const handleBalanceBoost = async () => {
     if (state.activePortfolioId !== 'main') return;
-    const { granted } = await watchForReward('rewardedBalanceBoost', dispatch);
+    const { granted } = await watchForReward('rewardedBalanceBoost', dispatch, { grantOnUnavailable: true });
     if (granted) Alert.alert('Balance boosted 🎉', '$50,000 was added to your tradeable balance.');
-    else Alert.alert('No bonus added', 'No rewarded ad finished, so nothing was added. Try again soon.');
+    else Alert.alert('No bonus added', "The video didn't finish, so nothing was added.");
   };
 
   const handleRebalance = () => {
