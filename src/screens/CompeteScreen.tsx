@@ -12,6 +12,7 @@ import { Avatar, CoinGlyph } from '../components/ui/Avatar';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { AuthWall } from '../components/AuthWall';
 import { AdBanner } from '../components/AdBanner';
+import { NativeAdCard } from '../components/NativeAdCard';
 import { watchForReward } from '../lib/rewardedRewards';
 import { useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/tokens';
@@ -902,7 +903,10 @@ export function CompeteScreen() {
                 const buy = t.side === 'buy';
                 const units = t.units < 1 ? t.units.toFixed(4) : t.units.toFixed(2);
                 return (
-                  <CardSection key={t.id} last={i === liveTrades.length - 1}>
+                  <React.Fragment key={t.id}>
+                  {/* Native ad row after every 5 trades (not at the very end). */}
+                  {i > 0 && i % 5 === 0 && <NativeAdCard variant="row" />}
+                  <CardSection last={i === liveTrades.length - 1}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <CoinGlyph symbol={t.symbol} size={30} />
                       <View style={{ flex: 1, minWidth: 0 }}>
@@ -921,6 +925,7 @@ export function CompeteScreen() {
                       </View>
                     </View>
                   </CardSection>
+                  </React.Fragment>
                 );
               })}
             </ScrollView>

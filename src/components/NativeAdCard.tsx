@@ -27,7 +27,9 @@ try {
   // native module absent — NativeAdCard renders null
 }
 
-export function NativeAdCard() {
+// variant 'card' = standalone bordered card (news feed); 'row' = seamless list
+// row to sit inside a noPad Card among CardSections (markets / live-trades).
+export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' }) {
   const { colors } = useTheme();
   const [ad, setAd] = useState<any>(null);
 
@@ -59,17 +61,14 @@ export function NativeAdCard() {
 
   if (!NativeAdView || !ad) return null;
 
+  const containerStyle = variant === 'row'
+    ? { backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.hairline, gap: 8 }
+    : { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.hairline, padding: 12, gap: 8 };
+
   return (
     <NativeAdView
       nativeAd={ad}
-      style={{
-        backgroundColor: colors.surface,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: colors.hairline,
-        padding: 12,
-        gap: 8,
-      }}
+      style={containerStyle}
     >
       <View style={{ flexDirection: 'row', gap: 12 }}>
         {/* Main media (image/video) — matches the article thumbnail slot. */}
