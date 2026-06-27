@@ -1475,7 +1475,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const nudgesHydratedRef = useRef(false);       // gate dismissed-nudge saves until we've loaded the stored list
   const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
   stateRef.current = state;
-  const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (~15 min)
+  const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (server batch every 30s)
+  const equityBatchCountRef = useRef(0);         // # of 4s captures buffered since the last server flush
   const triggersHydratedRef = useRef(false);     // gate: load cloud alerts/orders once per auth session
   const seenAlertIds = useRef<Set<string>>(new Set());  // alert ids already mirrored to the cloud
   const seenOrderIds = useRef<Set<string>>(new Set());  // order ids already mirrored to the cloud
@@ -1617,19 +1618,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.priceAlerts, state.pendingOrders, authStatus]);
 
-  // Always-on: record the live portfolio balance every 60s so the equity chart
-  // is driven by ACTUAL observed values, not reconstruction. Reads the latest
-  // state at fire time (stateRef) and writes to the active portfolio's local
-  // snapshot store. Time the app is closed is filled in by backfillGap when the
-  // PortfolioScreen next loads (see services/equitySnapshots.ts). Skips the
-  // pre-price warmup (bankroll 0) so we don't seed a bogus point.
-  const CLOUD_FLUSH_MS = 15 * 60_000;
+  // Always-on: record the live portfolio balance every 4s (CAPTURE_MS) so the
+  // equity/Live chart is driven by ACTUAL observed values, not reconstruction —
+  // the Live window then has many inputs instead of a couple. The fine 4s points
+  // are buffered locally and BATCH-flushed to the server every 30s (SERVER_FLUSH_MS)
+  // in a single call. Reads the latest state at fire time (stateRef). Time the app
+  // is closed is filled by backfillGap on next PortfolioScreen load.
+  const CAPTURE_MS = 4_000;
+  const SERVER_FLUSH_MS = 30_000;
   const flushEquityToCloud = async (series: { t: number; v: number }[]) => {
-    // Cloud-backup only the main portfolio (contests persist their own slice)
-    // and only when authenticated. Coarse (hourly/daily) copy to keep the
-    // DynamoDB write small. Caller is responsible for throttling.
-    if (authRef.current !== 'authenticated') return;
-    lastCloudFlushRef.current = Date.now();
+    // Coarse (hourly/daily) copy to keep the DynamoDB write small. Caller gates
+    // on auth/main and resets the window.
     await saveEquityHistory(downsampleForCloud(series, Date.now()));
   };
   useEffect(() => {
@@ -1648,12 +1647,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           || (authRef.current === 'unauthenticated' && offlineHydratedRef.current);
         if (!ready) return;
         const series = await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
-        if (s.activePortfolioId === 'main' && Date.now() - lastCloudFlushRef.current >= CLOUD_FLUSH_MS) {
-          flushEquityToCloud(series);
+        equityBatchCountRef.current += 1;
+
+        // Every 30s, batch-flush the buffered captures to the server in one call.
+        if (Date.now() - lastCloudFlushRef.current >= SERVER_FLUSH_MS) {
+          const batched = equityBatchCountRef.current;
+          equityBatchCountRef.current = 0;
+          lastCloudFlushRef.current = Date.now();         // reset the window either way
+          const canFlush = s.activePortfolioId === 'main' && authRef.current === 'authenticated';
+          if (canFlush) {
+            await flushEquityToCloud(series);
+            console.log(`[equity] server flush: batched ${batched} input(s)`);
+          } else {
+            // "If no server call is made, say that."
+            const reason = authRef.current !== 'authenticated' ? 'guest (not signed in)' : 'contest portfolio (cloud-synced separately)';
+            console.log(`[equity] no server call this 30s — ${reason}; ${batched} input(s) kept locally`);
+          }
         }
         // Presence heartbeat — refresh lastActiveAt while foregrounded so other
-        // viewers see an accurate online dot. Kept at ~60s even though capture now
-        // runs every 30s, so the finer equity sampling doesn't double these writes.
+        // viewers see an accurate online dot. Throttled to ~60s independent of the
+        // 4s capture so the finer sampling doesn't multiply these writes.
         if (authRef.current === 'authenticated' && Date.now() - lastPresence > 55_000) {
           lastPresence = Date.now();
           touchPresence();
@@ -1662,8 +1675,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.warn('equity capture tick failed (ignored):', e);
       }
     };
-    // Every 30s → ~2 points/min, so Live (30 pts) and 1H (120 pts) are denser.
-    const id = setInterval(capture, 30_000);
+    const id = setInterval(capture, CAPTURE_MS);
     return () => clearInterval(id);
   }, []);
 
