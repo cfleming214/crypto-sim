@@ -24,7 +24,8 @@ export type AdPlacement =
   | 'rewardedPrediction'
   | 'rewardedQuestReroll'
   | 'rewardedDailyDouble'
-  | 'rewardedTopup';
+  | 'rewardedTopup'
+  | 'rewardedBalanceBoost';
 
 export interface AdContext {
   lane: ContestLane;

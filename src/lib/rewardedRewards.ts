@@ -17,6 +17,7 @@ export interface RewardedReward {
 
 const TOPUP_CASH = 10_000; // virtual play-money top-up when busted
 const DAILY_DOUBLE_CASH = 50; // a small virtual bonus, on the daily-reward scale
+const BALANCE_BOOST_CASH = 50_000; // "+ $50K" boost on the main/offline portfolio
 
 export const REWARDED_REWARDS: Partial<Record<AdPlacement, RewardedReward>> = {
   rewardedPass: {
@@ -33,6 +34,11 @@ export const REWARDED_REWARDS: Partial<Record<AdPlacement, RewardedReward>> = {
     tag: 'virtual',
     label: 'Watch for a virtual cash top-up',
     grant: (d) => d({ type: 'GRANT_BONUS_CASH', amount: TOPUP_CASH }),
+  },
+  rewardedBalanceBoost: {
+    tag: 'virtual',
+    label: 'Watch for +$50,000 tradeable balance',
+    grant: (d) => d({ type: 'GRANT_BONUS_CASH', amount: BALANCE_BOOST_CASH }),
   },
   rewardedDailyDouble: {
     tag: 'virtual',

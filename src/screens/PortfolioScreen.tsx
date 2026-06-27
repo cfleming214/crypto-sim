@@ -25,7 +25,7 @@ import { applyDailyClaim, canClaim, nextClaimAt } from '../services/gamification
 import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
-import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target, Plus } from 'lucide-react-native';
 import { ACADEMY } from '../data/academy';
 
 // Marker-popup timestamp: "Jun 14, 3:42 PM" for old trades, time-only if today.
@@ -443,6 +443,15 @@ export function PortfolioScreen() {
     );
   };
 
+  // Offline/main portfolio only: watch a rewarded ad → +$50K tradeable balance.
+  // Strict (no fallback) — it's a pure bonus, so it must actually be watched.
+  const handleBalanceBoost = async () => {
+    if (state.activePortfolioId !== 'main') return;
+    const { granted } = await watchForReward('rewardedBalanceBoost', dispatch);
+    if (granted) Alert.alert('Balance boosted 🎉', '$50,000 was added to your tradeable balance.');
+    else Alert.alert('No bonus added', 'No rewarded ad finished, so nothing was added. Try again soon.');
+  };
+
   const handleRebalance = () => {
     // Same pure planner the REBALANCE reducer applies, so this preview matches
     // the trades that execute exactly. It auto-selects DEPLOY (build a top-5
@@ -534,40 +543,62 @@ export function PortfolioScreen() {
         </TouchableOpacity>
       }
     >
-      {/* Portfolio selector — Main vs. each joined contest */}
-      {portfolioOptions.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
-        >
-          {portfolioOptions.map(opt => {
-            const active = opt.id === state.activePortfolioId;
-            return (
-              <PressableScale
-                key={opt.id}
-                testID={`portfolio-selector-${opt.id}`}
-                onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
-                style={{
-                  paddingVertical: 6,
-                  paddingHorizontal: 12,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? colors.brand : colors.hairline,
-                  backgroundColor: active ? colors.brand : 'transparent',
-                }}
-              >
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: active ? colors.brandOn : colors.ink,
-                }}>
-                  {opt.label}
-                </Text>
-              </PressableScale>
-            );
-          })}
-        </ScrollView>
+      {/* Portfolio selector — Main vs. each joined contest. On the offline/main
+          portfolio, a "+" button watches a rewarded ad for +$50K tradeable balance. */}
+      {(portfolioOptions.length > 1 || state.activePortfolioId === 'main') && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0, flexShrink: 1 }}
+            contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+          >
+            {portfolioOptions.map(opt => {
+              const active = opt.id === state.activePortfolioId;
+              return (
+                <PressableScale
+                  key={opt.id}
+                  testID={`portfolio-selector-${opt.id}`}
+                  onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
+                  style={{
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: active ? colors.brand : colors.hairline,
+                    backgroundColor: active ? colors.brand : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: active ? colors.brandOn : colors.ink,
+                  }}>
+                    {opt.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </ScrollView>
+          {state.activePortfolioId === 'main' && (
+            <PressableScale
+              testID="portfolio-balance-boost"
+              onPress={handleBalanceBoost}
+              accessibilityLabel="Watch an ad for $50,000 more balance"
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: colors.brand,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Plus color={colors.brand} size={18} strokeWidth={2.5} />
+            </PressableScale>
+          )}
+        </View>
       )}
 
       {/* P&L */}
