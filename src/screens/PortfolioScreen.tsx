@@ -563,53 +563,9 @@ export function PortfolioScreen() {
       animateTitle
       onRefresh={handleRefresh}
       rightActions={
-        <TouchableOpacity onPress={() => nav.navigate('Profile')}>
-          <Avatar
-            initials={state.user.handle.slice(0, 2).toUpperCase() || '??'}
-            size="sm"
-            uri={state.user.avatarUri}
-            style={{ backgroundColor: state.user.avatarColor }}
-          />
-        </TouchableOpacity>
-      }
-    >
-      {/* Portfolio selector — Main vs. each joined contest. On the offline/main
-          portfolio, a "+" button watches a rewarded ad for +$50K tradeable balance. */}
-      {(portfolioOptions.length > 1 || state.activePortfolioId === 'main') && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ flexGrow: 0, flexShrink: 1 }}
-            contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
-          >
-            {portfolioOptions.map(opt => {
-              const active = opt.id === state.activePortfolioId;
-              return (
-                <PressableScale
-                  key={opt.id}
-                  testID={`portfolio-selector-${opt.id}`}
-                  onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
-                  style={{
-                    paddingVertical: 6,
-                    paddingHorizontal: 12,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: active ? colors.brand : colors.hairline,
-                    backgroundColor: active ? colors.brand : 'transparent',
-                  }}
-                >
-                  <Text style={{
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: active ? colors.brandOn : colors.ink,
-                  }}>
-                    {opt.label}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-          </ScrollView>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {/* +$50K balance boost — offline/main portfolio only; left of the avatar.
+              Watches a rewarded ad and adds $50K to the tradeable balance. */}
           {state.activePortfolioId === 'main' && (
             <PressableScale
               testID="portfolio-balance-boost"
@@ -628,7 +584,51 @@ export function PortfolioScreen() {
               <Plus color={colors.brand} size={18} strokeWidth={2.5} />
             </PressableScale>
           )}
+          <TouchableOpacity onPress={() => nav.navigate('Profile')}>
+            <Avatar
+              initials={state.user.handle.slice(0, 2).toUpperCase() || '??'}
+              size="sm"
+              uri={state.user.avatarUri}
+              style={{ backgroundColor: state.user.avatarColor }}
+            />
+          </TouchableOpacity>
         </View>
+      }
+    >
+      {/* Portfolio selector — Main vs. each joined contest */}
+      {portfolioOptions.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+        >
+          {portfolioOptions.map(opt => {
+            const active = opt.id === state.activePortfolioId;
+            return (
+              <PressableScale
+                key={opt.id}
+                testID={`portfolio-selector-${opt.id}`}
+                onPress={() => dispatch({ type: 'SWITCH_PORTFOLIO', portfolioId: opt.id })}
+                style={{
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: active ? colors.brand : colors.hairline,
+                  backgroundColor: active ? colors.brand : 'transparent',
+                }}
+              >
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: active ? colors.brandOn : colors.ink,
+                }}>
+                  {opt.label}
+                </Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
       )}
 
       {/* P&L */}
