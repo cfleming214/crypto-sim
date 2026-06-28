@@ -443,7 +443,8 @@ export function PortfolioScreen() {
             // Rewarded ad grants the reset (registry dispatches RESET_DEMO). Graceful
             // fallback: if AdMob has no ad to show, reset anyway so the user isn't
             // blocked; only withhold when an ad was shown but dismissed early.
-            const { granted } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
+            const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
+            if (blocked) return; // a duplicate trigger while an ad is already up — ignore
             if (!granted) Alert.alert('Not reset', "The video didn't finish, so your portfolio wasn't reset.");
           },
         },
@@ -456,7 +457,8 @@ export function PortfolioScreen() {
   // ad was shown but dismissed early).
   const handleBalanceBoost = async () => {
     if (state.activePortfolioId !== 'main') return;
-    const { granted } = await watchForReward('rewardedBalanceBoost', dispatch, { grantOnUnavailable: true });
+    const { granted, blocked } = await watchForReward('rewardedBalanceBoost', dispatch, { grantOnUnavailable: true });
+    if (blocked) return; // a duplicate trigger while an ad is already up — ignore
     if (granted) Alert.alert('Balance boosted 🎉', '$50,000 was added to your tradeable balance.');
     else Alert.alert('No bonus added', "The video didn't finish, so nothing was added.");
   };
@@ -517,7 +519,8 @@ export function PortfolioScreen() {
     const today = todayKey(Date.now());
     if (state.activePortfolioId !== 'main' || state.lastClaimDay !== today || tripleDoneDay === today) return;
     const bonusXp = dailyXp(state.user.streak); // XP today's claim granted
-    const { granted } = await watchForBonusXp(dispatch, bonusXp * 2, { grantOnUnavailable: true });
+    const { granted, blocked } = await watchForBonusXp(dispatch, bonusXp * 2, { grantOnUnavailable: true });
+    if (blocked) return; // a duplicate trigger while an ad is already up — ignore
     if (granted) {
       setTripleDoneDay(today);
       AsyncStorage.setItem(XP_TRIPLE_KEY, today).catch(() => {});

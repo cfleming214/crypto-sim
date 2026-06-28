@@ -43,6 +43,10 @@ let lastInterstitialAt = 0;
 let sessionInterstitialCount = 0;
 let actionsSinceInterstitial = MIN_ACTIONS_BETWEEN; // allow the first interstitial
 
+// Only ONE full-screen ad may present at a time. Set synchronously before any
+// await so a rapid double-tap (or any concurrent trigger) can't open two ads.
+let adPresenting = false;
+
 // Call on meaningful user actions (screen transitions, contest joins, etc.) so the
 // "1 per 2 actions" rule has something to count.
 export function noteAction(): void {
@@ -99,36 +103,42 @@ async function loadSdk(): Promise<any | null> {
 // burn the session cap.
 export async function showInterstitial(placement: AdPlacement, ctx: AdContext): Promise<void> {
   if (!canShowAd(placement, ctx)) return;
-  const sdk = await loadSdk();
-  if (!sdk) return;
-  const { InterstitialAd, AdEventType, TestIds } = sdk;
-  const unitId = AD_UNITS.interstitial ?? TestIds.INTERSTITIAL;
+  if (adPresenting) { console.warn('[ads] interstitial ignored — an ad is already presenting'); return; }
+  adPresenting = true; // set synchronously before any await (no double-open race)
+  try {
+    const sdk = await loadSdk();
+    if (!sdk) return;
+    const { InterstitialAd, AdEventType, TestIds } = sdk;
+    const unitId = AD_UNITS.interstitial ?? TestIds.INTERSTITIAL;
 
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const finish = () => { if (!settled) { settled = true; resolve(); } };
-    try {
-      const ad = InterstitialAd.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: false });
-      const subs: Array<() => void> = [];
-      const cleanup = () => subs.forEach((u) => { try { u(); } catch { /* noop */ } });
-      subs.push(ad.addAdEventListener(AdEventType.LOADED, () => {
-        lastInterstitialAt = Date.now();
-        sessionInterstitialCount += 1;
-        actionsSinceInterstitial = 0;
-        try { ad.show(); } catch { cleanup(); finish(); }
-      }));
-      subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
-      subs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
-        console.warn('[ads] interstitial failed to load/show:', error?.message ?? error);
-        cleanup();
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      try {
+        const ad = InterstitialAd.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: false });
+        const subs: Array<() => void> = [];
+        const cleanup = () => subs.forEach((u) => { try { u(); } catch { /* noop */ } });
+        subs.push(ad.addAdEventListener(AdEventType.LOADED, () => {
+          lastInterstitialAt = Date.now();
+          sessionInterstitialCount += 1;
+          actionsSinceInterstitial = 0;
+          try { ad.show(); } catch { cleanup(); finish(); }
+        }));
+        subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
+        subs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+          console.warn('[ads] interstitial failed to load/show:', error?.message ?? error);
+          cleanup();
+          finish();
+        }));
+        ad.load();
+      } catch (e) {
+        console.warn('[ads] interstitial threw', e);
         finish();
-      }));
-      ad.load();
-    } catch (e) {
-      console.warn('[ads] interstitial threw', e);
-      finish();
-    }
-  });
+      }
+    });
+  } finally {
+    adPresenting = false;
+  }
 }
 
 // Run one rewarded-style ad (RewardedAd or RewardedInterstitialAd — same event
@@ -173,33 +183,44 @@ function runRewardedUnit(
 //   2. If no rewarded ad was available (no-fill), try a Rewarded Interstitial.
 //   3. If that also has no ad, return shown=false so the caller's graceful
 //      fallback (grantOnUnavailable) can decide.
-// Returns { earned, shown } — shown=false only when NEITHER format had an ad.
+// Returns { earned, shown, blocked } — shown=false only when NEITHER format had an
+// ad; blocked=true means another ad was already presenting (a duplicate trigger),
+// which callers must treat as "do nothing" (no grant, no fallback, no alert).
 // (earned=false, shown=true) means the user dismissed an ad early — a real decline.
-export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean; shown: boolean }> {
+export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean; shown: boolean; blocked?: boolean }> {
   if (!canShowAd(placement, ctx)) {
     console.warn(`[ads] rewarded blocked by canShowAd: ${placement} lane=${ctx.lane} surface=${ctx.surface}`);
     return { earned: false, shown: false };
   }
-  const sdk = await loadSdk();
-  if (!sdk) {
-    console.warn('[ads] rewarded: native module unavailable (Expo Go / web)');
-    return { earned: false, shown: false };
+  if (adPresenting) {
+    console.warn('[ads] rewarded ignored — an ad is already presenting');
+    return { earned: false, shown: false, blocked: true };
   }
-  const { RewardedAd, RewardedInterstitialAd, RewardedAdEventType, AdEventType, TestIds } = sdk;
+  adPresenting = true; // set synchronously before any await (no double-open race)
+  try {
+    const sdk = await loadSdk();
+    if (!sdk) {
+      console.warn('[ads] rewarded: native module unavailable (Expo Go / web)');
+      return { earned: false, shown: false };
+    }
+    const { RewardedAd, RewardedInterstitialAd, RewardedAdEventType, AdEventType, TestIds } = sdk;
 
-  // 1) Rewarded first.
-  console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
-  const r = await runRewardedUnit(RewardedAd, RewardedAdEventType, AdEventType, AD_UNITS.rewarded ?? TestIds.REWARDED, 'rewarded');
-  if (r.shown) return r; // shown (earned or dismissed) — don't chain
+    // 1) Rewarded first.
+    console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
+    const r = await runRewardedUnit(RewardedAd, RewardedAdEventType, AdEventType, AD_UNITS.rewarded ?? TestIds.REWARDED, 'rewarded');
+    if (r.shown) return r; // shown (earned or dismissed) — don't chain
 
-  // 2) No rewarded fill → try a rewarded interstitial.
-  if (RewardedInterstitialAd) {
-    console.log(`[ads] no rewarded fill → trying rewarded interstitial: ${placement} unit=${AD_UNITS.rewardedInterstitial ? 'REAL' : 'TEST'}`);
-    const ri = await runRewardedUnit(
-      RewardedInterstitialAd, RewardedAdEventType, AdEventType,
-      AD_UNITS.rewardedInterstitial ?? TestIds.REWARDED_INTERSTITIAL, 'rewarded-interstitial',
-    );
-    return ri; // if still !shown, caller's grantOnUnavailable handles the graceful fallback
+    // 2) No rewarded fill → try a rewarded interstitial.
+    if (RewardedInterstitialAd) {
+      console.log(`[ads] no rewarded fill → trying rewarded interstitial: ${placement} unit=${AD_UNITS.rewardedInterstitial ? 'REAL' : 'TEST'}`);
+      const ri = await runRewardedUnit(
+        RewardedInterstitialAd, RewardedAdEventType, AdEventType,
+        AD_UNITS.rewardedInterstitial ?? TestIds.REWARDED_INTERSTITIAL, 'rewarded-interstitial',
+      );
+      return ri; // if still !shown, caller's grantOnUnavailable handles the graceful fallback
+    }
+    return r; // { earned:false, shown:false }
+  } finally {
+    adPresenting = false;
   }
-  return r; // { earned:false, shown:false }
 }

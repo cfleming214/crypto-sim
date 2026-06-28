@@ -501,7 +501,8 @@ export function CompeteScreen() {
           {
             text: 'Watch & earn a pass',
             onPress: async () => {
-              const { granted } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              const { granted, blocked } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              if (blocked) return; // duplicate trigger while an ad is up — ignore
               if (granted) finalizeJoin(comp);
               else Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
             },
@@ -719,7 +720,8 @@ export function CompeteScreen() {
             size="sm"
             variant="surface"
             onPress={async () => {
-              const { granted } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              const { granted, blocked } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              if (blocked) return; // duplicate trigger while an ad is up — ignore
               if (!granted) Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
             }}
           >

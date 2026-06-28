@@ -65,10 +65,11 @@ export async function watchForReward(
   placement: AdPlacement,
   dispatch: AppDispatch,
   opts: { surface?: string; grantOnUnavailable?: boolean } = {},
-): Promise<{ granted: boolean; shown: boolean }> {
+): Promise<{ granted: boolean; shown: boolean; blocked?: boolean }> {
   const reward = REWARDED_REWARDS[placement];
   if (!reward) return { granted: false, shown: false };
-  const { earned, shown } = await showRewarded(placement, { lane: 'A', surface: opts.surface ?? 'rewarded' });
+  const { earned, shown, blocked } = await showRewarded(placement, { lane: 'A', surface: opts.surface ?? 'rewarded' });
+  if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
   if (granted) reward.grant(dispatch);
   return { granted, shown };
@@ -81,9 +82,10 @@ export async function watchForBonusXp(
   dispatch: AppDispatch,
   xp: number,
   opts: { surface?: string; grantOnUnavailable?: boolean } = {},
-): Promise<{ granted: boolean; shown: boolean }> {
+): Promise<{ granted: boolean; shown: boolean; blocked?: boolean }> {
   if (!(xp > 0)) return { granted: false, shown: false };
-  const { earned, shown } = await showRewarded('rewardedBonusXp', { lane: 'A', surface: opts.surface ?? 'rewarded-xp' });
+  const { earned, shown, blocked } = await showRewarded('rewardedBonusXp', { lane: 'A', surface: opts.surface ?? 'rewarded-xp' });
+  if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
   if (granted) dispatch({ type: 'ADD_XP', amount: xp });
   return { granted, shown };
