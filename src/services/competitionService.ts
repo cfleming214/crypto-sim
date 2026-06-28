@@ -20,34 +20,17 @@ export interface ContestPortfolio {
   pnlPct: number;
 }
 
-// Cloud Competition rows (DynamoDB) are the source of truth for real contests,
-// but we always surface one locally-seeded upcoming bracket so there's a
-// contest that opens a week out even before/without the cloud list. It's merged
-// into every fetch/subscribe result. startAt is stamped once at module load so
-// the countdown ticks down within a session instead of resetting each fetch.
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const SEED_START = Date.now() + WEEK_MS;
-const SEED_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // runs 3 days once it opens
+// Cloud Competition rows (DynamoDB) are the source of truth for real contests.
+// We no longer inject a client-side placeholder — the weekly contest is now a real
+// cloud row created by the create-weekly-contest Lambda (7-day EventBridge cron),
+// so it actually starts, has a leaderboard, and settles. The old "Weekly Kickoff"
+// seed was a rolling placeholder that never arrived.
+export const SEED_COMPETITIONS: Competition[] = [];
 
-export const SEED_COMPETITIONS: Competition[] = [{
-  id: 'seed-weekly-kickoff',
-  name: 'Weekly Kickoff',
-  type: 'featured',
-  status: 'open',
-  prizePool: 'Bragging rights',
-  maxPlayers: 1000,
-  stake: 'Free',
-  startAt: SEED_START,
-  endAt: SEED_START + SEED_DURATION_MS,
-  entryCount: 0,
-  numberOfPrizes: 3,
-  prizes: [],
-  prizeXp: DEFAULT_PRIZE_XP,
-}];
-
-// Merge the local seed in front of cloud rows, de-duped by id (a real cloud row
-// with the same id wins).
+// Kept as a thin pass-through so existing call sites don't change; the empty seed
+// list above makes it a no-op.
 function withSeeds(comps: Competition[]): Competition[] {
+  if (SEED_COMPETITIONS.length === 0) return comps;
   const cloudIds = new Set(comps.map(c => c.id));
   return [...SEED_COMPETITIONS.filter(s => !cloudIds.has(s.id)), ...comps];
 }

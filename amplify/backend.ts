@@ -11,6 +11,7 @@ import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
 import { tickGlobalLeaderboard } from './functions/tick-global-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
+import { createWeeklyContest } from './functions/create-weekly-contest/resource.js';
 import { resetDemo } from './functions/reset-demo/resource.js';
 import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
@@ -39,6 +40,7 @@ const backend = defineBackend({
   tickGlobalLeaderboard,
   closeCompetition,
   createCompetition,
+  createWeeklyContest,
   resetDemo,
   evaluateCoach,
   executeTrade,
@@ -185,6 +187,16 @@ const createFn = backend.createCompetition.resources.lambda;
 competitionTable.grantWriteData(createFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 createFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
+
+// --- createWeeklyContest: auto-creates a fresh 7-day XP contest every week ---
+const weeklyFn = backend.createWeeklyContest.resources.lambda;
+competitionTable.grantWriteData(weeklyFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+weeklyFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
+new Rule(Stack.of(weeklyFn), 'CreateWeeklyContestRule', {
+  schedule: Schedule.rate(Duration.days(7)),
+  targets: [new LambdaFunction(weeklyFn)],
+});
 
 // --- resetDemo: user-invoked, clears trades + profile ---
 const resetFn = backend.resetDemo.resources.lambda;
