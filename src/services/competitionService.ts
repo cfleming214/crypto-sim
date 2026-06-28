@@ -71,16 +71,27 @@ function mapCompetition(d: any): Competition {
     try { prizes = JSON.parse(d.prizesJson); }
     catch { prizes = []; }
   }
+  const startAt = new Date(d.startAt).getTime();
+  const endAt = new Date(d.endAt).getTime();
+  // Derive status from the SCHEDULE, not the stored field: nothing server-side
+  // flips a contest from 'open' -> 'live' when startAt arrives, so a scheduled
+  // contest would otherwise show "open" forever and never appear started. Time is
+  // the source of truth (close-competition still settles by endAt either way).
+  const now = Date.now();
+  const status: Competition['status'] =
+    d.status === 'finished' || now >= endAt ? 'finished'
+    : now >= startAt ? 'live'
+    : 'open';
   return {
     id: d.id,
     name: d.name,
     type: d.type as Competition['type'],
-    status: d.status as Competition['status'],
+    status,
     prizePool: d.prizePool ?? '',
     maxPlayers: d.maxPlayers ?? 0,
     stake: d.stake ?? 'Free',
-    startAt: new Date(d.startAt).getTime(),
-    endAt: new Date(d.endAt).getTime(),
+    startAt,
+    endAt,
     entryCount: d.entryCount ?? 0,
     numberOfPrizes: d.numberOfPrizes ?? prizes.length,
     prizes,
