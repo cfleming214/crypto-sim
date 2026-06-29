@@ -7,25 +7,18 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "development",
+      "environment": "development"
     },
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "env": {
-        "EXPO_PUBLIC_PAYOUTS_ENABLED": "true",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51TjkdwAQ5JYLHb2K6RUXyoGLN40sfjdJezf53blvvSMIUYS8OVeifBgve13ZPm1TagKIOgDxf7mMDH0D1hSuKrY500AwmOwslM",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://89dfa5386f138c381a66b111bcfd1d90@o4511601859952640.ingest.us.sentry.io/4511601862049792"
-      }
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "env": {
-        "EXPO_PUBLIC_PAYOUTS_ENABLED": "false",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51TjkdwAQ5JYLHb2K6RUXyoGLN40sfjdJezf53blvvSMIUYS8OVeifBgve13ZPm1TagKIOgDxf7mMDH0D1hSuKrY500AwmOwslM",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://89dfa5386f138c381a66b111bcfd1d90@o4511601859952640.ingest.us.sentry.io/4511601862049792"
-      }
+      "environment": "production"
     }
   },
   "submit": {

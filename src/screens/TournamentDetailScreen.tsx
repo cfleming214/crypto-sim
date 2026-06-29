@@ -17,6 +17,9 @@ import { fetchEntryPortfolio, isJoinLocked, type ContestPortfolio } from '../ser
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
+import { contestLane } from '../lib/contestLane';
+import { showInterstitial, noteAction } from '../lib/adManager';
+import { watchForReward } from '../lib/rewardedRewards';
 import type { Competition } from '../store/types';
 import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
@@ -194,6 +197,45 @@ export function TournamentDetailScreen() {
     }
   };
 
+  // Join, applying the Lane-A pass gate. Lane B (cash) entry is free — join()
+  // returns ok without spending. Out of passes → offer a rewarded ad, then retry.
+  const doJoin = async () => {
+    const res = await join(competitionId);
+    if (res.ok || res.reason === 'ended') return;
+    if (res.reason === 'needs-pass') {
+      Alert.alert(
+        'Out of contest passes',
+        `You get free passes each week. Watch a short video to earn another and join ${competition.name} now?`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Watch & earn a pass',
+            onPress: async () => {
+              const { granted, blocked } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              if (blocked) return; // duplicate trigger while an ad is up — ignore
+              if (granted) doJoin();
+              else Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
+            },
+          },
+        ],
+      );
+    }
+  };
+
+  // Results-exit interstitial: when leaving a FINISHED contest's detail page, fire
+  // a (frequency-capped) interstitial — a natural content transition, never during
+  // entry or in the money flow. canShowAd enforces the Lane-B/money-surface rules.
+  useEffect(() => {
+    const lane = contestLane(competition);
+    const unsubFocus = nav.addListener('focus', () => noteAction());
+    const unsubBlur = nav.addListener('blur', () => {
+      if (competition.status === 'finished') {
+        showInterstitial('resultsExit', { lane, surface: 'contest-results' });
+      }
+    });
+    return () => { unsubFocus(); unsubBlur(); };
+  }, [nav, competition.status, competition.cashPrize]);
+
   const handleJoinLeave = () => {
     if (joined) {
       Alert.alert(
@@ -225,7 +267,7 @@ export function TournamentDetailScreen() {
                 setVerifyOpen(true);
                 return;
               }
-              join(competitionId);
+              doJoin();
             },
           },
         ],
@@ -586,7 +628,7 @@ export function TournamentDetailScreen() {
         onClose={() => setVerifyOpen(false)}
         onVerified={() => {
           setVerifyOpen(false);
-          join(competitionId);
+          doJoin();
         }}
       />
 

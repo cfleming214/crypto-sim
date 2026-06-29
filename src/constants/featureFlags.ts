@@ -32,3 +32,12 @@ export const DEFAULT_PRIZE_XP = 5000;
 // account and each contest you join. Also the baseline all P&L percentages are
 // measured against, so changing it here keeps returns consistent everywhere.
 export const STARTING_CASH = 100_000;
+
+// IAP (offline-portfolio) economics. The $5M consumable + the Premium monthly
+// grant both credit this much VIRTUAL play money. These are practice-only and
+// isolated from cash contests (which always start at STARTING_CASH).
+export const OFFLINE_BALANCE_GRANT = 5_000_000;
+// Hard cap on total extra offline portfolios a device can hold (beyond 'main').
+export const MAX_OFFLINE_PORTFOLIOS = 12;
+// New offline portfolios a Premium subscriber may create per calendar month.
+export const PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH = 3;

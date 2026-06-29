@@ -287,6 +287,36 @@ export interface AppState {
     equippedTitle: string | null;
     equippedFrame: string | null;
   };
+  // Lane-A (virtual) contest entry passes. `balance` is spent to join a virtual
+  // contest; topped up by a free weekly grant and by watching rewarded ads (never
+  // bought — no IAP). `lastWeeklyGrantKey` is the weekKey() of the last free grant
+  // so it lands once per week. Cash (Lane B) contests are NEVER gated on passes.
+  // Persisted in the gamification.v1 blob.
+  passes: {
+    balance: number;
+    lastWeeklyGrantKey: string | null;
+  };
+  // Premium subscriber entitlement (RevenueCat `premium`). Drives the larger
+  // weekly pass grant + the monthly $5M / 3-portfolio offline grants. RevenueCat
+  // is the source of truth; this is a cache set by SET_ENTITLEMENTS. Never trust
+  // it for anything that costs real money — IAP grants VIRTUAL goods only.
+  isSubscriber: boolean;
+  // No-ads entitlement (RevenueCat `no_ads`, granted by the No-Ads sub OR
+  // Premium). When true, forced ad formats (banner/native/interstitial) are
+  // suppressed; opt-in rewarded ads still work. Cache of the RevenueCat read.
+  noAds: boolean;
+  // Extra device-local OFFLINE practice portfolios bought via IAP (beyond
+  // 'main'). The cash/holdings/trades slices live in `portfolios[id]` like
+  // contests; this tracks which ids are offline + their display names. Ids look
+  // like `offline-<n>`. Capped at 12 total. Persisted device-local in 'iap.v1'
+  // (no cloud) — RevenueCat restores the ENTITLEMENT on reinstall, but the
+  // play-money portfolio DATA is local-only by design.
+  offlinePortfolios: { ids: string[]; names: Record<string, string> };
+  // Premium monthly-grant bookkeeping, keyed by monthKey() so each calendar
+  // month's perks land once. `balanceMonthKey` = month the $5M was claimed;
+  // `portfolioMonthKey` = month the 3-new-portfolio allowance was reset;
+  // `portfoliosThisMonth` = how many of the 3 have been used this month.
+  premiumGrants: { balanceMonthKey: string | null; portfolioMonthKey: string | null; portfoliosThisMonth: number };
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

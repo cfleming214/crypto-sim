@@ -34,6 +34,14 @@ const MINUTES = Math.max(1, Number(argVal('--minutes', '60')));
 // Podium prizes in dollars, e.g. --prizes 10,5,2 (default 10,5,1). numberOfPrizes
 // is derived from the count.
 const PRIZES = argVal('--prizes', '10,5,1').split(',').map(s => Number(s.trim())).filter(n => n > 0);
+// Compliance: keep the total prize pool under the NY/FL sweepstakes registration
+// threshold (<$5k). Mirrors assertPrizePoolWithinCap in the create-competition Lambda.
+const PRIZE_POOL_CAP_CENTS = 499_900;
+const prizeTotalCents = PRIZES.reduce((s, p) => s + Math.round(p * 100), 0);
+if (prizeTotalCents >= PRIZE_POOL_CAP_CENTS) {
+  console.error(`✖ Prize pool $${(prizeTotalCents / 100).toFixed(2)} meets/exceeds the $${(PRIZE_POOL_CAP_CENTS / 100).toFixed(2)} cap (NY/FL registration threshold). Lower --prizes.`);
+  process.exit(1);
+}
 const MAX_PLAYERS = 20;
 const CREATED_BY = 'payout-contest';
 const NAME_PREFIX = '💸 Payout Contest';   // stable across prize amounts — used to sweep orphan payouts

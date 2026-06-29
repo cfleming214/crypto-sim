@@ -11,6 +11,8 @@ import { PressableScale } from '../components/ui/PressableScale';
 import { Avatar, CoinGlyph } from '../components/ui/Avatar';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { AuthWall } from '../components/AuthWall';
+import { AdBanner } from '../components/AdBanner';
+import { watchForReward } from '../lib/rewardedRewards';
 import { useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/tokens';
 import { leagueColor } from '../components/ui/LeagueBadge';
@@ -83,7 +85,7 @@ export function CompeteScreen() {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
   const nav = useNavigation<any>();
-  const { getLive, isJoined, join, timeRemaining, refresh } = useCompetitions();
+  const { getLive, isJoined, join, timeRemaining, refresh, passes } = useCompetitions();
   // A replay contest: play the scenario on the Replay screen; your final result
   // is submitted as your entry. Open to all until the end date.
   const openReplay = (id: string) => {
@@ -480,10 +482,34 @@ export function CompeteScreen() {
   };
 
   const finalizeJoin = async (comp: Competition) => {
-    await join(comp.id);
-    Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
-      { text: 'Let\'s go!', onPress: () => nav.navigate('TournamentDetail', { id: comp.id }) },
-    ]);
+    const res = await join(comp.id);
+    if (res.ok) {
+      Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
+        { text: 'Let\'s go!', onPress: () => nav.navigate('TournamentDetail', { id: comp.id }) },
+      ]);
+      return;
+    }
+    // Out of passes — Lane A (virtual) contests cost an entry pass. Offer to earn
+    // one via a rewarded ad (never sold), then retry the join. Lane B never lands
+    // here: cash-contest entry is free and join() returns ok without a pass.
+    if (res.reason === 'needs-pass') {
+      Alert.alert(
+        'Out of contest passes',
+        `You get free passes each week. Watch a short video to earn another and join ${comp.name} now?`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Watch & earn a pass',
+            onPress: async () => {
+              const { granted, blocked } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              if (blocked) return; // duplicate trigger while an ad is up — ignore
+              if (granted) finalizeJoin(comp);
+              else Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
+            },
+          },
+        ],
+      );
+    }
   };
 
   const handleJoin = async (comp: Competition) => {
@@ -677,6 +703,33 @@ export function CompeteScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Contest passes — one free each week; watch a rewarded ad to earn more.
+          Passes gate entry to virtual (XP) contests only; cash contests are free. */}
+      <Card variant="tinted">
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 18 }}>🎟️</Text>
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>
+                {passes.balance} contest {passes.balance === 1 ? 'pass' : 'passes'}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>Free passes weekly · watch to earn more</Text>
+            </View>
+          </View>
+          <Button
+            size="sm"
+            variant="surface"
+            onPress={async () => {
+              const { granted, blocked } = await watchForReward('rewardedPass', dispatch, { grantOnUnavailable: true });
+              if (blocked) return; // duplicate trigger while an ad is up — ignore
+              if (!granted) Alert.alert('No pass earned', "The video didn't finish, so no pass was added.");
+            }}
+          >
+            Watch +1
+          </Button>
+        </View>
+      </Card>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -831,13 +884,20 @@ export function CompeteScreen() {
         );
       })()}
 
-      {/* Live trades — the last 25 trades executed across all players */}
-      {liveTrades.length > 0 && (
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.up }} />
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Live trades</Text>
-          </View>
+      {/* Live trades — the last 25 trades executed across all players. Always
+          rendered so the feature never silently vanishes when the feed is empty. */}
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.up }} />
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Live trades</Text>
+        </View>
+        {liveTrades.length === 0 ? (
+          <Card variant="tinted">
+            <Text style={{ fontSize: 13, color: colors.ink3 }}>
+              No trades yet — be the first to trade and you'll show up here.
+            </Text>
+          </Card>
+        ) : (
           <Card variant="noPad">
             <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
               {liveTrades.map((t, i) => {
@@ -867,8 +927,12 @@ export function CompeteScreen() {
               })}
             </ScrollView>
           </Card>
-        </View>
-      )}
+        )}
+      </View>
+
+      {/* AdMob banner — real unit in production (AD_UNITS.banner), test ad in dev.
+          No-ops in Expo Go / web. */}
+      <AdBanner />
 
       {/* Top traders entry point — previews the leaderboard's top 3 */}
       <TouchableOpacity testID="compete-top-traders-link" onPress={() => nav.navigate('TopTraders')} activeOpacity={0.85}>

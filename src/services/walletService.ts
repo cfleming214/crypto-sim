@@ -131,7 +131,7 @@ export async function claimPrize(
 
 // Open a pending withdrawal of the full available balance.
 export async function requestWithdrawal(): Promise<{
-  ok: boolean; requestId?: string; amountCents?: number; balanceCents?: number; error?: string; needsOnboarding?: boolean;
+  ok: boolean; requestId?: string; amountCents?: number; balanceCents?: number; error?: string; needsOnboarding?: boolean; needsW9?: boolean;
 }> {
   const client = await getClient();
   if (!client) return { ok: false, error: 'Offline' };
@@ -141,10 +141,45 @@ export async function requestWithdrawal(): Promise<{
     const res = parseJson(data);
     return {
       ok: !!res?.ok, requestId: res?.requestId, amountCents: res?.amountCents,
-      balanceCents: res?.balanceCents, error: res?.error, needsOnboarding: res?.needsOnboarding,
+      balanceCents: res?.balanceCents, error: res?.error, needsOnboarding: res?.needsOnboarding, needsW9: res?.needsW9,
     };
   } catch (e) {
     console.warn('requestWithdrawal failed', e);
+    return { ok: false, error: String(e) };
+  }
+}
+
+// This user's cumulative cash winnings (in cents) for a tax year — read from the
+// AnnualWinnings rollup the close-competition Lambda maintains. Used to surface
+// the $600 / W-9 threshold in the UI. Owner-auth scopes list() to the caller's own
+// rows, so we just pick this year's. Defaults to the current UTC year.
+export async function annualWinningsCents(taxYear?: number): Promise<number> {
+  const client = await getClient();
+  if (!client) return 0;
+  const year = taxYear ?? new Date().getUTCFullYear();
+  try {
+    const { data } = await client.models.AnnualWinnings.list();
+    const row = (data as any[]).find((r) => Number(r.taxYear) === year);
+    return Number(row?.totalCents ?? 0);
+  } catch (e) {
+    console.warn('annualWinningsCents failed', e);
+    return 0;
+  }
+}
+
+// Record that the user's W-9 was collected (call after the real Stripe-side W-9
+// capture completes). Opens the withdrawal gate for $600+ winners. `providerRef`
+// is the Stripe-side record id — never the raw TIN.
+export async function recordW9Collected(providerRef?: string): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient();
+  if (!client) return { ok: false, error: 'Offline' };
+  try {
+    const { data, errors } = await client.mutations.setW9Collected({ providerRef });
+    if (errors?.length) return { ok: false, error: errors[0].message };
+    const res = parseJson(data);
+    return { ok: !!res?.ok, error: res?.error };
+  } catch (e) {
+    console.warn('recordW9Collected failed', e);
     return { ok: false, error: String(e) };
   }
 }

@@ -15,6 +15,45 @@ const ddb = new DynamoDBClient({});
 const subFromOwner = (owner: string | undefined): string =>
   owner ? owner.split('::')[0] : '';
 
+// IRS 1099-MISC reporting threshold: $600 in winnings per payee per calendar year.
+const W9_THRESHOLD_CENTS = 60_000;
+
+// Add a prize to the winner's per-tax-year rollup (AnnualWinnings, id
+// "<userId>#<taxYear>"). Called once per winner at settlement (guarded by the
+// conditional Payout put), so totals never double-count. Flips `w9Required` once
+// the year crosses $600 — the payout Lambdas then require a W-9 before transfer.
+async function bumpAnnualWinnings(userId: string, owner: string | undefined, amountCents: number) {
+  const table = process.env.ANNUAL_WINNINGS_TABLE_NAME;
+  if (!table || !userId || !(amountCents > 0)) return;
+  const taxYear = new Date().getUTCFullYear();
+  const id = `${userId}#${taxYear}`;
+  const now = new Date().toISOString();
+  try {
+    const res = await ddb.send(new UpdateItemCommand({
+      TableName: table,
+      Key: marshall({ id }),
+      UpdateExpression:
+        'SET userId = :u, taxYear = :y, updatedAt = :n, #tn = :tn, #o = if_not_exists(#o, :o), createdAt = if_not_exists(createdAt, :n) ADD totalCents :c',
+      ExpressionAttributeNames: { '#tn': '__typename', '#o': 'owner' },
+      ExpressionAttributeValues: marshall({
+        ':u': userId, ':y': taxYear, ':n': now, ':tn': 'AnnualWinnings', ':o': owner ?? userId, ':c': amountCents,
+      }),
+      ReturnValues: 'UPDATED_NEW',
+    }));
+    const total = res.Attributes ? Number(unmarshall(res.Attributes).totalCents ?? 0) : 0;
+    if (total >= W9_THRESHOLD_CENTS) {
+      await ddb.send(new UpdateItemCommand({
+        TableName: table,
+        Key: marshall({ id }),
+        UpdateExpression: 'SET w9Required = :t',
+        ExpressionAttributeValues: marshall({ ':t': true }),
+      }));
+    }
+  } catch (err) {
+    console.error('annual-winnings rollup failed for', id, err); // never block settlement
+  }
+}
+
 // Create the UNCLAIMED Payout row for one winning entry. No transfer happens
 // here anymore — the winner claims the prize into their in-app balance, then
 // withdraws it (the daily process-withdrawals Lambda does the Stripe transfer).
@@ -58,6 +97,10 @@ async function settleWinner(
     if (err?.name === 'ConditionalCheckFailedException') return; // already settled
     throw err;
   }
+
+  // Roll this prize into the winner's annual 1099 total (once per winner — we're
+  // inside the conditional-put branch, so a re-settle never double-counts).
+  await bumpAnnualWinnings(userId, entry.owner, amountCents);
 
   // Notify the winner — fired inside the once-per-winner conditional-put branch,
   // so the 10-minute cron re-settling a contest never re-notifies.

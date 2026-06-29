@@ -29,6 +29,9 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Check amplify_outputs.json is in sync with schema
+        run: npm run check:amplify-outputs
+
       - name: Lint Maestro flows
         run: npm run test:e2e:lint
 

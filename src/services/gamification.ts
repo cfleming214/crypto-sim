@@ -21,6 +21,28 @@ export function todayKey(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+// UTC week key — whole 7-day periods since the Unix epoch ("W2901"). Drives the
+// free weekly contest-pass grant: exactly once per week, timezone-independent.
+export function weekKey(now: number): string {
+  return `W${Math.floor(now / (7 * DAY_MS))}`;
+}
+
+// UTC calendar-month key, e.g. "2026-06". Drives the Premium monthly grants (the
+// $5M balance + the 3-new-portfolios allowance): each lands once per month,
+// timezone-independent and idempotent.
+export function monthKey(now: number): string {
+  return new Date(now).toISOString().slice(0, 7);
+}
+
+// Free Lane-A contest passes granted at the start of each week. Subscribers get a
+// larger grant; the subscription that sets isSubscriber is future-scope IAP, so
+// today everyone effectively gets the free tier.
+export const WEEKLY_PASS_GRANT_FREE = 5;
+export const WEEKLY_PASS_GRANT_SUBSCRIBER = 20;
+export function weeklyPassGrant(isSubscriber: boolean): number {
+  return isSubscriber ? WEEKLY_PASS_GRANT_SUBSCRIBER : WEEKLY_PASS_GRANT_FREE;
+}
+
 // Difference in whole UTC days between two day-keys (b - a). Both are
 // "YYYY-MM-DD". Returns a signed integer.
 function dayDiff(a: string, b: string): number {

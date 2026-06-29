@@ -14,9 +14,13 @@ import { AchievementWatcher } from './src/components/AchievementWatcher';
 import { QuestWatcher } from './src/components/QuestWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
 import { PredictionWatcher } from './src/components/PredictionWatcher';
+import { PremiumWatcher } from './src/components/PremiumWatcher';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
+import { initAds } from './src/lib/ads';
+import { loadAdTestMode } from './src/lib/adTestMode';
+import { AdsTestBadge } from './src/components/AdsTestBadge';
 import * as Sentry from '@sentry/react-native';
 
 configureAmplify();
@@ -38,6 +42,12 @@ function App() {
   // Production-safe OTA "hot reload": pull the latest JS bundle on launch +
   // foreground (no-op in dev / Expo Go). See src/lib/otaUpdates.ts.
   React.useEffect(() => startOtaUpdates(), []);
+
+  // Boot the AdMob SDK (+ iOS ATT prompt) once at launch. No-op in Expo Go / web.
+  React.useEffect(() => { initAds(); }, []);
+
+  // Load the persisted AdMob test-mode override (QA dev toggle).
+  React.useEffect(() => { loadAdTestMode(); }, []);
 
   // Load Geist (the app typeface) before first paint so text never flashes in a
   // system fallback. The faces are bundled assets, so they load near-instantly
@@ -66,6 +76,7 @@ function App() {
                   <QuestWatcher />
                   <EventWatcher />
                   <PredictionWatcher />
+                  <PremiumWatcher />
                 </ErrorBoundary>
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>
@@ -78,6 +89,8 @@ function App() {
         </AuthProvider>
       </SafeAreaProvider>
       </ErrorBoundary>
+      {/* QA overlay — only visible when AdMob test mode is on. */}
+      <AdsTestBadge />
     </GestureHandlerRootView>
   );
 }

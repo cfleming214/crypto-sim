@@ -8,6 +8,7 @@ import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { PressableScale } from '../components/ui/PressableScale';
 import { FadeInUp } from '../components/ui/FadeInUp';
+import { NativeAdCard } from '../components/NativeAdCard';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
@@ -383,7 +384,8 @@ export function MarketsScreen() {
             ? `${held.units < 1 ? held.units.toFixed(4) : held.units.toFixed(2)} ${a.symbol} · $${(held.units * a.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             : '';
           return (
-          <FadeInUp key={a.symbol} index={Math.min(i, 8)}>
+          <React.Fragment key={a.symbol}>
+          <FadeInUp index={Math.min(i, 8)}>
           <PressableScale testID={`markets-coin-row-${a.symbol}`} onPress={() => handleCoinTap(a.symbol)}>
             <CardSection last={i === sorted.length - 1}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -427,8 +429,13 @@ export function MarketsScreen() {
             </CardSection>
           </PressableScale>
           </FadeInUp>
+          {/* Native ad after the 10th coin (only when there are more than 10). */}
+          {i + 1 === 10 && sorted.length > 10 && <NativeAdCard variant="row" />}
+          </React.Fragment>
           );
         })}
+        {/* Native ad at the bottom of the list. */}
+        {sorted.length > 0 && <NativeAdCard variant="row" />}
       </Card>
       <FilterSheet
         visible={filterOpen}
