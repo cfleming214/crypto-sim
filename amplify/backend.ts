@@ -12,6 +12,7 @@ import { tickGlobalLeaderboard } from './functions/tick-global-leaderboard/resou
 import { closeCompetition } from './functions/close-competition/resource.js';
 import { createCompetition } from './functions/create-competition/resource.js';
 import { createWeeklyContest } from './functions/create-weekly-contest/resource.js';
+import { createRollingContest } from './functions/create-rolling-contest/resource.js';
 import { resetDemo } from './functions/reset-demo/resource.js';
 import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
@@ -41,6 +42,7 @@ const backend = defineBackend({
   closeCompetition,
   createCompetition,
   createWeeklyContest,
+  createRollingContest,
   resetDemo,
   evaluateCoach,
   executeTrade,
@@ -196,6 +198,19 @@ weeklyFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
 new Rule(Stack.of(weeklyFn), 'CreateWeeklyContestRule', {
   schedule: Schedule.rate(Duration.days(7)),
   targets: [new LambdaFunction(weeklyFn)],
+});
+
+// --- createRollingContest: a fresh 6-hour XP contest every 6 hours ---
+// Each run ensures the current window's contest (live) + the next window's
+// (scheduled) exist, so there's always one running and one queued. 20-player
+// cap, 5000 XP, free entry.
+const rollingFn = backend.createRollingContest.resources.lambda;
+competitionTable.grantWriteData(rollingFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+rollingFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
+new Rule(Stack.of(rollingFn), 'CreateRollingContestRule', {
+  schedule: Schedule.rate(Duration.hours(6)),
+  targets: [new LambdaFunction(rollingFn)],
 });
 
 // --- resetDemo: user-invoked, clears trades + profile ---
