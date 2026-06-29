@@ -59,6 +59,21 @@ export function useEntitlements(): Entitlements {
   return cached;
 }
 
+// "Can the app actually transact?" — true only once the native SDK is present AND
+// configured with a usable key. Lets the UI hide all purchase entry points on
+// builds without the native module (e.g. an OTA pushed to an older binary) or
+// when configuration was skipped (test key in a release build), so we never show
+// a dead "Upgrade" button. Flips via notify() when configurePurchases() succeeds.
+let ready = false;
+export function isPurchasesReady(): boolean {
+  return ready;
+}
+export function usePurchasesReady(): boolean {
+  const [, force] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => { listeners.add(force); return () => { listeners.delete(force); }; }, []);
+  return ready;
+}
+
 // ---------------------------------------------------------------------------
 // SDK access (lazy + guarded)
 // ---------------------------------------------------------------------------
@@ -98,6 +113,8 @@ export function configurePurchases(): void {
   try {
     sdk.configure({ apiKey });
     configured = true;
+    ready = true;
+    notify(); // wake any usePurchasesReady() consumers so the IAP UI can appear
   } catch (e) {
     console.warn('[iap] configure failed', e);
   }

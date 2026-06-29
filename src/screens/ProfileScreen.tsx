@@ -30,7 +30,7 @@ import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
-import { restore as restorePurchases, useEntitlements } from '../lib/purchases';
+import { restore as restorePurchases, useEntitlements, usePurchasesReady } from '../lib/purchases';
 import { PurchaseModal } from '../components/PurchaseModal';
 import type { AppDispatch } from '../store/AppContext';
 
@@ -204,6 +204,7 @@ function OfflineProfile() {
   const nav = useNavigation<any>();
   const { enabled: tipsEnabled, setEnabled: setTipsEnabled } = useCoachmarkSettings();
   const [purchaseVisible, setPurchaseVisible] = useState(false);
+  const purchasesReady = usePurchasesReady();
   const planLabel = premium ? 'Premium' : noAds ? 'No Ads' : null;
 
   return (
@@ -227,7 +228,8 @@ function OfflineProfile() {
         </View>
       </Card>
 
-      {/* Upgrade */}
+      {/* Upgrade — hidden when the purchases SDK isn't available on this binary. */}
+      {purchasesReady && (
       <Card variant="noPad">
         <TouchableOpacity testID="offline-upgrade" onPress={() => setPurchaseVisible(true)}>
           <CardSection>
@@ -263,6 +265,7 @@ function OfflineProfile() {
           </CardSection>
         </TouchableOpacity>
       </Card>
+      )}
 
       {/* Preferences */}
       <Card variant="noPad">
@@ -323,6 +326,7 @@ export function ProfileScreen() {
   const { noAds, premium } = useEntitlements();
   const [editVisible, setEditVisible] = useState(false);
   const [purchaseVisible, setPurchaseVisible] = useState(false);
+  const purchasesReady = usePurchasesReady();
   const planLabel = premium ? 'Premium' : noAds ? 'No Ads' : null;
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
 
@@ -793,7 +797,9 @@ export function ProfileScreen() {
         )}
       </Card>
 
-      {/* Subscription & purchases — upgrade, restore, manage. */}
+      {/* Subscription & purchases — upgrade, restore, manage. Hidden when the
+          purchases SDK isn't available on this binary (e.g. OTA on an older build). */}
+      {purchasesReady && (
       <Card variant="noPad">
         <TouchableOpacity testID="profile-upgrade" onPress={() => setPurchaseVisible(true)}>
           <CardSection>
@@ -829,6 +835,7 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
       </Card>
+      )}
 
       {/* Prize balance + withdrawals — only when real-money payouts are enabled. */}
       {PAYOUTS_ENABLED && (

@@ -33,6 +33,7 @@ import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, Graduat
 import { ACADEMY } from '../data/academy';
 import { AnimatedBuyButton } from '../components/AnimatedBuyButton';
 import { PurchaseModal } from '../components/PurchaseModal';
+import { usePurchasesReady } from '../lib/purchases';
 
 // Marker-popup timestamp: "Jun 14, 3:42 PM" for old trades, time-only if today.
 function markerTimeLabel(ts: number): string {
@@ -270,6 +271,7 @@ export function PortfolioScreen() {
     : ['Live', '1H', '24H', '7D'];
   const [tf, setTf] = useState(isPractice ? '7D' : '1H');
   const [purchaseVisible, setPurchaseVisible] = useState(false);
+  const purchasesReady = usePurchasesReady(); // hide IAP UI on builds without the native module
   // If the user switches to/from a contest, clamp the timeframe into the new list.
   React.useEffect(() => {
     if (!tfOptions.includes(tf)) setTf(tfOptions[tfOptions.length - 1]);
@@ -297,9 +299,8 @@ export function PortfolioScreen() {
 
   const totalEquity = state.bankroll;
   const startEquity = STARTING_CASH;
-  const pnl = totalEquity - startEquity;
-  const pnlPct = (pnl / startEquity) * 100;
-  const pnlPositive = pnl >= 0;
+  // P&L is derived from the charted window below (current equity vs the earliest
+  // point in the selected timeframe), so it changes with the timeframe.
 
   // Real historical portfolio balance, driven by ACTUAL recorded snapshots
   // (services/equitySnapshots.ts): the live bankroll captured every 60s while
@@ -387,6 +388,14 @@ export function PortfolioScreen() {
       chartTimestamps: [now - (windowMs || 0), now],
     };
   }, [history, totalEquity, tf]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Timeframe P&L: current equity (the live right-edge value) minus the EARLIEST
+  // point in the charted window. Recomputes whenever the timeframe — and thus the
+  // window's first point — changes, so the chip matches what the graph shows.
+  const windowBaseline = chartData.length > 0 ? chartData[0] : startEquity;
+  const pnl = totalEquity - windowBaseline;
+  const pnlPct = windowBaseline !== 0 ? (pnl / windowBaseline) * 100 : 0;
+  const pnlPositive = pnl >= 0;
 
   // Your trades pinned on the equity curve as up (buy) / down (sell) triangles;
   // AreaChart filters them to the visible timeframe by timestamp.
@@ -586,8 +595,9 @@ export function PortfolioScreen() {
       rightActions={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {/* Upgrade — shimmering button that opens the purchase popup (no ads /
-              extra practice balance / premium). Left of the "+". */}
-          <AnimatedBuyButton testID="portfolio-upgrade-btn" onPress={() => setPurchaseVisible(true)} />
+              extra practice balance / premium). Left of the "+". Hidden until the
+              purchases SDK is ready (e.g. an OTA on a binary without the module). */}
+          {purchasesReady && <AnimatedBuyButton testID="portfolio-upgrade-btn" onPress={() => setPurchaseVisible(true)} />}
           {/* +$50K balance boost — practice portfolios only (main + offline);
               watches a rewarded ad and adds $50K to the tradeable balance. */}
           {isPractice && (
