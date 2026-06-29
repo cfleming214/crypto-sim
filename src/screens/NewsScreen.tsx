@@ -8,6 +8,7 @@ import { Newspaper } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { fetchCryptoNews, timeAgo, type NewsArticle } from '../services/newsService';
 import { NativeAdCard } from '../components/NativeAdCard';
+import { AD_UNITS } from '../constants/adUnits';
 
 // A native ad slot is interleaved into the feed after every Nth article.
 const ADS_EVERY = 7;
@@ -127,7 +128,7 @@ export function NewsScreen() {
           keyExtractor={item => (item.kind === 'ad' ? item.id : item.article.id)}
           renderItem={({ item }) => (
             item.kind === 'ad'
-              ? <NativeAdCard />
+              ? <NativeAdCard unitId={AD_UNITS.nativeNews} />
               : <NewsCard article={item.article} onPress={() => nav.navigate('NewsDetail', { article: item.article })} />
           )}
           contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 12 }}
