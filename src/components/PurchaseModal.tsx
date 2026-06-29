@@ -53,10 +53,21 @@ export function PurchaseModal({ visible, onClose }: Props) {
   const priceFor = (productId: string, fallback: string) =>
     packages.find(p => p.productId === productId)?.priceString || fallback;
 
+  // Per-product load status, so a device tester can see exactly which products
+  // the App Store returned vs. didn't (the "not loaded" ones are still Missing
+  // Metadata / propagating in App Store Connect).
+  const expectedProducts = [
+    { id: PRODUCT_NO_ADS, label: 'No Ads' },
+    { id: PRODUCT_BALANCE_5M, label: '$5M Balance' },
+    { id: PRODUCT_PREMIUM, label: 'Premium' },
+  ];
+  const loadedIds = new Set(packages.map(p => p.productId));
+  const anyMissing = !loading && expectedProducts.some(e => !loadedIds.has(e.id));
+
   const handleBuy = async (productId: string) => {
     const pkg = packages.find(p => p.productId === productId);
     if (!pkg) {
-      Alert.alert('Unavailable', 'This purchase isn’t available right now. Please try again later.');
+      Alert.alert('Not available yet', 'The App Store hasn’t returned this product yet — see the status list in the sheet. Finish its metadata in App Store Connect, then force-quit and reopen.');
       return;
     }
     setBusy(productId);
@@ -114,6 +125,26 @@ export function PurchaseModal({ visible, onClose }: Props) {
             <View style={{ backgroundColor: colors.warnSoft, borderRadius: 12, padding: 12, gap: 4 }}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: colors.warn }}>Products didn't load</Text>
               <Text style={{ fontSize: 12, color: colors.ink2, lineHeight: 17 }}>{offeringsDiagnostic()}</Text>
+            </View>
+          )}
+
+          {/* Per-product load status — shows which products the App Store returned
+              vs. didn't, so a tester can pinpoint which one is still Missing
+              Metadata / propagating without a Mac console. */}
+          {anyMissing && (
+            <View style={{ backgroundColor: colors.warnSoft, borderRadius: 12, padding: 12, gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.warn }}>Store product status</Text>
+              {expectedProducts.map(e => (
+                <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: loadedIds.has(e.id) ? colors.up : colors.down, width: 72 }}>
+                    {loadedIds.has(e.id) ? 'loaded' : 'NOT loaded'}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.ink2, flex: 1 }} numberOfLines={1}>{e.label} · {e.id}</Text>
+                </View>
+              ))}
+              <Text style={{ fontSize: 11, color: colors.ink3, lineHeight: 16 }}>
+                "NOT loaded" = App Store hasn't returned it yet. Finish that product's price + localization (and the subscription group's localization) in App Store Connect, then force-quit and reopen.
+              </Text>
             </View>
           )}
 
