@@ -861,7 +861,7 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
         <TouchableOpacity testID="profile-manage-sub" onPress={openManageSubscriptions}>
-          <CardSection last>
+          <CardSection last={!premium}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Crown color={colors.ink} size={18} strokeWidth={1.75} />
@@ -871,14 +871,11 @@ export function ProfileScreen() {
             </View>
           </CardSection>
         </TouchableOpacity>
-      </Card>
-      )}
 
-      {/* Premium perks — redeem the monthly $5M + extra $5M portfolios directly. */}
-      {premium && purchasesReady && (
-        <>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Premium perks</Text>
-          <Card variant="noPad">
+        {/* Premium perks — redeem the monthly $5M + extra $5M portfolios right
+            here, directly under Manage subscription. */}
+        {premium && (
+          <>
             <CardSection>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -907,8 +904,9 @@ export function ProfileScreen() {
                   : <Chip variant="default">Used up</Chip>}
               </View>
             </CardSection>
-          </Card>
-        </>
+          </>
+        )}
+      </Card>
       )}
 
       {/* Prize balance + withdrawals — only when real-money payouts are enabled. */}
