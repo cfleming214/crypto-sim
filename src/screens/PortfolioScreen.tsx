@@ -578,10 +578,14 @@ export function PortfolioScreen() {
       id,
       label: state.offlinePortfolios.names[id] ?? 'Offline',
     })),
-    ...state.joinedTournamentIds.map(id => {
-      const comp = state.competitions.find(c => c.id === id);
-      return { id, label: comp?.name ?? 'Contest' };
-    }),
+    // Only contests that are still LIVE/OPEN are real, tradeable portfolios. A
+    // finished/archived/orphaned joined contest isn't switchable — it's pruned
+    // from local state by the cleanup effect in AppContext — so it must not show
+    // as a "Contest" pill here either.
+    ...state.joinedTournamentIds
+      .map(id => state.competitions.find(c => c.id === id))
+      .filter(c => !!c && c.status !== 'finished' && Date.now() < c.endAt)
+      .map(c => ({ id: c!.id, label: c!.name })),
   ];
 
   return (

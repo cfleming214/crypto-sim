@@ -7,7 +7,7 @@ import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type Pr
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence, fetchMyContestWins, resetDemoCloud } from '../services/portfolioService';
 import { recordLiveTrade } from '../services/liveTradeService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
-import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions } from '../services/competitionService';
+import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions, leaveCompetitionForUser } from '../services/competitionService';
 import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
@@ -2315,6 +2315,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     return () => unsubs.forEach(u => u());
   }, [authStatus, state.joinedReplayIds]);
+
+  // Prune ended/orphaned contest portfolios. A joined contest is only a real,
+  // tradeable portfolio while it's live/open; once it ends (or its Competition
+  // row was removed entirely), it shouldn't linger in the portfolio selector.
+  //   • Anything in joinedTournamentIds is an isActive=true entry (loadJoined…
+  //     filters out isActive=false), so finished RESULT rows (which back the
+  //     win-count + unclaimed-rewards) are never touched here.
+  //   • LEAVE_TOURNAMENT drops it from the local active-portfolio set (and falls
+  //     back to main if it was active).
+  //   • If the contest no longer exists ANYWHERE (not in the live list nor the
+  //     finished list), the entry is an orphan — a contest deleted without
+  //     deactivating its entries — so we also delete the stale cloud row so it
+  //     can't reappear on reload. Recently-ended contests are still in one of the
+  //     lists, so their (soon-to-settle) entries are left alone.
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    if (state.competitions.length === 0) return; // wait until the live list has loaded
+    const now = Date.now();
+    const liveOrOpen = new Set(state.competitions.filter(c => c.status !== 'finished' && now < c.endAt).map(c => c.id));
+    const present = new Set(state.competitions.map(c => c.id));
+    const finished = new Set(state.finishedCompetitions.map(c => c.id));
+    for (const id of state.joinedTournamentIds) {
+      if (state.replayMeta[id]) continue;   // replays are managed separately
+      if (liveOrOpen.has(id)) continue;      // still tradeable → keep
+      dispatch({ type: 'LEAVE_TOURNAMENT', tournamentId: id });
+      if (!present.has(id) && !finished.has(id)) {
+        leaveCompetitionForUser(id, stateRef.current.user.handle).catch(() => {});
+      }
+    }
+  }, [authStatus, state.competitions, state.finishedCompetitions, state.joinedTournamentIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync portfolio to cloud after each trade
   useEffect(() => {
