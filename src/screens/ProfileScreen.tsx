@@ -498,7 +498,10 @@ export function ProfileScreen() {
       const myIdx = sorted.findIndex(e => e.handle === state.user.handle);
       const myRank = myIdx >= 0 ? myIdx + 1 : null;
       const prize = myRank && myRank <= comp.prizes.length ? comp.prizes[myRank - 1] : 0;
-      return { comp, bankroll, pnl: contestPnl, myRank, prize };
+      // XP-prize mode (production): the prize is the rank's share of prizeXp,
+      // derived from the live leaderboard rank — same math as the contest screen.
+      const xp = myRank ? contestXpForRank(comp.prizeXp, myRank) : 0;
+      return { comp, bankroll, pnl: contestPnl, myRank, prize, xp };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => b.comp.startAt - a.comp.startAt);
@@ -1059,13 +1062,17 @@ export function ProfileScreen() {
                       </Text>
                       <Text style={{
                         fontSize: 11,
-                        color: row.prize > 0 ? colors.up : colors.ink3,
+                        color: (CONTEST_CASH_PRIZES ? row.prize : row.xp) > 0 ? colors.up : colors.ink3,
                         fontVariant: ['tabular-nums'],
                         marginTop: 2,
                       }}>
-                        {row.prize > 0
-                          ? (finished ? `Won $${row.prize}` : `~$${row.prize} if ends now`)
-                          : (finished ? 'No prize' : 'Out of money')}
+                        {CONTEST_CASH_PRIZES
+                          ? (row.prize > 0
+                              ? (finished ? `Won $${row.prize}` : `~$${row.prize} if ends now`)
+                              : (finished ? 'No prize' : 'Out of money'))
+                          : (row.xp > 0
+                              ? (finished ? `Won ${row.xp.toLocaleString()} XP` : `~${row.xp.toLocaleString()} XP if ends now`)
+                              : (finished ? 'No prize' : 'Out of money'))}
                       </Text>
                     </View>
                   </View>
