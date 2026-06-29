@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Modal, View, TouchableOpacity, ScrollView, TextInput, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, TouchableOpacity, ScrollView, TextInput, Alert } from 'react-native';
 import { Text } from './ui/Text';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
-import { X, Plus, Wallet } from 'lucide-react-native';
+import { ChevronLeft, Plus, Wallet } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
@@ -17,20 +16,23 @@ import { MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
 export type OfflineGrantSource = 'consumable' | 'premium-balance' | 'premium-portfolio';
 
 interface Props {
-  visible: boolean;
-  onClose: () => void;
+  onClose: () => void;        // back / cancel — returns to the purchase sheet
   amount: number;             // play money to grant (e.g. $5,000,000)
   source: OfflineGrantSource;
   monthKey?: string;          // required for the two premium sources
-  onDone?: () => void;        // called after a successful place
+  onDone?: () => void;        // called after a successful place (closes the sheet)
 }
 
 const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 
 // After the user obtains a $5M grant (bought the consumable, or claimed a Premium
-// monthly perk), this sheet lets them either spin up a NEW offline practice
-// portfolio or top up an existing one. Play money only — never touches contests.
-export function OfflinePortfolioChooser({ visible, onClose, amount, source, monthKey, onDone }: Props) {
+// monthly perk), this lets them either spin up a NEW offline practice portfolio or
+// top up an existing one. Play money only — never touches contests.
+//
+// Rendered INLINE inside the PurchaseModal (not as its own Modal): stacking two
+// page-sheet Modals and dismissing both at once left a blank white screen on iOS,
+// so the chooser is a panel that replaces the sheet's content instead.
+export function OfflinePortfolioChooser({ onClose, amount, source, monthKey, onDone }: Props) {
   const { colors } = useTheme();
   const { state, dispatch } = useApp();
   const [name, setName] = useState('');
@@ -41,7 +43,7 @@ export function OfflinePortfolioChooser({ visible, onClose, amount, source, mont
   // Equity per addable portfolio (main + each offline), valued at live prices.
   const sliceFor = (id: string) => (id === state.activePortfolioId
     ? { cash: state.cash, holdings: state.holdings }
-    : (state.portfolios[id] ?? { cash: id === 'main' ? 0 : 0, holdings: [] }));
+    : (state.portfolios[id] ?? { cash: 0, holdings: [] }));
   const equityOf = (id: string) => {
     const s = sliceFor(id);
     return s.cash + s.holdings.reduce((a, h) => {
@@ -75,86 +77,82 @@ export function OfflinePortfolioChooser({ visible, onClose, amount, source, mont
     finishPremium();
     setName('');
     onDone?.();
-    onClose();
   };
 
   const handleAdd = (portfolioId: string) => {
     dispatch({ type: 'ADD_OFFLINE_BALANCE', portfolioId, amount });
     finishPremium();
     onDone?.();
-    onClose();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Place your {fmt(amount)}</Text>
-            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>Practice balance — separate from contests</Text>
-          </View>
-          <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
-            <X color={colors.ink} size={22} strokeWidth={1.75} />
-          </TouchableOpacity>
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 20, paddingBottom: 12 }}>
+        <TouchableOpacity onPress={onClose} style={{ padding: 6, marginLeft: -6 }}>
+          <ChevronLeft color={colors.ink} size={24} strokeWidth={1.9} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Place your {fmt(amount)}</Text>
+          <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>Practice balance — separate from contests</Text>
         </View>
+      </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 12 }}>
-          {/* Create new */}
-          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>New portfolio</Text>
-          <Card style={{ gap: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${colors.brand}1A`, alignItems: 'center', justifyContent: 'center' }}>
-                <Plus color={colors.brand} size={20} strokeWidth={2.25} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', color: colors.ink }}>Create a new portfolio</Text>
-                <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
-                  Starts with {fmt(amount)} · {state.offlinePortfolios.ids.length}/{MAX_OFFLINE_PORTFOLIOS} used
-                </Text>
-              </View>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 12 }}>
+        {/* Create new */}
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>New portfolio</Text>
+        <Card style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${colors.brand}1A`, alignItems: 'center', justifyContent: 'center' }}>
+              <Plus color={colors.brand} size={20} strokeWidth={2.25} />
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}>
-              <TextInput
-                value={name}
-                onChangeText={t => setName(t.slice(0, 24))}
-                placeholder={`Portfolio ${state.offlinePortfolios.ids.length + 2}`}
-                placeholderTextColor={colors.ink3}
-                style={{ flex: 1, fontSize: 15, color: colors.ink, fontWeight: '600' }}
-              />
-            </View>
-            <Button testID="chooser-create-btn" variant="brand" onPress={handleCreate} disabled={atCap}>
-              {atCap ? 'Portfolio limit reached' : `Create with ${fmt(amount)}`}
-            </Button>
-          </Card>
-
-          {/* Add to existing */}
-          {allowAdd && addable.length > 0 && (
-            <>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>
-                Or add to existing
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: '700', color: colors.ink }}>Create a new portfolio</Text>
+              <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                Starts with {fmt(amount)} · {state.offlinePortfolios.ids.length}/{MAX_OFFLINE_PORTFOLIOS} used
               </Text>
-              <Card variant="noPad">
-                {addable.map((p, i) => (
-                  <TouchableOpacity key={p.id} testID={`chooser-add-${p.id}`} activeOpacity={0.75} onPress={() => handleAdd(p.id)}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: i < addable.length - 1 ? 1 : 0, borderBottomColor: colors.hairline }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
-                        <Wallet color={colors.ink2} size={18} strokeWidth={1.75} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: '600', color: colors.ink }}>{p.label}</Text>
-                        <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>{fmt(equityOf(p.id))}</Text>
-                      </View>
-                      <View style={{ backgroundColor: `${colors.up}1A`, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.up }}>+{fmt(amount)}</Text>
-                      </View>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}>
+            <TextInput
+              value={name}
+              onChangeText={t => setName(t.slice(0, 24))}
+              placeholder={`Portfolio ${state.offlinePortfolios.ids.length + 2}`}
+              placeholderTextColor={colors.ink3}
+              style={{ flex: 1, fontSize: 15, color: colors.ink, fontWeight: '600' }}
+            />
+          </View>
+          <Button testID="chooser-create-btn" variant="brand" onPress={handleCreate} disabled={atCap}>
+            {atCap ? 'Portfolio limit reached' : `Create with ${fmt(amount)}`}
+          </Button>
+        </Card>
+
+        {/* Add to existing */}
+        {allowAdd && addable.length > 0 && (
+          <>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>
+              Or add to existing
+            </Text>
+            <Card variant="noPad">
+              {addable.map((p, i) => (
+                <TouchableOpacity key={p.id} testID={`chooser-add-${p.id}`} activeOpacity={0.75} onPress={() => handleAdd(p.id)}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: i < addable.length - 1 ? 1 : 0, borderBottomColor: colors.hairline }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                      <Wallet color={colors.ink2} size={18} strokeWidth={1.75} />
                     </View>
-                  </TouchableOpacity>
-                ))}
-              </Card>
-            </>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: '600', color: colors.ink }}>{p.label}</Text>
+                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2, fontVariant: ['tabular-nums'] }}>{fmt(equityOf(p.id))}</Text>
+                    </View>
+                    <View style={{ backgroundColor: `${colors.up}1A`, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.up }}>+{fmt(amount)}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </Card>
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
