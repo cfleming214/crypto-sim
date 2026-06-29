@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { AD_UNITS } from '../constants/adUnits';
+import { useEntitlements } from '../lib/purchases';
 
 // A single AdMob banner. Uses the real banner unit from AD_UNITS (set per build
 // via EXPO_PUBLIC_ADMOB_BANNER_* in eas.json) and falls back to Google's TEST
@@ -23,7 +24,8 @@ try {
 }
 
 export function AdBanner({ unitId }: { unitId?: string }) {
-  if (!BannerAd) return null;
+  const { noAds } = useEntitlements();
+  if (!BannerAd || noAds) return null; // No-Ads / Premium suppresses forced ads
   const resolved = unitId ?? AD_UNITS.banner ?? TestIds.BANNER;
   return (
     <View style={{ alignItems: 'center' }}>

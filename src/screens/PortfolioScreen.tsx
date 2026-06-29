@@ -31,6 +31,8 @@ import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
 import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target, Plus } from 'lucide-react-native';
 import { ACADEMY } from '../data/academy';
+import { AnimatedBuyButton } from '../components/AnimatedBuyButton';
+import { PurchaseModal } from '../components/PurchaseModal';
 
 // Marker-popup timestamp: "Jun 14, 3:42 PM" for old trades, time-only if today.
 function markerTimeLabel(ts: number): string {
@@ -257,11 +259,17 @@ export function PortfolioScreen() {
   const { colors } = useTheme();
   const { state, getCoin, getHolding, dispatch } = useApp();
   const nav = useNavigation<any>();
-  const isContest = state.activePortfolioId !== 'main';
-  const tfOptions = isContest
-    ? ['Live', '1H', '24H', '7D']
-    : ['Live', '1H', '24H', '7D', '30D', 'MAX'];
-  const [tf, setTf] = useState(isContest ? '1H' : '7D');
+  const isMain = state.activePortfolioId === 'main';
+  // Extra device-local offline practice portfolios (bought via IAP) behave like
+  // main, not like contests: full timeframe set, balance boost, no leaderboard.
+  const isOffline = state.offlinePortfolios.ids.includes(state.activePortfolioId);
+  const isPractice = isMain || isOffline;
+  const isContest = !isPractice;   // a real contest/replay portfolio
+  const tfOptions = isPractice
+    ? ['Live', '1H', '24H', '7D', '30D', 'MAX']
+    : ['Live', '1H', '24H', '7D'];
+  const [tf, setTf] = useState(isPractice ? '7D' : '1H');
+  const [purchaseVisible, setPurchaseVisible] = useState(false);
   // If the user switches to/from a contest, clamp the timeframe into the new list.
   React.useEffect(() => {
     if (!tfOptions.includes(tf)) setTf(tfOptions[tfOptions.length - 1]);
@@ -343,14 +351,16 @@ export function PortfolioScreen() {
   }, [state.activePortfolioId, tradesSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the chart growing while the app stays open. The equity-snapshot capture
-  // appends a point every ~60s (AppContext), so re-read the store periodically —
-  // otherwise new points only appeared after closing and reopening the app.
+  // appends a point every ~4s (AppContext CAPTURE_MS), so re-read the store every
+  // 5s to surface those new points promptly — otherwise freshly recorded samples
+  // only appeared on portfolio switch / a trade. It's a cheap local AsyncStorage
+  // read; the live right-edge tip already tracks bankroll between reads.
   React.useEffect(() => {
     const pid = state.activePortfolioId;
     const id = setInterval(async () => {
       const series = await loadSnapshots(pid);
       if (series.length) setHistory(prev => (series.length >= prev.length ? series : prev));
-    }, 30000);
+    }, 5000);
     return () => clearInterval(id);
   }, [state.activePortfolioId]);
 
@@ -456,7 +466,7 @@ export function PortfolioScreen() {
   // Graceful fallback: if no ad is available, grant anyway (only withhold when an
   // ad was shown but dismissed early).
   const handleBalanceBoost = async () => {
-    if (state.activePortfolioId !== 'main') return;
+    if (!isPractice) return; // practice portfolios only (main + offline)
     const { granted, blocked } = await watchForReward('rewardedBalanceBoost', dispatch, { grantOnUnavailable: true });
     if (blocked) return; // a duplicate trigger while an ad is already up — ignore
     if (granted) Alert.alert('Balance boosted 🎉', '$50,000 was added to your tradeable balance.');
@@ -496,12 +506,12 @@ export function PortfolioScreen() {
   // Daily reward — only on the main portfolio (contests have their own bankroll).
   // applyDailyClaim is pure: when claimable it returns the XP/cash this claim
   // would grant (preview); otherwise we show a countdown to the next UTC day.
-  const claimable = !isContest && canClaim(state.lastClaimDay, now);
+  const claimable = isMain && canClaim(state.lastClaimDay, now);
   const claimPreview = applyDailyClaim({ streak: state.user.streak, lastClaimDay: state.lastClaimDay }, now);
   const nextClaimMs = nextClaimAt(now) - now;
   // Triple offer: shown in-card after you've claimed today and haven't tripled yet.
   const todayK = todayKey(now);
-  const tripleAvailable = !isContest && state.lastClaimDay === todayK && tripleDoneDay !== todayK;
+  const tripleAvailable = isMain && state.lastClaimDay === todayK && tripleDoneDay !== todayK;
   const handleClaim = () => {
     if (!claimable) return;
     dispatch({ type: 'CLAIM_DAILY_REWARD' });
@@ -547,10 +557,18 @@ export function PortfolioScreen() {
   if (state.holdings.length > 0 && Object.keys(state.stopLosses).length === 0) riskWarnings.push('No stop-loss orders set');
 
   const activeContest = state.competitions.find(c => c.id === state.activePortfolioId);
-  const eyebrowLabel = state.activePortfolioId === 'main' ? 'Main portfolio' : (activeContest?.name ?? 'Contest');
+  const eyebrowLabel = isMain
+    ? 'Main portfolio'
+    : isOffline
+      ? (state.offlinePortfolios.names[state.activePortfolioId] ?? 'Offline portfolio')
+      : (activeContest?.name ?? 'Contest');
 
   const portfolioOptions: { id: string; label: string }[] = [
     { id: 'main', label: 'Main' },
+    ...state.offlinePortfolios.ids.map(id => ({
+      id,
+      label: state.offlinePortfolios.names[id] ?? 'Offline',
+    })),
     ...state.joinedTournamentIds.map(id => {
       const comp = state.competitions.find(c => c.id === id);
       return { id, label: comp?.name ?? 'Contest' };
@@ -567,9 +585,12 @@ export function PortfolioScreen() {
       onRefresh={handleRefresh}
       rightActions={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {/* +$50K balance boost — offline/main portfolio only; left of the avatar.
-              Watches a rewarded ad and adds $50K to the tradeable balance. */}
-          {state.activePortfolioId === 'main' && (
+          {/* Upgrade — shimmering button that opens the purchase popup (no ads /
+              extra practice balance / premium). Left of the "+". */}
+          <AnimatedBuyButton testID="portfolio-upgrade-btn" onPress={() => setPurchaseVisible(true)} />
+          {/* +$50K balance boost — practice portfolios only (main + offline);
+              watches a rewarded ad and adds $50K to the tradeable balance. */}
+          {isPractice && (
             <PressableScale
               testID="portfolio-balance-boost"
               onPress={handleBalanceBoost}
@@ -776,7 +797,7 @@ export function PortfolioScreen() {
       })}
 
       {/* Daily reward — claim once per UTC day, streak grows the payout */}
-      {!isContest && (
+      {isMain && (
         <View style={{ position: 'relative' }}>
           <ConfettiBurst trigger={confettiTrigger} />
           <Card>
@@ -826,7 +847,7 @@ export function PortfolioScreen() {
       )}
 
       {/* Daily quests — tap through to the quest list */}
-      {!isContest && (() => {
+      {isMain && (() => {
         const qv = questViews(state, now);
         const done = qv.filter(v => v.complete).length;
         const claimable = qv.some(v => v.complete && !v.claimed) || (qv.length > 0 && qv.every(v => v.complete) && !state.quests.chestClaimed);
@@ -939,7 +960,7 @@ export function PortfolioScreen() {
         ))}
       </Card>
 
-      {!isContest && (
+      {isMain && (
         <Button
           testID="portfolio-reset-btn"
           variant="ghost"
@@ -951,6 +972,7 @@ export function PortfolioScreen() {
         </Button>
       )}
 
+      <PurchaseModal visible={purchaseVisible} onClose={() => setPurchaseVisible(false)} />
       <StopSheet visible={stopSheetVisible} onClose={() => setStopSheetVisible(false)} />
       <RebalanceSheet
         visible={rebalanceVisible}

@@ -1,5 +1,6 @@
 import { isMoneySurface, type ContestLane } from './contestLane';
 import { AD_UNITS } from '../constants/adUnits';
+import { isNoAds } from './purchases';
 
 // Central in-app ad-firing gatekeeper. ALL interstitial/rewarded ads go through
 // here — call sites never touch the SDK directly — so the compliance rules live
@@ -65,6 +66,11 @@ function isInterstitial(p: AdPlacement): boolean {
 export function canShowAd(placement: AdPlacement, ctx: AdContext, now: number = Date.now()): boolean {
   // Hard wall: never on a real-money surface, regardless of lane.
   if (isMoneySurface(ctx.surface)) return false;
+
+  // No-Ads / Premium entitlement suppresses FORCED formats (passive banner +
+  // interstitials). Opt-in rewarded ads still run — the user explicitly tapped
+  // "watch" for a virtual reward, which no-ads doesn't take away.
+  if (isNoAds() && !isRewarded(placement)) return false;
 
   // Lane B (cash): only a passive lobby banner or the results-exit interstitial.
   // Never a rewarded ad — a watched ad can't earn anything tied to cash.

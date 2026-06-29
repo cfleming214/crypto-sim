@@ -27,6 +27,13 @@ export function weekKey(now: number): string {
   return `W${Math.floor(now / (7 * DAY_MS))}`;
 }
 
+// UTC calendar-month key, e.g. "2026-06". Drives the Premium monthly grants (the
+// $5M balance + the 3-new-portfolios allowance): each lands once per month,
+// timezone-independent and idempotent.
+export function monthKey(now: number): string {
+  return new Date(now).toISOString().slice(0, 7);
+}
+
 // Free Lane-A contest passes granted at the start of each week. Subscribers get a
 // larger grant; the subscription that sets isSubscriber is future-scope IAP, so
 // today everyone effectively gets the free tier.

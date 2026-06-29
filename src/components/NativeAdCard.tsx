@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { Text } from './ui/Text';
 import { useTheme } from '../theme/ThemeContext';
 import { AD_UNITS } from '../constants/adUnits';
+import { useEntitlements } from '../lib/purchases';
 
 // A native AdMob ad rendered to match the news article card. AdMob delivers raw
 // assets (headline/body/advertiser/media/CTA) and we lay them out ourselves; an
@@ -31,10 +32,11 @@ try {
 // row to sit inside a noPad Card among CardSections (markets / live-trades).
 export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' }) {
   const { colors } = useTheme();
+  const { noAds } = useEntitlements();
   const [ad, setAd] = useState<any>(null);
 
   useEffect(() => {
-    if (!NativeAd) return;
+    if (!NativeAd || noAds) return; // No-Ads / Premium suppresses native ads
     let loaded: any = null;
     let cancelled = false;
     const unitId = AD_UNITS.native ?? TestIds?.NATIVE;
@@ -57,9 +59,9 @@ export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' })
       })
       .catch((e: any) => console.warn('[ads] native failed to load:', e?.code ?? '', e?.message ?? e));
     return () => { cancelled = true; loaded?.destroy?.(); };
-  }, []);
+  }, [noAds]);
 
-  if (!NativeAdView || !ad) return null;
+  if (!NativeAdView || !ad || noAds) return null;
 
   // AdMob requires the native MEDIA to be at least 120x120. We use a FULL-WIDTH
   // media at a fixed height ≥120 (native media views ignore aspectRatio/%, so we

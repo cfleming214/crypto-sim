@@ -13,7 +13,7 @@ import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
-import { STARTING_CASH } from '../constants/featureFlags';
+import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -65,6 +65,13 @@ const INITIAL_HOLDINGS: { symbol: string; units: number; avgCost: number }[] = [
 // watchlist, stop-losses). Persisted only while unauthenticated; once a user
 // signs in the cloud UserProfile is the source of truth.
 const OFFLINE_PORTFOLIO_KEY = 'offlinePortfolio.v1';
+
+// Device-local IAP state: the entitlement cache (instant UI before RevenueCat
+// resolves), the extra offline-portfolio slices/names/ids, and the premium
+// monthly-grant bookkeeping. Kept on-device for ALL users (signed-in or guest) —
+// RevenueCat restores the entitlement on reinstall, but the play-money portfolio
+// DATA is local by design. Never holds anything cash-real.
+const IAP_KEY = 'iap.v1';
 
 // AsyncStorage key for the device's blocked-users list. Per-device (not
 // per-account): a user's block choices persist across sign-out/sign-in so
@@ -223,6 +230,9 @@ const INITIAL_STATE: AppState = {
   season: { id: null, baselineXp: 0, claimedTiers: [] },
   passes: { balance: 0, lastWeeklyGrantKey: null },
   isSubscriber: false,
+  noAds: false,
+  offlinePortfolios: { ids: [], names: {} },
+  premiumGrants: { balanceMonthKey: null, portfolioMonthKey: null, portfoliosThisMonth: 0 },
   cosmetics: { titles: [], frames: [], equippedTitle: null, equippedFrame: null },
   activePrediction: null,
   blockedUsers: [],
@@ -297,6 +307,12 @@ type Action =
   | { type: 'ADD_PASS'; amount: number }
   | { type: 'SPEND_PASS' }
   | { type: 'GRANT_BONUS_CASH'; amount: number; xp?: number }
+  | { type: 'SET_ENTITLEMENTS'; noAds: boolean; premium: boolean }
+  | { type: 'CREATE_OFFLINE_PORTFOLIO'; id: string; name: string; cash: number; premiumMonthKey?: string }
+  | { type: 'ADD_OFFLINE_BALANCE'; portfolioId: string; amount: number }
+  | { type: 'GRANT_PREMIUM_MONTH'; monthKey: string }
+  | { type: 'CLAIM_PREMIUM_BALANCE'; monthKey: string }
+  | { type: 'HYDRATE_IAP'; data: { noAds?: boolean; isSubscriber?: boolean; offlinePortfolios?: AppState['offlinePortfolios']; premiumGrants?: AppState['premiumGrants']; portfolios?: Record<string, PortfolioSlice> } }
   | { type: 'CLAIM_SEASON_TIER'; tier: number; kind: 'xp' | 'cash' | 'title' | 'frame'; value: number | string }
   | { type: 'EQUIP_COSMETIC'; slot: 'title' | 'frame'; id: string | null }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
@@ -1151,8 +1167,9 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, passes: { ...state.passes, balance: state.passes.balance - 1 } };
     case 'GRANT_BONUS_CASH': {
       // Virtual play-money top-up from a rewarded ad. Same sentinel-trade pattern
-      // as the daily reward; main portfolio only (contests have their own bankroll).
-      if (state.activePortfolioId !== 'main') return state;
+      // as the daily reward; practice portfolios only (main + offline) — real
+      // contests/replays keep their own fixed bankroll.
+      if (state.activePortfolioId !== 'main' && !state.offlinePortfolios.ids.includes(state.activePortfolioId)) return state;
       if (!(action.amount > 0)) return state;
       const bonusTrade: Trade = {
         id: `RAD-${Date.now()}`,
@@ -1170,6 +1187,108 @@ function reducer(state: AppState, action: Action): AppState {
         bankroll: newCash + holdingsValue,
         trades: [bonusTrade, ...state.trades],
         user: action.xp ? { ...state.user, xp: state.user.xp + action.xp } : state.user,
+      };
+    }
+    case 'SET_ENTITLEMENTS':
+      // RevenueCat is the source of truth; we cache the two flags. isSubscriber
+      // mirrors `premium` so the existing weekly-pass grant keeps working.
+      if (state.noAds === action.noAds && state.isSubscriber === action.premium) return state;
+      return { ...state, noAds: action.noAds, isSubscriber: action.premium };
+    case 'CREATE_OFFLINE_PORTFOLIO': {
+      // Spawn a new device-local offline practice portfolio with `cash` play
+      // money. Guard the hard cap + duplicate ids. Switches to the new one
+      // (stash the active portfolio first, mirroring SWITCH_PORTFOLIO).
+      if (state.offlinePortfolios.ids.length >= MAX_OFFLINE_PORTFOLIOS) return state;
+      if (state.offlinePortfolios.ids.includes(action.id) || state.portfolios[action.id]) return state;
+      if (!(action.cash > 0)) return state;
+      const newSlice: PortfolioSlice = { cash: action.cash, holdings: [], trades: [] };
+      // Stash the currently-active portfolio so its live cash/holdings/trades
+      // aren't lost when we switch the top-level fields to the new one.
+      const stashed = {
+        ...state.portfolios,
+        [state.activePortfolioId]: { cash: state.cash, holdings: state.holdings, trades: state.trades },
+        [action.id]: newSlice,
+      };
+      // Consume a Premium monthly-allowance slot when this create came from it.
+      const grants = action.premiumMonthKey
+        ? { ...state.premiumGrants, portfolioMonthKey: action.premiumMonthKey, portfoliosThisMonth: state.premiumGrants.portfoliosThisMonth + 1 }
+        : state.premiumGrants;
+      return {
+        ...state,
+        offlinePortfolios: {
+          ids: [...state.offlinePortfolios.ids, action.id],
+          names: { ...state.offlinePortfolios.names, [action.id]: action.name },
+        },
+        premiumGrants: grants,
+        portfolios: stashed,
+        activePortfolioId: action.id,
+        cash: newSlice.cash,
+        holdings: newSlice.holdings,
+        trades: newSlice.trades,
+        bankroll: newSlice.cash,
+        riskScore: 100,
+        coachNudges: [],
+      };
+    }
+    case 'ADD_OFFLINE_BALANCE': {
+      // Credit virtual play money to a main/offline portfolio (the $5M consumable
+      // or premium monthly grant). Same sentinel-trade pattern as GRANT_BONUS_CASH
+      // so equity reconstruction reads it as a pure cash delta. Refuses contest/
+      // replay portfolios (those must stay isolated at their fixed bankroll).
+      const pid = action.portfolioId;
+      const isOffline = pid === 'main' || state.offlinePortfolios.ids.includes(pid);
+      if (!isOffline || !(action.amount > 0)) return state;
+      const bonusTrade: Trade = {
+        id: `IAP-${Date.now()}`,
+        symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.amount,
+        units: 0, price: 0, timestamp: Date.now(), xpEarned: 0, slippage: 0, kind: 'reward',
+      };
+      if (pid === state.activePortfolioId) {
+        const newCash = state.cash + action.amount;
+        const holdingsValue = state.holdings.reduce((s, h) => {
+          const c = state.coins.find(x => x.symbol === h.symbol);
+          return s + (c ? c.price * h.units : 0);
+        }, 0);
+        return {
+          ...state,
+          cash: newCash,
+          bankroll: newCash + holdingsValue,
+          trades: [bonusTrade, ...state.trades],
+        };
+      }
+      // Inactive portfolio — credit its stashed slice in the map.
+      const slice = state.portfolios[pid] ?? { cash: 0, holdings: [], trades: [] };
+      return {
+        ...state,
+        portfolios: {
+          ...state.portfolios,
+          [pid]: { ...slice, cash: slice.cash + action.amount, trades: [bonusTrade, ...slice.trades] },
+        },
+      };
+    }
+    case 'GRANT_PREMIUM_MONTH':
+      // Reset the "3 new offline portfolios / month" allowance on a new month.
+      // Idempotent on monthKey.
+      if (state.premiumGrants.portfolioMonthKey === action.monthKey) return state;
+      return { ...state, premiumGrants: { ...state.premiumGrants, portfolioMonthKey: action.monthKey, portfoliosThisMonth: 0 } };
+    case 'CLAIM_PREMIUM_BALANCE':
+      // Mark this month's $5M monthly grant as claimed (the actual credit is the
+      // CREATE/ADD the chooser dispatches). Idempotent on monthKey.
+      if (state.premiumGrants.balanceMonthKey === action.monthKey) return state;
+      return { ...state, premiumGrants: { ...state.premiumGrants, balanceMonthKey: action.monthKey } };
+    case 'HYDRATE_IAP': {
+      // Restore device-local IAP state (entitlement cache, offline-portfolio
+      // slices/names, premium bookkeeping) on launch. Merge the offline slices
+      // into the portfolios map without disturbing the active one.
+      const d = action.data;
+      const mergedPortfolios = d.portfolios ? { ...d.portfolios, ...state.portfolios } : state.portfolios;
+      return {
+        ...state,
+        noAds: d.noAds ?? state.noAds,
+        isSubscriber: d.isSubscriber ?? state.isSubscriber,
+        offlinePortfolios: d.offlinePortfolios ?? state.offlinePortfolios,
+        premiumGrants: d.premiumGrants ?? state.premiumGrants,
+        portfolios: mergedPortfolios,
       };
     }
     case 'CLAIM_SEASON_TIER': {
@@ -1314,6 +1433,14 @@ function reducer(state: AppState, action: Action): AppState {
       // signing in doesn't inherit the previous user's portfolios,
       // watchlist, alerts, etc. Coins (live prices) and competitions
       // (shared global list) are preserved.
+      // IAP state is device-local (RevenueCat entitlements track the Apple ID,
+      // and offline portfolios live in 'iap.v1', not the cloud account), so a
+      // sign-out preserves them — same rationale as blockedUsers. Carry over the
+      // offline-portfolio slices in the portfolios map too.
+      const keptOfflinePortfolios: Record<string, PortfolioSlice> = {};
+      for (const id of state.offlinePortfolios.ids) {
+        if (state.portfolios[id]) keptOfflinePortfolios[id] = state.portfolios[id];
+      }
       return {
         ...INITIAL_STATE,
         coins:        state.coins,
@@ -1324,6 +1451,11 @@ function reducer(state: AppState, action: Action): AppState {
         // un-hide traders this device chose to block. Preserved across the wipe;
         // only account deletion purges the 'blocked.v1' store.
         blockedUsers: state.blockedUsers,
+        noAds: state.noAds,
+        isSubscriber: state.isSubscriber,
+        offlinePortfolios: state.offlinePortfolios,
+        premiumGrants: state.premiumGrants,
+        portfolios: keptOfflinePortfolios,
       };
     }
     case 'SWITCH_PORTFOLIO': {
@@ -1473,6 +1605,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
   const blockedHydratedRef = useRef(false);      // gate blocked-users saves until we've loaded the stored list
   const nudgesHydratedRef = useRef(false);       // gate dismissed-nudge saves until we've loaded the stored list
+  const iapHydratedRef = useRef(false);          // gate iap.v1 saves until we've loaded the stored offline portfolios
   const stateRef = useRef(state);                // always-latest state, for async effects that must read the guest portfolio at sign-in time
   stateRef.current = state;
   const lastCloudFlushRef = useRef(0);           // throttle the equity-history cloud backup (server batch every 30s)
@@ -1507,6 +1640,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Contest-pass economy (Lane A): weekly grant, rewarded-ad earns, spends on
     // join, and rewarded virtual-cash top-ups all persist like the rest.
     'GRANT_WEEKLY_PASSES', 'ADD_PASS', 'SPEND_PASS', 'GRANT_BONUS_CASH',
+    // IAP: adding the $5M balance to the active main portfolio must persist to
+    // the cloud (offline-* targets are device-local; the cloud effect skips
+    // them). CREATE_OFFLINE_PORTFOLIO is device-local only (iap.v1 effect).
+    'ADD_OFFLINE_BALANCE',
   ];
   const wrappedDispatch = (action: Action) => {
     // Persist the outgoing portfolio before switching, so the snapshot lands
@@ -1516,12 +1653,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const outSlice = { cash: state.cash, holdings: state.holdings, trades: state.trades };
       const outPnl = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
       const outMeta = state.replayMeta[outId];
+      const outIsOffline = state.offlinePortfolios.ids.includes(outId);
       if (outId === 'main') saveProfile(state);
+      else if (outIsOffline) { /* device-local offline portfolio — persisted via iap.v1, no cloud */ }
       else if (outMeta) { if (!outMeta.solo) saveReplayEntry(outId, outSlice, state.bankroll, outPnl); }
       else saveContestPortfolio(outId, outSlice, state.bankroll, outPnl);
       // Heal the contest/replay we're switching INTO: push its true bankroll to
       // the cloud entry now, before any trade (a fresh join reports $100K / 0%).
-      if (action.portfolioId !== 'main') {
+      if (action.portfolioId !== 'main' && !state.offlinePortfolios.ids.includes(action.portfolioId)) {
         const inMeta = state.replayMeta[action.portfolioId];
         const inPrice = inMeta ? replayPriceAt(inMeta, Date.now()) : 0;
         const incoming = state.portfolios[action.portfolioId] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
@@ -2081,6 +2220,62 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(DISMISSED_NUDGES_KEY, JSON.stringify(state.dismissedNudgeIds)).catch(() => {});
   }, [state.dismissedNudgeIds]);
 
+  // IAP state (offline portfolios + entitlement cache + premium bookkeeping) —
+  // hydrate once on mount (device-local, auth-agnostic). The ref gates the save
+  // effect so the empty default can't clobber stored portfolios before we read.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(IAP_KEY);
+        if (raw) {
+          const g = JSON.parse(raw);
+          dispatch({
+            type: 'HYDRATE_IAP',
+            data: {
+              noAds: typeof g.noAds === 'boolean' ? g.noAds : undefined,
+              isSubscriber: typeof g.isSubscriber === 'boolean' ? g.isSubscriber : undefined,
+              offlinePortfolios: g.offlinePortfolios && Array.isArray(g.offlinePortfolios.ids)
+                ? { ids: g.offlinePortfolios.ids.filter((x: any) => typeof x === 'string'), names: g.offlinePortfolios.names ?? {} }
+                : undefined,
+              premiumGrants: g.premiumGrants && typeof g.premiumGrants === 'object' ? g.premiumGrants : undefined,
+              portfolios: g.slices && typeof g.slices === 'object' ? g.slices : undefined,
+            },
+          });
+        }
+      } catch {
+        // Corrupt/absent → leave defaults (no offline portfolios, no entitlements).
+      }
+      iapHydratedRef.current = true;
+    })();
+  }, []);
+
+  // IAP state — save. Persist the offline-portfolio slices (the active one lives
+  // in the top-level cash/holdings/trades; inactive ones in the portfolios map),
+  // plus entitlement cache + premium bookkeeping. Skip the empty default so it
+  // can't wipe stored portfolios before/around hydration.
+  useEffect(() => {
+    if (!iapHydratedRef.current) return;
+    const empty = state.offlinePortfolios.ids.length === 0
+      && !state.noAds
+      && !state.isSubscriber
+      && state.premiumGrants.balanceMonthKey === null
+      && state.premiumGrants.portfolioMonthKey === null;
+    if (empty) return;
+    const slices: Record<string, PortfolioSlice> = {};
+    for (const id of state.offlinePortfolios.ids) {
+      slices[id] = id === state.activePortfolioId
+        ? { cash: state.cash, holdings: state.holdings, trades: state.trades }
+        : (state.portfolios[id] ?? { cash: 0, holdings: [], trades: [] });
+    }
+    AsyncStorage.setItem(IAP_KEY, JSON.stringify({
+      noAds: state.noAds,
+      isSubscriber: state.isSubscriber,
+      offlinePortfolios: state.offlinePortfolios,
+      premiumGrants: state.premiumGrants,
+      slices,
+    })).catch(() => {});
+  }, [state.noAds, state.isSubscriber, state.offlinePortfolios, state.premiumGrants, state.activePortfolioId, state.portfolios, state.cash, state.holdings, state.trades]);
+
   // Auth-gated leaderboard subscriptions, one per joined competition.
   // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.
   useEffect(() => {
@@ -2146,6 +2341,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (action.type === 'RESET_DEMO') {
         resetDemoCloud();
       }
+    } else if (state.offlinePortfolios.ids.includes(state.activePortfolioId)) {
+      // Device-local offline practice portfolio — persisted to AsyncStorage
+      // (iap.v1), never the cloud. No-op here.
     } else {
       const pnlPct = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
       const slice = { cash: state.cash, holdings: state.holdings, trades: state.trades };

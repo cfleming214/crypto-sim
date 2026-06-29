@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share, Linking } from 'react-native';
+import { View, TouchableOpacity, Switch, Alert, Modal, TextInput, ScrollView, Image, Share, Linking, Platform } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
-import { AuthWall } from '../components/AuthWall';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { LeagueBadge } from '../components/ui/LeagueBadge';
@@ -15,7 +14,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { ACHIEVEMENTS } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw } from 'lucide-react-native';
 import { frameColor, titleLabel, FRAMES } from '../data/season';
 import { ACADEMY } from '../data/academy';
 import { useCoachmarkSettings } from '../components/coachmarks/CoachmarkProvider';
@@ -31,6 +30,29 @@ import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
+import { restore as restorePurchases, useEntitlements } from '../lib/purchases';
+import { PurchaseModal } from '../components/PurchaseModal';
+import type { AppDispatch } from '../store/AppContext';
+
+// Open the system "Manage Subscriptions" sheet (Apple ID / Play Store).
+function openManageSubscriptions() {
+  const url = Platform.OS === 'ios'
+    ? 'itms-apps://apps.apple.com/account/subscriptions'
+    : 'https://play.google.com/store/account/subscriptions';
+  Linking.openURL(url).catch(() => {});
+}
+
+// Restore prior purchases (Apple review requirement) and sync entitlements.
+async function doRestore(dispatch: AppDispatch) {
+  const res = await restorePurchases();
+  if (!res.ok) { Alert.alert('Restore failed', res.error ?? 'Could not restore purchases.'); return; }
+  if (res.entitlements) dispatch({ type: 'SET_ENTITLEMENTS', noAds: res.entitlements.noAds, premium: res.entitlements.premium });
+  const any = res.entitlements?.noAds || res.entitlements?.premium;
+  Alert.alert(
+    any ? 'Purchases restored' : 'Nothing to restore',
+    any ? 'Your subscription has been restored.' : 'No active purchases were found for your Apple ID.',
+  );
+}
 
 const AVATAR_COLORS = [
   '#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6',
@@ -172,10 +194,136 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
 }
 
 
+// Guest (signed-out) profile — settings reachable without an account, plus the
+// upgrade/restore entry points so a paid user who hasn't signed in can still
+// restore their purchases and manage settings. Replaces the old AuthWall.
+function OfflineProfile() {
+  const { colors, isDark, toggle } = useTheme();
+  const { dispatch } = useApp();
+  const { noAds, premium } = useEntitlements();
+  const nav = useNavigation<any>();
+  const { enabled: tipsEnabled, setEnabled: setTipsEnabled } = useCoachmarkSettings();
+  const [purchaseVisible, setPurchaseVisible] = useState(false);
+  const planLabel = premium ? 'Premium' : noAds ? 'No Ads' : null;
+
+  return (
+    <ScreenShell back={false} title="Settings" eyebrow="Guest">
+      {/* Sign-in CTA */}
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: `${colors.brand}1A`, alignItems: 'center', justifyContent: 'center' }}>
+            <User color={colors.brand} size={22} strokeWidth={1.9} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink }}>You're browsing as a guest</Text>
+            <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2, lineHeight: 17 }}>
+              Create a free account to save your portfolio, stats, and trading history across devices.
+            </Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button testID="offline-signin-btn" variant="ghost" size="sm" style={{ flex: 1 }} onPress={() => nav.navigate('Auth', { mode: 'signin' })}>Sign in</Button>
+          <Button testID="offline-signup-btn" variant="brand" size="sm" style={{ flex: 1 }} onPress={() => nav.navigate('Auth', { mode: 'signup' })}>Create account</Button>
+        </View>
+      </Card>
+
+      {/* Upgrade */}
+      <Card variant="noPad">
+        <TouchableOpacity testID="offline-upgrade" onPress={() => setPurchaseVisible(true)}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Sparkles color={colors.accent} size={18} strokeWidth={1.9} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Upgrade — No Ads / Premium</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+        <TouchableOpacity testID="offline-restore" onPress={() => doRestore(dispatch)}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <RefreshCw color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Restore purchases</Text>
+              </View>
+              {planLabel ? <Chip variant="up">{planLabel}</Chip> : <Text style={{ color: colors.ink3 }}>›</Text>}
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+        <TouchableOpacity testID="offline-manage-sub" onPress={openManageSubscriptions}>
+          <CardSection last>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Crown color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Manage subscription</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+      </Card>
+
+      {/* Preferences */}
+      <Card variant="noPad">
+        <CardSection>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Moon color={colors.ink} size={18} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '600', color: colors.ink }}>Dark mode</Text>
+            </View>
+            <Switch value={isDark} onValueChange={toggle} trackColor={{ true: colors.brand, false: colors.surface2 }} />
+          </View>
+        </CardSection>
+        <CardSection last>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Lightbulb color={colors.ink} size={18} strokeWidth={1.75} />
+              <Text style={{ fontWeight: '600', color: colors.ink }}>In-app tips</Text>
+            </View>
+            <Switch value={tipsEnabled} onValueChange={setTipsEnabled} trackColor={{ true: colors.brand, false: colors.surface2 }} />
+          </View>
+        </CardSection>
+      </Card>
+
+      {/* Legal */}
+      <Card variant="noPad">
+        <TouchableOpacity onPress={() => openExternal(LEGAL_URLS.terms)}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <FileText color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Terms of Use</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => openExternal(LEGAL_URLS.privacy)}>
+          <CardSection last>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Shield color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Privacy Policy</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+      </Card>
+
+      <PurchaseModal visible={purchaseVisible} onClose={() => setPurchaseVisible(false)} />
+    </ScreenShell>
+  );
+}
+
 export function ProfileScreen() {
   const { colors, isDark, toggle } = useTheme();
   const { state, dispatch } = useApp();
+  const { noAds, premium } = useEntitlements();
   const [editVisible, setEditVisible] = useState(false);
+  const [purchaseVisible, setPurchaseVisible] = useState(false);
+  const planLabel = premium ? 'Premium' : noAds ? 'No Ads' : null;
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
@@ -350,16 +498,10 @@ export function ProfileScreen() {
     ['Best rank',   bestRank, null],
   ];
 
-  // Guests can use the demo portfolio, but the profile is account-bound —
-  // gate it behind a sign-up wall.
+  // Guests can use the demo portfolio AND reach settings/restore-purchases
+  // without an account — show the offline settings page instead of a hard wall.
   if (status === 'unauthenticated') {
-    return (
-      <AuthWall
-        icon={User}
-        title="Your profile, your record"
-        subtitle="Create a free account to save your portfolio, track your stats, and build a trading history that sticks."
-      />
-    );
+    return <OfflineProfile />;
   }
 
   return (
@@ -651,6 +793,43 @@ export function ProfileScreen() {
         )}
       </Card>
 
+      {/* Subscription & purchases — upgrade, restore, manage. */}
+      <Card variant="noPad">
+        <TouchableOpacity testID="profile-upgrade" onPress={() => setPurchaseVisible(true)}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Sparkles color={colors.accent} size={18} strokeWidth={1.9} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{planLabel ? 'Your plan' : 'Upgrade — No Ads / Premium'}</Text>
+              </View>
+              {planLabel ? <Chip variant="up">{planLabel}</Chip> : <Text style={{ color: colors.ink3 }}>›</Text>}
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+        <TouchableOpacity testID="profile-restore" onPress={() => doRestore(dispatch)}>
+          <CardSection>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <RefreshCw color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Restore purchases</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+        <TouchableOpacity testID="profile-manage-sub" onPress={openManageSubscriptions}>
+          <CardSection last>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Crown color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Manage subscription</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+      </Card>
+
       {/* Prize balance + withdrawals — only when real-money payouts are enabled. */}
       {PAYOUTS_ENABLED && (
         <Card variant="noPad">
@@ -882,6 +1061,7 @@ export function ProfileScreen() {
       </TouchableOpacity>
 
       <EditProfileModal visible={editVisible} onClose={() => setEditVisible(false)} />
+      <PurchaseModal visible={purchaseVisible} onClose={() => setPurchaseVisible(false)} />
     </ScreenShell>
   );
 }

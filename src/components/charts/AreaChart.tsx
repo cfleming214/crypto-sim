@@ -159,6 +159,9 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const [layoutWidth, setLayoutWidth] = useState(300);
   const [plotPx, setPlotPx] = useState(0); // real px width of the touch overlay
   const [crosshairIdx, setCrosshairIdx] = useState<number | null>(null);
+  // Two-finger range selection: the two touched curve indices. When set, we show
+  // the Δ price/percent between them and a connecting line (green up / red down).
+  const [rangeSel, setRangeSel] = useState<{ a: number; b: number } | null>(null);
 
   // Axis gutters. When `axes` is on we inset the plot: a left gutter holds the
   // $ (Y) labels and a bottom gutter holds the time (X) labels. The line + all
@@ -176,18 +179,31 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
     // directly to the plot width. (Reading locationX off the SVG instead returns
     // viewBox units (0..300), which made the crosshair only track the left third
     // on wide screens.)
-    const setFromTouch = (e: { nativeEvent: { locationX: number } }) => {
+    const idxFor = (x: number) => {
       const w = plotPx || plotWidthPx;
-      const ratio = Math.max(0, Math.min(1, e.nativeEvent.locationX / w));
-      setCrosshairIdx(Math.round(ratio * (chartData.length - 1)));
+      return Math.round(Math.max(0, Math.min(1, x / w)) * (chartData.length - 1));
     };
+    // One finger → crosshair (single point). Two fingers → range selection
+    // (Δ between the two touched points). nativeEvent.touches holds every active
+    // touch on the overlay, so we read both when present.
+    const setFromTouch = (e: any) => {
+      const touches = e.nativeEvent.touches ?? [];
+      if (touches.length >= 2) {
+        setRangeSel({ a: idxFor(touches[0].locationX), b: idxFor(touches[1].locationX) });
+        setCrosshairIdx(null);
+      } else {
+        setCrosshairIdx(idxFor(e.nativeEvent.locationX));
+        setRangeSel(null);
+      }
+    };
+    const clear = () => { setCrosshairIdx(null); setRangeSel(null); };
     return PanResponder.create({
       onStartShouldSetPanResponder: () => crosshairEnabled,
       onMoveShouldSetPanResponder:  () => crosshairEnabled,
       onPanResponderGrant: setFromTouch,
       onPanResponderMove: setFromTouch,
-      onPanResponderRelease: () => setCrosshairIdx(null),
-      onPanResponderTerminate: () => setCrosshairIdx(null),
+      onPanResponderRelease: clear,
+      onPanResponderTerminate: clear,
     });
   }, [crosshairEnabled, plotPx, plotWidthPx, chartData.length]);
 
@@ -245,7 +261,19 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const hoverIdx = crosshairIdx;
   const hoverValue = hoverIdx !== null ? chartData[hoverIdx] : null;
   const hoverTs = (hoverIdx !== null && timestamps) ? timestamps[hoverIdx] : null;
-  const showAxisLabels = axesOn && hoverIdx === null; // hide labels while inspecting
+  const showAxisLabels = axesOn && hoverIdx === null && rangeSel === null; // hide labels while inspecting
+
+  // Two-finger range: low/high are the EARLIER/LATER touched points in time
+  // (data is oldest→newest left→right), so the diff reads as the change over the
+  // span. Positive (later ≥ earlier) → green; negative → red.
+  const rangeLo = rangeSel ? Math.min(rangeSel.a, rangeSel.b) : null;
+  const rangeHi = rangeSel ? Math.max(rangeSel.a, rangeSel.b) : null;
+  const rangeVLo = rangeLo !== null ? chartData[rangeLo] : null;
+  const rangeVHi = rangeHi !== null ? chartData[rangeHi] : null;
+  const rangeDiff = (rangeVLo !== null && rangeVHi !== null) ? rangeVHi - rangeVLo : 0;
+  const rangePct = rangeVLo ? (rangeDiff / rangeVLo) * 100 : 0;
+  const rangePositive = rangeDiff >= 0;
+  const rangeColor = rangePositive ? colors.up : colors.down;
 
   return (
     <View
@@ -275,10 +303,22 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       <View style={{ position: 'absolute', left: leftGutter, right: 0, top: 0, height: plotH }}>
         <Svg width="100%" height={plotH} viewBox={`0 0 300 ${plotH}`} preserveAspectRatio="none">
           <Path d={generatePath(chartData, 300, plotH, false)} stroke={color} strokeWidth="2" fill="none" />
-          {showDot && hoverIdx === null && (() => {
+          {showDot && hoverIdx === null && rangeSel === null && (() => {
             const last = chartData[chartData.length - 1];
             return <Circle cx="300" cy={yForValue(last)} r="3.5" fill={color} />;
           })()}
+          {/* Two-finger range: vertical guides at each touched point, a connecting
+              line coloured by direction (green up / red down), and an endpoint dot
+              on each. */}
+          {rangeLo !== null && rangeHi !== null && rangeVLo !== null && rangeVHi !== null && (
+            <>
+              <Line x1={xForIdx(rangeLo)} y1={0} x2={xForIdx(rangeLo)} y2={plotH} stroke={colors.ink3} strokeWidth="1" strokeDasharray="3,3" />
+              <Line x1={xForIdx(rangeHi)} y1={0} x2={xForIdx(rangeHi)} y2={plotH} stroke={colors.ink3} strokeWidth="1" strokeDasharray="3,3" />
+              <Line x1={xForIdx(rangeLo)} y1={yForValue(rangeVLo)} x2={xForIdx(rangeHi)} y2={yForValue(rangeVHi)} stroke={rangeColor} strokeWidth="2.5" />
+              <Circle cx={xForIdx(rangeLo)} cy={yForValue(rangeVLo)} r="4.5" fill={rangeColor} stroke={colors.surface} strokeWidth="2" />
+              <Circle cx={xForIdx(rangeHi)} cy={yForValue(rangeVHi)} r="4.5" fill={rangeColor} stroke={colors.surface} strokeWidth="2" />
+            </>
+          )}
           {hoverIdx !== null && hoverValue !== null && (
             <>
               <Line
@@ -340,6 +380,32 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
                 {formatTooltipTime(hoverTs)}
               </Text>
             )}
+          </View>
+        );
+      })()}
+
+      {/* Two-finger range tooltip — Δ price + Δ percent, coloured by direction.
+          Centered between the two touched points. */}
+      {rangeLo !== null && rangeHi !== null && (() => {
+        const midIdx = (rangeLo + rangeHi) / 2;
+        const cx = leftGutter + (midIdx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const tipW = 150;
+        const left = Math.max(4, Math.min(layoutWidth - tipW - 4, cx - tipW / 2));
+        const sign = rangePositive ? '+' : '−';
+        return (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', top: 6, left, width: tipW,
+              backgroundColor: colors.ink, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8,
+            }}
+          >
+            <Text style={{ color: rangeColor, fontSize: 14, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+              {sign}${Math.abs(rangeDiff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <Text style={{ color: rangeColor, fontSize: 12, fontWeight: '700', marginTop: 1, fontVariant: ['tabular-nums'] }}>
+              {sign}{Math.abs(rangePct).toFixed(2)}%
+            </Text>
           </View>
         );
       })()}
