@@ -14,7 +14,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { ACHIEVEMENTS, contestXpForRank, monthKey } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
-import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw } from 'lucide-react-native';
+import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw, Gift, Plus } from 'lucide-react-native';
 import { frameColor, titleLabel, FRAMES } from '../data/season';
 import { ACADEMY } from '../data/academy';
 import { useCoachmarkSettings } from '../components/coachmarks/CoachmarkProvider';
@@ -32,6 +32,8 @@ import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
 import { restore as restorePurchases, useEntitlements, usePurchasesReady } from '../lib/purchases';
 import { PurchaseModal } from '../components/PurchaseModal';
+import { OfflinePortfolioChooser, type OfflineGrantSource } from '../components/OfflinePortfolioChooser';
+import { OFFLINE_BALANCE_GRANT } from '../constants/featureFlags';
 import type { AppDispatch } from '../store/AppContext';
 
 // Open the system "Manage Subscriptions" sheet (Apple ID / Play Store).
@@ -326,6 +328,7 @@ export function ProfileScreen() {
   const { noAds, premium } = useEntitlements();
   const [editVisible, setEditVisible] = useState(false);
   const [purchaseVisible, setPurchaseVisible] = useState(false);
+  const [perkChooser, setPerkChooser] = useState<{ source: OfflineGrantSource } | null>(null);
   const purchasesReady = usePurchasesReady();
   const planLabel = premium ? 'Premium' : noAds ? 'No Ads' : null;
   // Premium has monthly perks to claim (the $5M + new $5M portfolios). Surface a
@@ -840,13 +843,9 @@ export function ProfileScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Sparkles color={colors.accent} size={18} strokeWidth={1.9} />
-                <Text style={{ fontWeight: '600', color: colors.ink }}>
-                  {premiumPerksAvailable ? 'Claim your Premium perks' : planLabel ? 'Your plan' : 'Upgrade — No Ads / Premium'}
-                </Text>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>{planLabel ? 'Your plan' : 'Upgrade — No Ads / Premium'}</Text>
               </View>
-              {premiumPerksAvailable
-                ? <Chip variant="accent">Claim</Chip>
-                : planLabel ? <Chip variant="up">{planLabel}</Chip> : <Text style={{ color: colors.ink3 }}>›</Text>}
+              {planLabel ? <Chip variant="up">{planLabel}</Chip> : <Text style={{ color: colors.ink3 }}>›</Text>}
             </View>
           </CardSection>
         </TouchableOpacity>
@@ -873,6 +872,43 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
       </Card>
+      )}
+
+      {/* Premium perks — redeem the monthly $5M + extra $5M portfolios directly. */}
+      {premium && purchasesReady && (
+        <>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Premium perks</Text>
+          <Card variant="noPad">
+            <CardSection>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Gift color={colors.accent} size={20} strokeWidth={1.9} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontWeight: '700', color: colors.ink }}>Monthly $5M balance</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>Add to a new or existing portfolio · resets monthly</Text>
+                </View>
+                {state.premiumGrants.balanceMonthKey !== pmk
+                  ? <Button testID="perk-redeem-balance" variant="accent" size="sm" onPress={() => setPerkChooser({ source: 'premium-balance' })}>Redeem</Button>
+                  : <Chip variant="up">Claimed</Chip>}
+              </View>
+            </CardSection>
+            <CardSection last>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Plus color={colors.accent} size={20} strokeWidth={2.25} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontWeight: '700', color: colors.ink }}>New $5M portfolio</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{premiumPortfoliosLeft} of {PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH} left this month</Text>
+                </View>
+                {premiumPortfoliosLeft > 0
+                  ? <Button testID="perk-redeem-portfolio" variant="accent" size="sm" onPress={() => setPerkChooser({ source: 'premium-portfolio' })}>Create</Button>
+                  : <Chip variant="default">Used up</Chip>}
+              </View>
+            </CardSection>
+          </Card>
+        </>
       )}
 
       {/* Prize balance + withdrawals — only when real-money payouts are enabled. */}
@@ -1139,6 +1175,22 @@ export function ProfileScreen() {
 
       <EditProfileModal visible={editVisible} onClose={() => setEditVisible(false)} />
       <PurchaseModal visible={purchaseVisible} onClose={() => setPurchaseVisible(false)} />
+
+      {/* Premium perk redemption — a single modal hosting the inline chooser
+          (create a new $5M portfolio or add the $5M to an existing one). */}
+      <Modal visible={!!perkChooser} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPerkChooser(null)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+          {perkChooser && (
+            <OfflinePortfolioChooser
+              amount={OFFLINE_BALANCE_GRANT}
+              source={perkChooser.source}
+              monthKey={pmk}
+              onClose={() => setPerkChooser(null)}
+              onDone={() => setPerkChooser(null)}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </ScreenShell>
   );
 }
