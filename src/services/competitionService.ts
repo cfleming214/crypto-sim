@@ -314,10 +314,19 @@ export async function leaveCompetitionForUser(competitionId: string, handle: str
   const client = await getClient();
   if (!client) return;
   try {
-    const { data } = await client.models.CompetitionEntry.list({
-      filter: { competitionId: { eq: competitionId } },
-    });
-    const mine = (data as any[]).filter(e => e.handle === handle);
+    // Paginate — a popular contest can have more entries than one page, which
+    // would otherwise leave this user's row(s) undeleted (and re-appearing).
+    const mine: any[] = [];
+    let nextToken: string | null | undefined;
+    do {
+      const res: any = await client.models.CompetitionEntry.list({
+        filter: { competitionId: { eq: competitionId } },
+        limit: 1000,
+        nextToken,
+      });
+      for (const e of (res?.data ?? [])) if (e.handle === handle) mine.push(e);
+      nextToken = res?.nextToken;
+    } while (nextToken);
     await Promise.all(mine.map(e => client.models.CompetitionEntry.delete({ id: e.id }).catch(() => {})));
   } catch (e) {
     console.warn('leaveCompetitionForUser failed:', e);
