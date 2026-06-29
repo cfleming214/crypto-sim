@@ -158,6 +158,29 @@ function ownedByMe(record: any, ownerId: string | null): boolean {
   return typeof owner === 'string' && owner.startsWith(ownerId);
 }
 
+// Fetch ALL of the current user's CompetitionEntry rows — filtered server-side by
+// owner AND fully paginated. CompetitionEntry holds every player's entry across
+// every contest (hundreds of rows once real users + stress bots pile up), so the
+// old unpaginated `list()` returned only the first page and filtered client-side
+// — once the table outgrew one page, a user's own entry could fall outside it and
+// silently vanish, so a just-joined LIVE contest disappeared on reload. Owner is
+// stored as "{sub}::{username}"; we filter by the sub prefix and follow nextToken.
+async function listMyEntries(client: any, ownerId: string | null): Promise<any[]> {
+  if (!ownerId) return [];
+  const all: any[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const res: any = await client.models.CompetitionEntry.list({
+      filter: { owner: { beginsWith: ownerId } },
+      limit: 1000,
+      nextToken,
+    });
+    if (res?.data) all.push(...res.data);
+    nextToken = res?.nextToken;
+  } while (nextToken);
+  return all;
+}
+
 // Count the user's OWN contest wins (distinct contests finished in 1st place),
 // so the app can show your win count even when you've opted out of the global
 // leaderboard (where that number normally comes from). Matches the
@@ -167,10 +190,10 @@ export async function fetchMyContestWins(): Promise<number> {
   if (!client) return 0;
   try {
     const ownerId = await getCurrentOwnerId();
-    const { data } = await client.models.CompetitionEntry.list();
+    const data = await listMyEntries(client, ownerId);
     const wonContests = new Set<string>();
-    for (const e of data as any[]) {
-      if (ownedByMe(e, ownerId) && e.rank === 1 && e.isActive === false) wonContests.add(e.competitionId);
+    for (const e of data) {
+      if (e.rank === 1 && e.isActive === false) wonContests.add(e.competitionId);
     }
     return wonContests.size;
   } catch {
@@ -181,13 +204,13 @@ export async function fetchMyContestWins(): Promise<number> {
 async function loadJoinedCompetitions(client: any): Promise<string[]> {
   try {
     const ownerId = await getCurrentOwnerId();
-    const { data } = await client.models.CompetitionEntry.list();
+    const data = await listMyEntries(client, ownerId);
     // De-dupe by competitionId: a user can end up with more than one entry row
     // for the same contest (e.g. leaving without deleting the cloud entry, then
     // rejoining). Two ids would render two identical selector pills that both
     // highlight, with a colliding React key. One id per joined contest.
-    const ids = (data as any[])
-      .filter(e => e.isActive !== false && ownedByMe(e, ownerId))
+    const ids = data
+      .filter(e => e.isActive !== false)
       .map(e => e.competitionId);
     return [...new Set(ids)];
   } catch {
@@ -200,11 +223,10 @@ export async function loadContestPortfolios(): Promise<Record<string, PortfolioS
   if (!client) return {};
   try {
     const ownerId = await getCurrentOwnerId();
-    const { data } = await client.models.CompetitionEntry.list();
+    const data = await listMyEntries(client, ownerId);
     const out: Record<string, PortfolioSlice> = {};
-    for (const e of data as any[]) {
+    for (const e of data) {
       if (e.isActive === false) continue;
-      if (!ownedByMe(e, ownerId)) continue;
       out[e.competitionId] = {
         cash:     typeof e.cash === 'number' ? e.cash : STARTING_CASH,
         holdings: e.holdingsJson ? JSON.parse(e.holdingsJson) : [],
@@ -225,8 +247,12 @@ export async function saveContestPortfolio(competitionId: string, slice: Portfol
     // a competitionId filter returns all users' entries (allow.authenticated
     // read), so we have to narrow by owner client-side.
     const ownerId = await getCurrentOwnerId();
+    // Filter by competitionId AND owner so a large contest (many players, more
+    // than one page) can't push this user's own entry outside the result set.
     const { data: entries } = await client.models.CompetitionEntry.list({
-      filter: { competitionId: { eq: competitionId } },
+      filter: ownerId
+        ? { and: [{ competitionId: { eq: competitionId } }, { owner: { beginsWith: ownerId } }] }
+        : { competitionId: { eq: competitionId } },
     });
     const own = (entries as any[]).find(e => e.competitionId === competitionId && ownedByMe(e, ownerId));
     if (!own) return; // user hasn't joined this contest — nothing to save against
