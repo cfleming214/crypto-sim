@@ -310,6 +310,32 @@ export async function leaveCompetition(entryId: string): Promise<void> {
 // screen that doesn't carry the entry id, and doubles as a cleanup for the
 // duplicate-entry case (leaving used to leave the cloud row behind, so a
 // rejoin stacked a second one). Owner-auth means only rows the user owns delete.
+// Mark the user's entries for a contest INACTIVE (isActive=false) without deleting
+// them — the row stays as a historical record (win-count, results, audit), and a
+// finished/orphaned contest stops loading as an active "joined" portfolio. This
+// is the client-side equivalent of what close-competition does on settlement, for
+// contests whose Competition row was removed without deactivating their entries.
+export async function deactivateCompetitionEntriesForUser(competitionId: string, handle: string): Promise<void> {
+  const client = await getClient();
+  if (!client) return;
+  try {
+    const mine: any[] = [];
+    let nextToken: string | null | undefined;
+    do {
+      const res: any = await client.models.CompetitionEntry.list({
+        filter: { competitionId: { eq: competitionId } },
+        limit: 1000,
+        nextToken,
+      });
+      for (const e of (res?.data ?? [])) if (e.handle === handle && e.isActive !== false) mine.push(e);
+      nextToken = res?.nextToken;
+    } while (nextToken);
+    await Promise.all(mine.map(e => client.models.CompetitionEntry.update({ id: e.id, isActive: false }).catch(() => {})));
+  } catch (e) {
+    console.warn('deactivateCompetitionEntriesForUser failed:', e);
+  }
+}
+
 export async function leaveCompetitionForUser(competitionId: string, handle: string): Promise<void> {
   const client = await getClient();
   if (!client) return;

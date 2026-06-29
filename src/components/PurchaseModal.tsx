@@ -79,8 +79,13 @@ export function PurchaseModal({ visible, onClose }: Props) {
     if (res.entitlements) dispatch({ type: 'SET_ENTITLEMENTS', noAds: res.entitlements.noAds, premium: res.entitlements.premium });
     if (productId === PRODUCT_BALANCE_5M) {
       setChooser({ source: 'consumable' });
+    } else if (productId === PRODUCT_PREMIUM) {
+      // Keep the sheet open so the "Premium perks" section (now visible because
+      // premium just flipped on) is right there to claim — otherwise the user
+      // subscribes, the sheet closes, and there's nowhere obvious to spend perks.
+      Alert.alert('Premium is active 🎉', 'No more ads — and your monthly $5M and extra portfolios are ready to claim in the Premium perks section above.');
     } else {
-      Alert.alert('You’re all set 🎉', productId === PRODUCT_PREMIUM ? 'Premium is active — enjoy no ads and your monthly perks.' : 'No more ads. Enjoy!');
+      Alert.alert('You’re all set 🎉', 'No more ads. Enjoy!');
       onClose();
     }
   };

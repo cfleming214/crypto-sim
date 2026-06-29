@@ -7,7 +7,7 @@ import { fetchGlobalMarketStats, fetchFearGreedIndex, formatLargeNumber, type Pr
 import { loadProfileIfExists, createStarterProfile, adoptGuestProfile, saveProfile, saveTrade, saveEquityHistory, loadEquityHistory, subscribeToProfile, subscribeToCoachNudges, subscribeToLeaderboard, loadContestPortfolios, saveContestPortfolio, touchPresence, fetchMyContestWins, resetDemoCloud } from '../services/portfolioService';
 import { recordLiveTrade } from '../services/liveTradeService';
 import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder, hydratePriceTriggers } from '../services/priceTriggerService';
-import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions, leaveCompetitionForUser } from '../services/competitionService';
+import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions, deactivateCompetitionEntriesForUser } from '../services/competitionService';
 import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
@@ -2326,9 +2326,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   //     back to main if it was active).
   //   • If the contest no longer exists ANYWHERE (not in the live list nor the
   //     finished list), the entry is an orphan — a contest deleted without
-  //     deactivating its entries — so we also delete the stale cloud row so it
-  //     can't reappear on reload. Recently-ended contests are still in one of the
-  //     lists, so their (soon-to-settle) entries are left alone.
+  //     deactivating its entries — so we DEACTIVATE the cloud row (isActive=false)
+  //     rather than delete it: the record is preserved for history/audit, and it
+  //     stops re-loading as an active "joined" portfolio. Recently-ended contests
+  //     are still in one of the lists, so their (soon-to-settle) entries are left
+  //     for close-competition to deactivate on settlement.
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
     if (state.competitions.length === 0) return; // wait until the live list has loaded
@@ -2341,7 +2343,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (liveOrOpen.has(id)) continue;      // still tradeable → keep
       dispatch({ type: 'LEAVE_TOURNAMENT', tournamentId: id });
       if (!present.has(id) && !finished.has(id)) {
-        leaveCompetitionForUser(id, stateRef.current.user.handle).catch(() => {});
+        // Orphan: keep the record, just mark it inactive (moved to history).
+        deactivateCompetitionEntriesForUser(id, stateRef.current.user.handle).catch(() => {});
       }
     }
   }, [authStatus, state.competitions, state.finishedCompetitions, state.joinedTournamentIds]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -12,7 +12,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { ACHIEVEMENTS, contestXpForRank } from '../services/gamification';
+import { ACHIEVEMENTS, contestXpForRank, monthKey } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw } from 'lucide-react-native';
 import { frameColor, titleLabel, FRAMES } from '../data/season';
@@ -27,7 +27,7 @@ import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 import { refreshStatus } from '../services/stripeService';
-import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP } from '../constants/featureFlags';
+import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
 import { restore as restorePurchases, useEntitlements, usePurchasesReady } from '../lib/purchases';
@@ -328,6 +328,14 @@ export function ProfileScreen() {
   const [purchaseVisible, setPurchaseVisible] = useState(false);
   const purchasesReady = usePurchasesReady();
   const planLabel = premium ? 'Premium' : noAds ? 'No Ads' : null;
+  // Premium has monthly perks to claim (the $5M + new $5M portfolios). Surface a
+  // "Claim" hint on the plan row so they're discoverable — tapping the row opens
+  // the Upgrade sheet, where the perks live.
+  const pmk = monthKey(Date.now());
+  const premiumPortfoliosLeft = state.premiumGrants.portfolioMonthKey === pmk
+    ? Math.max(0, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH - state.premiumGrants.portfoliosThisMonth)
+    : PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH;
+  const premiumPerksAvailable = premium && (state.premiumGrants.balanceMonthKey !== pmk || premiumPortfoliosLeft > 0);
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
@@ -832,9 +840,13 @@ export function ProfileScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Sparkles color={colors.accent} size={18} strokeWidth={1.9} />
-                <Text style={{ fontWeight: '600', color: colors.ink }}>{planLabel ? 'Your plan' : 'Upgrade — No Ads / Premium'}</Text>
+                <Text style={{ fontWeight: '600', color: colors.ink }}>
+                  {premiumPerksAvailable ? 'Claim your Premium perks' : planLabel ? 'Your plan' : 'Upgrade — No Ads / Premium'}
+                </Text>
               </View>
-              {planLabel ? <Chip variant="up">{planLabel}</Chip> : <Text style={{ color: colors.ink3 }}>›</Text>}
+              {premiumPerksAvailable
+                ? <Chip variant="accent">Claim</Chip>
+                : planLabel ? <Chip variant="up">{planLabel}</Chip> : <Text style={{ color: colors.ink3 }}>›</Text>}
             </View>
           </CardSection>
         </TouchableOpacity>
