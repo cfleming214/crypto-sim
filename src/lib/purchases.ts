@@ -120,10 +120,21 @@ export function configurePurchases(): void {
   }
 }
 
+// Diagnostic snapshot of the last customerInfo seen: which entitlement IDs are
+// active, and which subscription product IDs are active. Lets us tell apart
+// "not subscribed" from "subscribed but no entitlement attached / wrong ID".
+let lastActiveEntitlementIds: string[] = [];
+let lastActiveSubscriptions: string[] = [];
+export function entitlementDiagnostic(): { entitlements: string[]; subscriptions: string[] } {
+  return { entitlements: lastActiveEntitlementIds, subscriptions: lastActiveSubscriptions };
+}
+
 // Map a RevenueCat customerInfo into our two entitlement flags. Premium implies
 // no-ads even if the dashboard mapping is ever misconfigured (defensive).
 export function entitlementsFrom(customerInfo: any): Entitlements {
   const active = customerInfo?.entitlements?.active ?? {};
+  lastActiveEntitlementIds = Object.keys(active);
+  lastActiveSubscriptions = Array.isArray(customerInfo?.activeSubscriptions) ? customerInfo.activeSubscriptions : [];
   const premium = !!active[ENTITLEMENT_PREMIUM];
   const noAds = premium || !!active[ENTITLEMENT_NO_ADS];
   return { noAds, premium };
