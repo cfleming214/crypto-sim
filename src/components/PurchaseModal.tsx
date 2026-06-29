@@ -8,7 +8,7 @@ import { X, Ban, Wallet, Crown, Check, RefreshCw, Gift, Plus } from 'lucide-reac
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import {
-  getPackages, purchase, restore, useEntitlements,
+  getPackages, purchase, restore, useEntitlements, offeringsDiagnostic,
   PRODUCT_NO_ADS, PRODUCT_BALANCE_5M, PRODUCT_PREMIUM, type PurchasePackage,
 } from '../lib/purchases';
 import { OFFLINE_BALANCE_GRANT, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
@@ -105,6 +105,15 @@ export function PurchaseModal({ visible, onClose }: Props) {
           {loading && (
             <View style={{ paddingVertical: 12, alignItems: 'center' }}>
               <ActivityIndicator color={colors.ink3} />
+            </View>
+          )}
+
+          {/* Diagnostic: when no products loaded, show RevenueCat's reason so a
+              device/TestFlight tester can self-diagnose without a Mac console. */}
+          {!loading && packages.length === 0 && !!offeringsDiagnostic() && (
+            <View style={{ backgroundColor: colors.warnSoft, borderRadius: 12, padding: 12, gap: 4 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.warn }}>Products didn't load</Text>
+              <Text style={{ fontSize: 12, color: colors.ink2, lineHeight: 17 }}>{offeringsDiagnostic()}</Text>
             </View>
           )}
 
