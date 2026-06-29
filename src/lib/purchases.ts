@@ -166,14 +166,33 @@ export interface PurchasePackage {
   raw: any;                    // the underlying RevenueCat package, for purchasePackage()
 }
 
-// Load the current offering's packages, normalized for the UI. Empty on failure.
+// Human-readable reason the last getPackages() returned nothing — surfaced in the
+// purchase sheet so a TestFlight/device tester can self-diagnose without a Mac.
+let lastOfferingsDiagnostic = '';
+export function offeringsDiagnostic(): string {
+  return lastOfferingsDiagnostic;
+}
+
+// Load the current offering's packages, normalized for the UI. Empty on failure
+// (and lastOfferingsDiagnostic explains why).
 export async function getPackages(): Promise<PurchasePackage[]> {
   const sdk = loadSdk();
-  if (!sdk || !configured) return [];
+  if (!sdk) { lastOfferingsDiagnostic = 'Purchases module unavailable on this build.'; return []; }
+  if (!configured) { lastOfferingsDiagnostic = 'Purchases not configured (missing/blocked RevenueCat key).'; return []; }
   try {
     const offerings = await sdk.getOfferings();
     const current = offerings?.current;
+    const allCount = offerings?.all ? Object.keys(offerings.all).length : 0;
     const pkgs = current?.availablePackages ?? [];
+    if (!current) {
+      lastOfferingsDiagnostic = allCount > 0
+        ? `No "Current" offering set in RevenueCat (${allCount} offering(s) exist — mark one Current).`
+        : 'No offerings in RevenueCat for this app/key.';
+    } else if (pkgs.length === 0) {
+      lastOfferingsDiagnostic = 'Current offering has no fetchable products — check the Paid Apps agreement + that products are "Ready to Submit" (new products can take a few hours).';
+    } else {
+      lastOfferingsDiagnostic = '';
+    }
     return pkgs.map((p: any) => ({
       identifier: p.identifier,
       productId: p.product?.identifier ?? '',
@@ -181,7 +200,8 @@ export async function getPackages(): Promise<PurchasePackage[]> {
       title: p.product?.title ?? '',
       raw: p,
     }));
-  } catch (e) {
+  } catch (e: any) {
+    lastOfferingsDiagnostic = e?.message ?? 'getOfferings() failed.';
     console.warn('[iap] getOfferings failed', e);
     return [];
   }
