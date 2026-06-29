@@ -30,7 +30,7 @@ import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
-import { restore as restorePurchases, useEntitlements, usePurchasesReady } from '../lib/purchases';
+import { restore as restorePurchases, useEntitlements, usePurchasesReady, entitlementDiagnostic } from '../lib/purchases';
 import { PurchaseModal } from '../components/PurchaseModal';
 import { OfflinePortfolioChooser, type OfflineGrantSource } from '../components/OfflinePortfolioChooser';
 import { OFFLINE_BALANCE_GRANT } from '../constants/featureFlags';
@@ -339,6 +339,11 @@ export function ProfileScreen() {
     ? Math.max(0, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH - state.premiumGrants.portfoliosThisMonth)
     : PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH;
   const premiumPerksAvailable = premium && (state.premiumGrants.balanceMonthKey !== pmk || premiumPortfoliosLeft > 0);
+  // When the app sees NO entitlement but the user believes they subscribed, show
+  // what RevenueCat actually returned so we can tell "not synced" from "entitlement
+  // not attached / wrong identifier".
+  const entDiag = entitlementDiagnostic();
+  const showEntitlementDiag = purchasesReady && !premium && !noAds && (entDiag.subscriptions.length > 0 || entDiag.entitlements.length > 0);
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
@@ -861,7 +866,7 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
         <TouchableOpacity testID="profile-manage-sub" onPress={openManageSubscriptions}>
-          <CardSection last={!premium}>
+          <CardSection last={!premium && !showEntitlementDiag}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Crown color={colors.ink} size={18} strokeWidth={1.75} />
@@ -871,6 +876,19 @@ export function ProfileScreen() {
             </View>
           </CardSection>
         </TouchableOpacity>
+
+        {/* Diagnostic: subscribed but the app sees no entitlement → almost always
+            the entitlement isn't attached to the product (or the ID differs). */}
+        {showEntitlementDiag && (
+          <CardSection last>
+            <Text style={{ fontSize: 11, color: colors.warn, fontWeight: '700', marginBottom: 2 }}>Subscription active, but no perks granted</Text>
+            <Text style={{ fontSize: 11, color: colors.ink3, lineHeight: 16 }}>
+              {entDiag.subscriptions.length > 0 ? `Subscribed: ${entDiag.subscriptions.join(', ')}\n` : ''}
+              Active entitlements: {entDiag.entitlements.length > 0 ? entDiag.entitlements.join(', ') : 'none'}
+              {'\n'}Expected: no_ads / premium. In RevenueCat, attach those entitlements to the product (matching IDs), then tap Restore purchases.
+            </Text>
+          </CardSection>
+        )}
 
         {/* Premium perks — redeem the monthly $5M + extra $5M portfolios right
             here, directly under Manage subscription. */}
