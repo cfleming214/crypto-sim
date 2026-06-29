@@ -12,7 +12,7 @@ import type { Competition } from '../store/types';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { requiresPassToJoin } from '../lib/contestLane';
 
-export type JoinResult = { ok: boolean; reason?: 'ended' | 'needs-pass' };
+export type JoinResult = { ok: boolean; reason?: 'ended' | 'needs-pass' | 'failed' };
 
 export function useCompetitions() {
   const { state, dispatch } = useApp();
@@ -45,19 +45,24 @@ export function useCompetitions() {
       ?? state.finishedCompetitions.find(c => c.id === competitionId);
     if (comp && (comp.status === 'finished' || Date.now() >= comp.endAt)) return { ok: false, reason: 'ended' };
     // Lane A (virtual) contests cost an entry pass; Lane B (cash) entry is ALWAYS
-    // free — zero consideration, the compliance firewall. Spend only after the
-    // other guards, and let the caller offer a rewarded-ad pass if the user's out.
-    if (requiresPassToJoin(comp)) {
-      if (state.passes.balance <= 0) return { ok: false, reason: 'needs-pass' };
-      dispatch({ type: 'SPEND_PASS' });
-    }
+    // free — zero consideration, the compliance firewall. Gate on the pass now,
+    // but DON'T spend it until the durable cloud entry is confirmed (below).
+    const needsPass = requiresPassToJoin(comp);
+    if (needsPass && state.passes.balance <= 0) return { ok: false, reason: 'needs-pass' };
+
+    // Create the cloud CompetitionEntry FIRST — it's the source of truth that
+    // loadJoinedCompetitions rehydrates from on the next launch. If this fails
+    // (network/auth), we must NOT spend the pass or mark the user joined, or they
+    // end up "pass spent but not in any contest" after a restart. Enroll at
+    // STARTING_CASH (not state.bankroll, which is the active portfolio's balance).
+    const entry = await joinCloud(competitionId, state.user.handle, STARTING_CASH);
+    if (!entry) return { ok: false, reason: 'failed' };
+
+    // Durable entry confirmed → now spend the pass and enroll locally (the local
+    // slice spawned by JOIN_TOURNAMENT mirrors the cloud entry).
+    if (needsPass) dispatch({ type: 'SPEND_PASS' });
     dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: competitionId });
     dispatch({ type: 'ADD_XP', amount: 10 });
-    // Every contest starts with a fresh $100K portfolio (JOIN_TOURNAMENT spawns
-    // the matching local slice). Enroll the cloud entry at STARTING_CASH — NOT
-    // state.bankroll, which is the active (usually main) portfolio's balance and
-    // would wrongly seed the leaderboard with the user's personal balance.
-    await joinCloud(competitionId, state.user.handle, STARTING_CASH);
     return { ok: true };
   }, [state.competitions, state.finishedCompetitions, state.passes.balance, state.user.handle, dispatch]);
 
