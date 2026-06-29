@@ -492,6 +492,12 @@ export function CompeteScreen() {
     // Out of passes — Lane A (virtual) contests cost an entry pass. Offer to earn
     // one via a rewarded ad (never sold), then retry the join. Lane B never lands
     // here: cash-contest entry is free and join() returns ok without a pass.
+    // The durable cloud entry couldn't be created (network/auth) — no pass was
+    // spent. Tell the user to retry rather than silently doing nothing.
+    if (res.reason === 'failed') {
+      Alert.alert("Couldn't join", `We couldn't enroll you in ${comp.name} just now — your pass wasn't used. Check your connection and try again.`);
+      return;
+    }
     if (res.reason === 'needs-pass') {
       Alert.alert(
         'Out of contest passes',

@@ -1370,10 +1370,17 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'INIT_CONTEST_PORTFOLIO': {
-      // Used when restoring a contest portfolio from cloud on login.
+      // Used when restoring a contest portfolio from cloud on login. Each restored
+      // entry is an active membership, so also mark it joined (de-duped) — a
+      // safety net so a restored portfolio can never show up without the user
+      // appearing enrolled, even if the joinedTournamentIds load ever diverges
+      // from the contest-portfolio load.
       const slice = action.slice ?? { cash: STARTING_CASH, holdings: [], trades: [] };
       return {
         ...state,
+        joinedTournamentIds: state.joinedTournamentIds.includes(action.competitionId)
+          ? state.joinedTournamentIds
+          : [...state.joinedTournamentIds, action.competitionId],
         portfolios: { ...state.portfolios, [action.competitionId]: slice },
       };
     }
