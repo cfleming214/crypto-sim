@@ -46,6 +46,7 @@ export function PurchaseModal({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
+    setChooser(null); // always open on the products view, not a stale chooser
     setLoading(true);
     getPackages().then(setPackages).finally(() => setLoading(false));
   }, [visible]);
@@ -102,6 +103,18 @@ export function PurchaseModal({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }}>
+        {chooser ? (
+          // Inline (NOT a nested Modal) — placing a $5M grant then dismisses just
+          // this one modal, avoiding the stacked-modal white screen.
+          <OfflinePortfolioChooser
+            amount={OFFLINE_BALANCE_GRANT}
+            source={chooser.source}
+            monthKey={monthKey(Date.now())}
+            onClose={() => setChooser(null)}
+            onDone={onClose}
+          />
+        ) : (
+        <>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Upgrade</Text>
@@ -250,16 +263,8 @@ export function PurchaseModal({ visible, onClose }: Props) {
             </View>
           </View>
         </ScrollView>
-
-        {/* Where the $5M consumable gets placed after a successful buy. */}
-        <OfflinePortfolioChooser
-          visible={!!chooser}
-          onClose={() => setChooser(null)}
-          amount={OFFLINE_BALANCE_GRANT}
-          source={chooser?.source ?? 'consumable'}
-          monthKey={monthKey(Date.now())}
-          onDone={onClose}
-        />
+        </>
+        )}
       </SafeAreaView>
     </Modal>
   );
