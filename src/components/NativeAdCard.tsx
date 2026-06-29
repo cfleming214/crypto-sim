@@ -30,7 +30,9 @@ try {
 
 // variant 'card' = standalone bordered card (news feed); 'row' = seamless list
 // row to sit inside a noPad Card among CardSections (markets / live-trades).
-export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' }) {
+// `unitId` overrides the ad unit (e.g. the News feed passes its own dedicated
+// unit); defaults to AD_UNITS.native, then Google's TestIds.
+export function NativeAdCard({ variant = 'card', unitId }: { variant?: 'card' | 'row'; unitId?: string }) {
   const { colors } = useTheme();
   const { noAds } = useEntitlements();
   const [ad, setAd] = useState<any>(null);
@@ -39,15 +41,16 @@ export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' })
     if (!NativeAd || noAds) return; // No-Ads / Premium suppresses native ads
     let loaded: any = null;
     let cancelled = false;
-    const unitId = AD_UNITS.native ?? TestIds?.NATIVE;
-    NativeAd.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: false })
+    const realUnit = unitId ?? AD_UNITS.native; // undefined in test mode → TestIds
+    const resolvedUnit = realUnit ?? TestIds?.NATIVE;
+    NativeAd.createForAdRequest(resolvedUnit, { requestNonPersonalizedAdsOnly: false })
       .then((a: any) => {
         loaded = a;
         if (cancelled) { a.destroy?.(); return; }
         setAd(a);
         // Surface what content the unit served (answers "what kind of ad is it").
         console.log('[ads] native loaded — content:', JSON.stringify({
-          unit: AD_UNITS.native ? 'REAL' : 'TEST',
+          unit: realUnit ? 'REAL' : 'TEST',
           headline: a.headline,
           body: a.body,
           advertiser: a.advertiser,
@@ -59,7 +62,7 @@ export function NativeAdCard({ variant = 'card' }: { variant?: 'card' | 'row' })
       })
       .catch((e: any) => console.warn('[ads] native failed to load:', e?.code ?? '', e?.message ?? e));
     return () => { cancelled = true; loaded?.destroy?.(); };
-  }, [noAds]);
+  }, [noAds, unitId]);
 
   if (!NativeAdView || !ad || noAds) return null;
 

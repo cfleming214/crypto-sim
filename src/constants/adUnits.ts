@@ -42,4 +42,8 @@ export const AD_UNITS = {
   get rewarded() { return resolve(process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID); },
   get rewardedInterstitial() { return resolve(process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_IOS, process.env.EXPO_PUBLIC_ADMOB_REWARDED_INTERSTITIAL_ANDROID); },
   get native() { return resolve(process.env.EXPO_PUBLIC_ADMOB_NATIVE_IOS, process.env.EXPO_PUBLIC_ADMOB_NATIVE_ANDROID); },
+  // Dedicated native unit for the News feed, so its performance can be tuned/
+  // reported separately from the Markets native unit (`native`). Falls back to
+  // `native` (then TestIds) when unset. Set EXPO_PUBLIC_ADMOB_NATIVE_NEWS_IOS in EAS.
+  get nativeNews() { return resolve(process.env.EXPO_PUBLIC_ADMOB_NATIVE_NEWS_IOS, process.env.EXPO_PUBLIC_ADMOB_NATIVE_NEWS_ANDROID); },
 };
