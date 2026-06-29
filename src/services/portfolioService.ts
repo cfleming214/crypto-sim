@@ -218,6 +218,24 @@ async function loadJoinedCompetitions(client: any): Promise<string[]> {
   }
 }
 
+// The user's FINISHED-contest results: settled entries (isActive=false) carry the
+// final `rank` written at settlement (the win-count + global-leaderboard Lambdas
+// rely on the same field). Drives the Profile "unclaimed rewards" section, which
+// cross-references these with the contest's prizeXp + claimedContestIds.
+export async function loadFinishedContestResults(): Promise<{ competitionId: string; rank: number }[]> {
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    const ownerId = await getCurrentOwnerId();
+    const data = await listMyEntries(client, ownerId);
+    return data
+      .filter(e => e.isActive === false && typeof e.rank === 'number' && e.rank >= 1)
+      .map(e => ({ competitionId: e.competitionId as string, rank: e.rank as number }));
+  } catch {
+    return [];
+  }
+}
+
 export async function loadContestPortfolios(): Promise<Record<string, PortfolioSlice>> {
   const client = await getClient();
   if (!client) return {};

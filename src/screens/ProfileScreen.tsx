@@ -12,7 +12,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { ACHIEVEMENTS } from '../services/gamification';
+import { ACHIEVEMENTS, contestXpForRank } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw } from 'lucide-react-native';
 import { frameColor, titleLabel, FRAMES } from '../data/season';
@@ -21,13 +21,13 @@ import { useCoachmarkSettings } from '../components/coachmarks/CoachmarkProvider
 import { Lightbulb } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uploadAvatarPhoto, fetchActiveMirrorCount } from '../services/portfolioService';
+import { uploadAvatarPhoto, fetchActiveMirrorCount, loadFinishedContestResults } from '../services/portfolioService';
 import { registerDevice, deactivateDevices } from '../services/pushDeviceService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 import { refreshStatus } from '../services/stripeService';
-import { PAYOUTS_ENABLED, STARTING_CASH } from '../constants/featureFlags';
+import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
 import { restore as restorePurchases, useEntitlements, usePurchasesReady } from '../lib/purchases';
@@ -397,6 +397,29 @@ export function ProfileScreen() {
     if (PAYOUTS_ENABLED) refreshStatus().then(a => { if (a) setBalanceCents(a.balanceCents ?? 0); }).catch(() => {});
   }, []);
   useFocusEffect(loadBalance);
+
+  // Unclaimed contest rewards — finished contests where the user placed on the
+  // podium and hasn't collected the XP yet (XP-prize mode only). Refreshed on
+  // focus, so a contest that settled while away shows up when you return.
+  const [finishedResults, setFinishedResults] = useState<{ competitionId: string; rank: number }[]>([]);
+  const loadFinished = useCallback(() => {
+    if (!CONTEST_CASH_PRIZES) loadFinishedContestResults().then(setFinishedResults).catch(() => {});
+  }, []);
+  useFocusEffect(loadFinished);
+  // Resolve each finished result to its XP prize (rank × the contest's prizeXp),
+  // keeping only podium finishes that still have an unclaimed prize.
+  const unclaimedRewards = finishedResults
+    .map(r => {
+      const comp = state.finishedCompetitions.find(c => c.id === r.competitionId)
+        ?? state.competitions.find(c => c.id === r.competitionId);
+      const xp = contestXpForRank(comp?.prizeXp ?? DEFAULT_PRIZE_XP, r.rank);
+      return { id: r.competitionId, name: comp?.name ?? 'Contest', rank: r.rank, xp };
+    })
+    .filter(u => u.xp > 0 && !state.claimedContestIds.includes(u.id));
+  const claimReward = (u: { id: string; name: string; xp: number }) => {
+    dispatch({ type: 'CLAIM_CONTEST_XP', contestId: u.id, xp: u.xp });
+    Alert.alert('Reward claimed 🎉', `+${u.xp.toLocaleString()} XP from ${u.name}.`);
+  };
 
   // Two-step confirmation, then a permanent client-side wipe + Cognito
   // deleteUser (App Store guideline 5.1.1(v)). On success auth flips to
@@ -954,6 +977,34 @@ export function ProfileScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Unclaimed contest rewards — podium finishes with XP still to collect. */}
+      {unclaimedRewards.length > 0 && (
+        <>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Unclaimed rewards</Text>
+            <Chip variant="accent">{unclaimedRewards.length}</Chip>
+          </View>
+          <Card variant="noPad">
+            {unclaimedRewards.map((u, i) => (
+              <CardSection key={u.id} last={i === unclaimedRewards.length - 1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Trophy color={colors.accent} size={20} strokeWidth={1.9} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontWeight: '700', color: colors.ink }} numberOfLines={1}>{u.name}</Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                      Finished #{u.rank} · +{u.xp.toLocaleString()} XP
+                    </Text>
+                  </View>
+                  <Button testID={`profile-claim-${u.id}`} variant="accent" size="sm" onPress={() => claimReward(u)}>Claim</Button>
+                </View>
+              </CardSection>
+            ))}
+          </Card>
+        </>
+      )}
 
       {/* Contest history */}
       <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Contest history</Text>
