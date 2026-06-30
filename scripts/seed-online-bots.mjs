@@ -1,0 +1,348 @@
+#!/usr/bin/env node
+/**
+ * Seed N "online" players (default 25, configurable) that look like real users.
+ *
+ * Each player:
+ *   • is a real Cognito user with a UNIQUE, human-style handle (no "bot" in it),
+ *   • logs in (USER_PASSWORD_AUTH) and drives everything through the real
+ *     authenticated AppSync path (owner-auth), exactly like the app,
+ *   • creates its profile (leaderboard-visible so it's discoverable),
+ *   • joins the N contests ending SOONEST (default 5) — current live/open ones,
+ *   • makes 2 trades (configurable) in a joined contest, updating its entry and
+ *     mirroring each to the global Live-trades feed (createLiveTrade),
+ *   • sets its presence (UserProfile + PublicProfile lastActiveAt = now) so it
+ *     shows as ONLINE to other users; optionally kept fresh for --online-minutes.
+ *
+ * Every handle/email is written to a roster file for your records.
+ *
+ * Requires admin AWS creds (creates Cognito users). Reads region/pool/client/
+ * AppSync url from amplify_outputs.json.
+ *
+ * Usage:
+ *   node scripts/seed-online-bots.mjs                       # 25 users, 5 contests, 2 trades
+ *   node scripts/seed-online-bots.mjs --users 50
+ *   node scripts/seed-online-bots.mjs --users 25 --contests 5 --trades 2
+ *   node scripts/seed-online-bots.mjs --online-minutes 30   # keep them "online" 30 min
+ *   node scripts/seed-online-bots.mjs --dry-run
+ */
+import {
+  CognitoIdentityProviderClient,
+  AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
+  AdminGetUserCommand,
+  InitiateAuthCommand,
+} from '@aws-sdk/client-cognito-identity-provider';
+import { DynamoDBClient, ListTablesCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
+import { unmarshall } from '@aws-sdk/util-dynamodb';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+
+// ── flags ───────────────────────────────────────────────────────────────────
+const argv = process.argv.slice(2);
+const DRY = argv.includes('--dry-run');
+const flag = (name, def) => {
+  const i = argv.indexOf(name);
+  if (i < 0) return def;
+  const v = parseInt(argv[i + 1] ?? '', 10);
+  return Number.isFinite(v) ? v : def;
+};
+const USERS = Math.max(1, Math.min(500, flag('--users', 25)));      // configurable count
+const CONTESTS = Math.max(1, Math.min(20, flag('--contests', 5)));  // soonest-ending to join
+const TRADES = Math.max(0, Math.min(20, flag('--trades', 2)));      // trades per user
+const ONLINE_MINUTES = Math.max(0, flag('--online-minutes', 0));    // keep presence fresh
+
+// ── config ──────────────────────────────────────────────────────────────────
+const outputs = JSON.parse(readFileSync('./amplify_outputs.json', 'utf8'));
+const REGION = outputs.auth?.aws_region ?? 'us-east-1';
+const USER_POOL = outputs.auth?.user_pool_id;
+const CLIENT_ID = outputs.auth?.user_pool_client_id;
+const APPSYNC = outputs.data?.url;
+if (!USER_POOL || !CLIENT_ID) throw new Error('Missing auth pool/client in amplify_outputs.json');
+if (!APPSYNC) throw new Error('Missing data.url (AppSync endpoint) in amplify_outputs.json');
+
+const cog = new CognitoIdentityProviderClient({ region: REGION });
+const ddb = new DynamoDBClient({ region: REGION });
+
+const STARTING_CASH = 100_000;
+const PASSWORD = 'OnlineSeed!2026';
+// Distinct email domain so this cohort is identifiable later (handles are random
+// and have no "bot"). The handle — the only user-visible name — never says "bot".
+const EMAIL_DOMAIN = 'sim.cryptocomp.app';
+const COLORS = ['#6366F1', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6', '#06B6D4', '#F97316', '#EC4899', '#84CC16', '#64748B'];
+const ADJ = ['Swift', 'Nova', 'Lunar', 'Solar', 'Crimson', 'Golden', 'Silent', 'Rapid', 'Cosmic', 'Iron', 'Mighty', 'Wild', 'Frost', 'Shadow', 'Electric', 'Turbo', 'Quantum', 'Stellar', 'Vivid', 'Bold', 'Prime', 'Hyper', 'Neon', 'Atlas', 'Zen'];
+const NOUN = ['Falcon', 'Whale', 'Bull', 'Tiger', 'Comet', 'Trader', 'Hawk', 'Wolf', 'Drake', 'Lynx', 'Orca', 'Raven', 'Viper', 'Phoenix', 'Otter', 'Panda', 'Maple', 'River', 'Summit', 'Ace', 'Pilot', 'Nomad', 'Ranger', 'Sage', 'Voyager'];
+
+const FALLBACK_COINS = [
+  { symbol: 'BTC', price: 71000 }, { symbol: 'ETH', price: 3800 }, { symbol: 'SOL', price: 190 },
+  { symbol: 'BNB', price: 600 }, { symbol: 'XRP', price: 0.62 }, { symbol: 'DOGE', price: 0.16 },
+  { symbol: 'ADA', price: 0.45 }, { symbol: 'AVAX', price: 38 }, { symbol: 'LINK', price: 18 },
+  { symbol: 'DOT', price: 7 }, { symbol: 'LTC', price: 95 }, { symbol: 'UNI', price: 12 },
+];
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+const rand = (a, b) => a + Math.random() * (b - a);
+const randi = (a, b) => Math.floor(rand(a, b + 1));
+const pick = (arr) => arr[randi(0, arr.length - 1)];
+const round2 = (n) => Math.round(n * 100) / 100;
+const round6 = (n) => Math.round(n * 1e6) / 1e6;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; try { out[idx] = await fn(items[idx], idx); } catch (e) { out[idx] = { __error: e }; } }
+  }));
+  return out;
+}
+
+// Unique, human-style handle with no "bot" in it.
+function makeRoster(n) {
+  const handles = new Set();
+  const roster = [];
+  let guard = 0;
+  while (roster.length < n && guard++ < n * 50) {
+    const handle = `${pick(ADJ)}${pick(NOUN)}${randi(10, 999)}`;
+    if (handles.has(handle) || /bot/i.test(handle)) continue;
+    handles.add(handle);
+    const email = `${handle.toLowerCase()}.${randomBytes(3).toString('hex')}@${EMAIL_DOMAIN}`;
+    roster.push({ handle, email, color: COLORS[roster.length % COLORS.length] });
+  }
+  return roster;
+}
+
+async function findTable(prefix) {
+  let next;
+  do {
+    const res = await ddb.send(new ListTablesCommand({ ExclusiveStartTableName: next }));
+    for (const n of res.TableNames ?? []) if (n.startsWith(`${prefix}-`) && n.endsWith('-NONE')) return n;
+    next = res.LastEvaluatedTableName;
+  } while (next);
+  return null;
+}
+async function* scanAll(table) {
+  let k;
+  do { const o = await ddb.send(new ScanCommand({ TableName: table, ExclusiveStartKey: k })); for (const it of o.Items ?? []) yield unmarshall(it); k = o.LastEvaluatedKey; } while (k);
+}
+
+// ── Cognito ───────────────────────────────────────────────────────────────────
+async function ensureUser(b) {
+  if (DRY) return { ...b, sub: 'DRY', owner: `DRY::${b.email}` };
+  try {
+    await cog.send(new AdminCreateUserCommand({
+      UserPoolId: USER_POOL, Username: b.email, MessageAction: 'SUPPRESS',
+      UserAttributes: [{ Name: 'email', Value: b.email }, { Name: 'email_verified', Value: 'true' }],
+    }));
+    await cog.send(new AdminSetUserPasswordCommand({ UserPoolId: USER_POOL, Username: b.email, Password: PASSWORD, Permanent: true }));
+  } catch (e) { if (e.name !== 'UsernameExistsException') throw e; }
+  const got = await cog.send(new AdminGetUserCommand({ UserPoolId: USER_POOL, Username: b.email }));
+  const sub = got.UserAttributes?.find((a) => a.Name === 'sub')?.Value;
+  if (!sub) throw new Error(`no sub for ${b.email}`);
+  return { ...b, sub, owner: `${sub}::${b.email}` };
+}
+async function signIn(email) {
+  const out = await cog.send(new InitiateAuthCommand({
+    AuthFlow: 'USER_PASSWORD_AUTH', ClientId: CLIENT_ID,
+    AuthParameters: { USERNAME: email, PASSWORD: PASSWORD },
+  }));
+  const r = out.AuthenticationResult;
+  if (!r?.IdToken) throw new Error(`sign-in failed for ${email}`);
+  return r.IdToken;
+}
+
+// ── AppSync ───────────────────────────────────────────────────────────────────
+async function gql(idToken, query, variables) {
+  const res = await fetch(APPSYNC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: idToken },
+    body: JSON.stringify({ query, variables }),
+  });
+  const json = await res.json().catch(() => null);
+  if (json?.errors?.length) {
+    const err = new Error(json.errors.map((e) => e.errorType || e.message).join('; '));
+    err.unauthorized = json.errors.some((e) => /Unauthorized|token|expired|JWT/i.test(`${e.errorType} ${e.message}`));
+    throw err;
+  }
+  if (!res.ok) throw new Error(`AppSync HTTP ${res.status}`);
+  return json?.data;
+}
+async function gqlRetry(s, query, variables) {
+  try { return await gql(s.idToken, query, variables); }
+  catch (e) { if (!e.unauthorized) throw e; s.idToken = await signIn(s.bot.email); return gql(s.idToken, query, variables); }
+}
+
+const Q_MY_PROFILE = `query { listUserProfiles(limit: 1) { items { id } } }`;
+const M_CREATE_PROFILE = `mutation P($input: CreateUserProfileInput!) { createUserProfile(input: $input) { id } }`;
+const M_UPDATE_PROFILE = `mutation P($input: UpdateUserProfileInput!) { updateUserProfile(input: $input) { id } }`;
+const Q_MY_PUBLIC = `query Q($owner: String!) { listPublicProfiles(filter: { owner: { eq: $owner } }, limit: 1) { items { id } } }`;
+const M_CREATE_PUBLIC = `mutation P($input: CreatePublicProfileInput!) { createPublicProfile(input: $input) { id } }`;
+const M_UPDATE_PUBLIC = `mutation P($input: UpdatePublicProfileInput!) { updatePublicProfile(input: $input) { id } }`;
+const M_CREATE_ENTRY = `mutation E($input: CreateCompetitionEntryInput!) { createCompetitionEntry(input: $input) { id } }`;
+const M_UPDATE_ENTRY = `mutation E($input: UpdateCompetitionEntryInput!) { updateCompetitionEntry(input: $input) { id } }`;
+const M_CREATE_LIVE_TRADE = `mutation L($input: CreateLiveTradeInput!) { createLiveTrade(input: $input) { id } }`;
+
+// ── coins + trade sim ─────────────────────────────────────────────────────────
+async function loadCoins() {
+  const tokenTable = await findTable('Token');
+  if (!tokenTable) return FALLBACK_COINS.map((c) => ({ ...c }));
+  const coins = [];
+  for await (const t of scanAll(tokenTable)) {
+    if (t.symbol && t.symbol !== 'USDC' && Number(t.lastPrice) > 0 && t.enabledForPractice !== false) coins.push({ symbol: t.symbol, price: Number(t.lastPrice) });
+  }
+  return coins.length >= 4 ? coins : FALLBACK_COINS.map((c) => ({ ...c }));
+}
+const priceOf = (coins, sym) => coins.find((c) => c.symbol === sym)?.price ?? 0;
+// Build a fresh contest portfolio and run `n` buys of distinct coins.
+function tradePortfolio(coins, n) {
+  const p = { cash: STARTING_CASH, holdings: [], trades: [] };
+  const used = new Set();
+  for (let i = 0; i < n; i++) {
+    const buyable = coins.filter((c) => c.symbol !== 'USDC' && c.price > 0 && !used.has(c.symbol));
+    if (!buyable.length || p.cash < 50) break;
+    const c = pick(buyable); used.add(c.symbol);
+    const amount = Math.max(50, Math.min(p.cash, p.cash * rand(0.15, 0.5)));
+    const units = amount / c.price;
+    p.holdings.push({ symbol: c.symbol, units, avgCost: c.price });
+    p.cash -= amount;
+    p.trades.push({ symbol: c.symbol, side: 'buy', amount: round2(amount), units: round6(units), price: c.price, t: Date.now() });
+  }
+  const val = p.holdings.reduce((s, h) => s + h.units * (priceOf(coins, h.symbol) || h.avgCost), 0);
+  p.bankroll = round2(p.cash + val);
+  p.pnlPct = round2(((p.bankroll - STARTING_CASH) / STARTING_CASH) * 100);
+  return p;
+}
+const holdingsJson = (p) => JSON.stringify(p.holdings.map((h) => ({ symbol: h.symbol, units: round6(h.units), avgCost: round2(h.avgCost) })));
+
+// ── presence ────────────────────────────────────────────────────────────────
+async function touchPresence(s) {
+  const nowIso = new Date().toISOString();
+  if (s.profileId) await gqlRetry(s, M_UPDATE_PROFILE, { input: { id: s.profileId, lastActiveAt: nowIso } }).catch(() => {});
+  if (s.publicId) await gqlRetry(s, M_UPDATE_PUBLIC, { input: { id: s.publicId, lastActiveAt: nowIso } }).catch(() => {});
+}
+
+// ── main ──────────────────────────────────────────────────────────────────────
+async function main() {
+  console.log(`Seeding ${USERS} online players · join ${CONTESTS} soonest contests · ${TRADES} trades each${DRY ? '  (dry-run)' : ''}`);
+  const roster = makeRoster(USERS);
+  if (roster.length < USERS) console.warn(`  (could only generate ${roster.length} unique handles)`);
+
+  // Pick the N contests ending soonest (current live/open, XP/Lane-A only).
+  const compTable = await findTable('Competition');
+  const now = Date.now();
+  const all = [];
+  if (compTable) for await (const c of scanAll(compTable)) all.push(c);
+  const soonest = all
+    .filter((c) => c.status !== 'finished' && c.cashPrize !== true && new Date(c.endAt).getTime() > now)
+    .sort((a, b) => new Date(a.endAt).getTime() - new Date(b.endAt).getTime())
+    .slice(0, CONTESTS)
+    .map((c) => ({ id: c.id, name: c.name ?? 'Contest', endAt: c.endAt, prizeXp: Number(c.prizeXp) || 0 }));
+  console.log(`Contests to join (${soonest.length}): ${soonest.map((c) => `${c.name} (ends ${c.endAt})`).join(', ') || 'none found'}`);
+  if (!soonest.length) console.warn('  No joinable contests found — players will still be created + online.');
+
+  console.log(`Provisioning ${roster.length} Cognito users…`);
+  const ready = (await mapLimit(roster, 6, ensureUser)).filter((b) => !b.__error);
+  console.log(`  ${ready.length}/${roster.length} ready.`);
+  if (DRY) {
+    writeRoster(ready.map((b) => ({ handle: b.handle, email: b.email, owner: b.owner, contests: soonest.map((c) => c.name) })), soonest);
+    console.log('Dry-run: skipped login / join / trade / presence.');
+    return;
+  }
+
+  console.log('Logging in, creating profiles, joining contests, trading, going online…');
+  const states = (await mapLimit(ready, 8, async (b) => {
+    const idToken = await signIn(b.email);
+    const s = { bot: b, idToken };
+
+    // Profile (leaderboard-visible so the player is discoverable + shows online).
+    const mine = await gql(idToken, Q_MY_PROFILE, {});
+    s.profileId = mine?.listUserProfiles?.items?.[0]?.id
+      ?? (await gql(idToken, M_CREATE_PROFILE, { input: { handle: b.handle, xp: 0, cash: STARTING_CASH, bankroll: STARTING_CASH, holdingsJson: '[]', leaderboardVisible: true, riskScore: 100, avatarColor: b.color, lastActiveAt: new Date().toISOString() } })).createUserProfile.id;
+
+    // Join the soonest contests.
+    s.joined = [];
+    for (const c of soonest) {
+      try {
+        const id = (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;
+        s.joined.push({ ...c, entryId: id });
+      } catch { /* skip a contest that won't accept the entry */ }
+    }
+
+    // Trades: run TRADES buys in one joined contest, update that entry + mirror
+    // each to the global Live-trades feed.
+    s.tradeCount = 0;
+    if (TRADES > 0 && s.joined.length) {
+      const target = pick(s.joined);
+      const p = tradePortfolio(coins, TRADES);
+      if (p.trades.length) {
+        await gqlRetry(s, M_UPDATE_ENTRY, { input: { id: target.entryId, cash: round2(p.cash), holdingsJson: holdingsJson(p), tradesJson: JSON.stringify(p.trades), bankroll: p.bankroll, pnlPct: p.pnlPct, isActive: true } }).catch(() => {});
+        const ttl = Math.floor(Date.now() / 1000) + 30 * 86400;
+        for (const tr of p.trades) {
+          await gqlRetry(s, M_CREATE_LIVE_TRADE, { input: { feed: 'global', handle: b.handle, symbol: tr.symbol, side: tr.side, amountUsd: tr.amount, units: tr.units, price: tr.price, avatarColor: b.color, tradedAt: new Date(tr.t).toISOString(), expiresAt: ttl } }).catch(() => {});
+        }
+        s.tradeCount = p.trades.length;
+        s.recentTrades = p.trades.map((t) => ({ symbol: t.symbol, side: t.side, amount: t.amount, units: t.units, price: t.price, t: t.t }));
+      }
+    }
+
+    // Presence: create/refresh the PublicProfile (discoverable) + lastActiveAt now.
+    const owned = await gql(s.idToken, Q_MY_PUBLIC, { owner: b.owner }).catch(() => null);
+    const pubPayload = {
+      handle: b.handle, league: 'Bronze', bankroll: STARTING_CASH, pnlPct: 0, winRate: 0,
+      tradeCount: s.tradeCount, avatarColor: b.color,
+      equityHistoryJson: JSON.stringify([{ t: Date.now(), v: STARTING_CASH }]),
+      recentTradesJson: JSON.stringify(s.recentTrades ?? []), allocationJson: '[]',
+      lastActiveAt: new Date().toISOString(),
+    };
+    s.publicId = owned?.listPublicProfiles?.items?.[0]?.id;
+    if (s.publicId) await gqlRetry(s, M_UPDATE_PUBLIC, { input: { id: s.publicId, ...pubPayload } }).catch(() => {});
+    else { try { s.publicId = (await gqlRetry(s, M_CREATE_PUBLIC, { input: pubPayload })).createPublicProfile.id; } catch { /* best effort */ } }
+
+    return s;
+  })).filter((s) => s && !s.__error);
+
+  console.log(`  ${states.length}/${ready.length} players set up.`);
+
+  // Roster file for the user's records.
+  writeRoster(states.map((s) => ({
+    handle: s.bot.handle, email: s.bot.email, owner: s.bot.owner,
+    contests: s.joined?.map((c) => c.name) ?? [], trades: s.tradeCount ?? 0,
+  })), soonest);
+
+  // Optionally keep them "online" by refreshing presence every 60s.
+  if (ONLINE_MINUTES > 0 && states.length) {
+    console.log(`\nKeeping ${states.length} players online for ${ONLINE_MINUTES} min (refreshing presence every 60s). Ctrl-C to stop.`);
+    let stop = false;
+    process.on('SIGINT', () => { stop = true; console.log('\nStopping presence refresh…'); });
+    const until = Date.now() + ONLINE_MINUTES * 60_000;
+    while (!stop && Date.now() < until) {
+      await sleep(60_000);
+      if (stop) break;
+      await mapLimit(states, 8, touchPresence);
+      console.log(`  presence refreshed (${new Date().toLocaleTimeString()})`);
+    }
+  }
+
+  console.log(`\nDone. ${states.length} players online, joined ${soonest.length} contest(s), ${TRADES} trades each. Leaderboards rerank within ~5 min.`);
+}
+
+let coins = [];
+function writeRoster(rows, contests) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const file = `online-bots-${stamp}.json`;
+  const doc = {
+    createdAt: new Date().toISOString(),
+    count: rows.length,
+    password: PASSWORD,
+    emailDomain: EMAIL_DOMAIN,
+    contestsJoined: contests.map((c) => ({ id: c.id, name: c.name, endAt: c.endAt })),
+    players: rows,
+  };
+  writeFileSync(file, JSON.stringify(doc, null, 2));
+  console.log(`\nRoster written to ${file} (${rows.length} players).`);
+  console.log('Handles: ' + rows.map((r) => r.handle).join(', '));
+}
+
+(async () => {
+  coins = await loadCoins();
+  await main();
+})().catch((e) => { console.error(e); process.exit(1); });
