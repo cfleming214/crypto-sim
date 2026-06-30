@@ -44,6 +44,7 @@ import { randomBytes } from 'node:crypto';
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
 const CLEAN = argv.includes('--clean');
+const ROSTER = argv.includes('--roster'); // re-dump the live cohort to a roster file
 const flag = (name, def) => {
   const i = argv.indexOf(name);
   if (i < 0) return def;
@@ -472,7 +473,21 @@ function writeRoster(rows, contests) {
   console.log('Handles: ' + rows.map((r) => r.handle).join(', '));
 }
 
+// Re-dump the current @EMAIL_DOMAIN cohort (handles + emails) to a roster file,
+// reconstructing handles from their UserProfile rows. Use when the original
+// roster file was lost.
+async function dumpRoster() {
+  const cohort = await listCohort();
+  const upTable = await findTable('UserProfile');
+  const handleBySub = {};
+  if (upTable) for await (const row of scanAll(upTable)) { const s = ownerSub(row.owner); if (s) handleBySub[s] = row.handle; }
+  const rows = cohort.map((u) => ({ handle: handleBySub[u.sub] ?? '(unknown)', email: u.email, owner: u.sub ? `${u.sub}::${u.email}` : null }));
+  console.log(`Re-dumping roster for ${rows.length} live players…`);
+  writeRoster(rows, []);
+}
+
 (async () => {
+  if (ROSTER) { await dumpRoster(); return; }
   if (CLEAN) { await clean(); return; }
   coins = await loadCoins();
   await main();

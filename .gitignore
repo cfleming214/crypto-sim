@@ -63,3 +63,6 @@ AWSCLIV2.pkg
 
 # Local (personal) Claude Code settings
 .claude/settings.local.json
+
+# Seeded online-bot roster records (local only)
+online-bots-*.json
