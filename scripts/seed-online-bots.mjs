@@ -241,6 +241,10 @@ async function listCohort() {
   } while (token);
   return users;
 }
+const ownerSub = (owner) => (typeof owner === 'string' ? owner.split('::')[0] : null);
+async function delById(table, id) {
+  if (!DRY) await ddb.send(new DeleteItemCommand({ TableName: table, Key: marshall({ id }) })).catch(() => {});
+}
 async function clean() {
   console.log(`Tearing down @${EMAIL_DOMAIN} players${DRY ? '  (dry-run)' : ''}…`);
   const cohort = await listCohort();
@@ -248,26 +252,66 @@ async function clean() {
   console.log(`  found ${cohort.length} users.`);
   if (!cohort.length) return;
 
-  for (const name of ['UserProfile', 'PublicProfile', 'CompetitionEntry', 'Trade', 'LiveTrade']) {
+  // CONTEST HISTORY IS PRESERVED. A CompetitionEntry is the record of a player's
+  // result in a contest (rank, final bankroll) — the leaderboard/winner of a
+  // FINISHED contest is read from it. So we:
+  //   • keep every FINISHED entry (isActive === false) — never wipe a result/winner,
+  //   • delete only ACTIVE entries (ongoing participation),
+  //   • and for any bot that HAS a finished entry, keep its UserProfile +
+  //     PublicProfile + Cognito user too, so the winner stays a real, viewable
+  //     record. Everything else (non-historical bots, the live feed) is removed.
+  const entryTable = await findTable('CompetitionEntry');
+  const historySubs = new Set();   // cohort subs with ≥1 finished contest entry
+  const cohortEntries = [];
+  if (entryTable) for await (const row of scanAll(entryTable)) {
+    const s = ownerSub(row.owner);
+    if (!s || !subs.has(s)) continue;
+    cohortEntries.push({ table: entryTable, row });
+    if (row.isActive === false) historySubs.add(s);
+  }
+  let entDel = 0, entKept = 0;
+  for (const { table, row } of cohortEntries) {
+    if (row.isActive === false) { entKept++; continue; } // finished → contest history, keep
+    await delById(table, row.id); entDel++;              // active → remove participation
+  }
+  console.log(`  CompetitionEntry: ${DRY ? 'would delete' : 'deleted'} ${entDel} active · KEPT ${entKept} finished (history)`);
+
+  // UserProfile / PublicProfile: keep the ones backing a contest result.
+  for (const name of ['UserProfile', 'PublicProfile']) {
     const table = await findTable(name);
     if (!table) continue;
-    let deleted = 0;
+    let del = 0, kept = 0;
     for await (const row of scanAll(table)) {
-      const ownerSub = typeof row.owner === 'string' ? row.owner.split('::')[0] : null;
-      if (ownerSub && subs.has(ownerSub)) {
-        if (!DRY) await ddb.send(new DeleteItemCommand({ TableName: table, Key: marshall({ id: row.id }) })).catch(() => {});
-        deleted++;
-      }
+      const s = ownerSub(row.owner);
+      if (!s || !subs.has(s)) continue;
+      if (historySubs.has(s)) { kept++; continue; }      // backs a result → keep viewable
+      await delById(table, row.id); del++;
     }
-    console.log(`  ${name}: ${DRY ? 'would delete' : 'deleted'} ${deleted}`);
+    console.log(`  ${name}: ${DRY ? 'would delete' : 'deleted'} ${del} · kept ${kept} (history)`);
   }
-  let du = 0;
+
+  // Live feed + personal trade rows: never contest history → remove all cohort.
+  for (const name of ['LiveTrade', 'Trade']) {
+    const table = await findTable(name);
+    if (!table) continue;
+    let del = 0;
+    for await (const row of scanAll(table)) {
+      const s = ownerSub(row.owner);
+      if (s && subs.has(s)) { await delById(table, row.id); del++; }
+    }
+    console.log(`  ${name}: ${DRY ? 'would delete' : 'deleted'} ${del}`);
+  }
+
+  // Cognito: delete only bots with NO contest history (keep the accounts behind
+  // preserved results so the winner's profile/owner stays intact).
+  let du = 0, ku = 0;
   for (const u of cohort) {
+    if (u.sub && historySubs.has(u.sub)) { ku++; continue; }
     if (DRY) { du++; continue; }
     try { await cog.send(new AdminDeleteUserCommand({ UserPoolId: USER_POOL, Username: u.username })); du++; } catch { /* ignore */ }
   }
-  console.log(`  Cognito: ${DRY ? 'would delete' : 'deleted'} ${du} users.`);
-  console.log('Teardown done.');
+  console.log(`  Cognito: ${DRY ? 'would delete' : 'deleted'} ${du} users · kept ${ku} (history)`);
+  console.log('Teardown done — contest results/winners preserved.');
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
