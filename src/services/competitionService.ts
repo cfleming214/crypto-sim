@@ -189,6 +189,22 @@ export async function joinCompetition(
   const client = await getClient();
   if (!client) return null;
   try {
+    // Find-or-create: if this player already has an entry in this contest, reuse
+    // it instead of creating a duplicate. Without this, re-joining (e.g. across
+    // sessions, or before joinedTournamentIds has synced) created two rows and
+    // the player showed up twice on the leaderboard.
+    const existing = await client.models.CompetitionEntry.list({
+      filter: { and: [{ competitionId: { eq: competitionId } }, { handle: { eq: handle } }] },
+    });
+    const mine = (existing?.data ?? []).find(Boolean);
+    if (mine) {
+      // Re-activate if a prior leave/settle had deactivated it.
+      if (mine.isActive === false) {
+        const { data } = await client.models.CompetitionEntry.update({ id: mine.id, isActive: true });
+        return mapEntry(data ?? mine);
+      }
+      return mapEntry(mine);
+    }
     const { data } = await client.models.CompetitionEntry.create({
       competitionId,
       handle,
