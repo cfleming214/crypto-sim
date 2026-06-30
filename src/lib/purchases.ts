@@ -129,14 +129,21 @@ export function entitlementDiagnostic(): { entitlements: string[]; subscriptions
   return { entitlements: lastActiveEntitlementIds, subscriptions: lastActiveSubscriptions };
 }
 
-// Map a RevenueCat customerInfo into our two entitlement flags. Premium implies
-// no-ads even if the dashboard mapping is ever misconfigured (defensive).
+// Map a RevenueCat customerInfo into our two entitlement flags.
+//
+// We detect a subscriber two ways and OR them, so the app recognizes a paid user
+// even when the RevenueCat ENTITLEMENTS aren't named exactly no_ads/premium (a
+// common dashboard mismatch that otherwise grants nothing):
+//   1. configured entitlements (active['premium'] / active['no_ads']), and
+//   2. the active subscription PRODUCT ids (which are fixed + correct in code).
+// Premium implies no-ads.
 export function entitlementsFrom(customerInfo: any): Entitlements {
   const active = customerInfo?.entitlements?.active ?? {};
+  const subs: string[] = Array.isArray(customerInfo?.activeSubscriptions) ? customerInfo.activeSubscriptions : [];
   lastActiveEntitlementIds = Object.keys(active);
-  lastActiveSubscriptions = Array.isArray(customerInfo?.activeSubscriptions) ? customerInfo.activeSubscriptions : [];
-  const premium = !!active[ENTITLEMENT_PREMIUM];
-  const noAds = premium || !!active[ENTITLEMENT_NO_ADS];
+  lastActiveSubscriptions = subs;
+  const premium = !!active[ENTITLEMENT_PREMIUM] || subs.includes(PRODUCT_PREMIUM);
+  const noAds = premium || !!active[ENTITLEMENT_NO_ADS] || subs.includes(PRODUCT_NO_ADS);
   return { noAds, premium };
 }
 
