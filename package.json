@@ -89,7 +89,7 @@
     "loadtest:trades": "node scripts/loadtest-trades.mjs",
     "stress:multi": "node scripts/stress-multi-contest.mjs",
     "stress:contest": "node scripts/stress-test-contest.mjs",
-  "bots:online": "node scripts/seed-online-bots.mjs"
+  "bots:phantoms": "node scripts/seed-online-bots.mjs"
   },
   "private": true
 }
