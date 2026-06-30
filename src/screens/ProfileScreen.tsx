@@ -4,6 +4,7 @@ import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
+import { ReferralCard } from '../components/ReferralCard';
 import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { LeagueBadge } from '../components/ui/LeagueBadge';
@@ -696,6 +697,9 @@ export function ProfileScreen() {
           </View>
         ))}
       </View>
+
+      {/* Referral program — Recruit & Rise */}
+      <ReferralCard />
 
       {/* Quick links */}
       <Card variant="noPad">

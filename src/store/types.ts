@@ -296,6 +296,15 @@ export interface AppState {
     balance: number;
     lastWeeklyGrantKey: string | null;
   };
+  // Referral program ("Recruit & Rise"). `code` = this user's own invite code;
+  // `referredByCode` = the code they signed up with (null if organic);
+  // `rewardClaimed` = whether the invitee welcome reward (+passes/+XP) has been
+  // granted, so it lands exactly once. Persisted in the gamification.v1 blob.
+  referral: {
+    code: string | null;
+    referredByCode: string | null;
+    rewardClaimed: boolean;
+  };
   // Premium subscriber entitlement (RevenueCat `premium`). Drives the larger
   // weekly pass grant + the monthly $5M / 3-portfolio offline grants. RevenueCat
   // is the source of truth; this is a cache set by SET_ENTITLEMENTS. Never trust
