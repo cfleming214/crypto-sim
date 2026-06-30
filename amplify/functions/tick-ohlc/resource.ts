@@ -15,5 +15,7 @@ import { defineFunction } from '@aws-amplify/backend';
 export const tickOhlc = defineFunction({
   name: 'tick-ohlc',
   entry: './handler.ts',
-  timeoutSeconds: 300,
+  // Keyless CoinGecko is rate-limited, so a full catalog walk with retry-on-429
+  // backoff can take several minutes. 900s (the Lambda max) leaves ample room.
+  timeoutSeconds: 900,
 });
