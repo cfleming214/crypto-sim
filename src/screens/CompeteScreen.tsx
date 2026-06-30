@@ -252,16 +252,48 @@ export function CompeteScreen() {
     return base;
   }, []);
 
-  // Global live-trades ticker — latest 25 across all users. Reload on focus and
-  // every 20s so it feels live; the time-ago labels also re-render on the 1s tick.
+  // Global live-trades ticker — latest 25 across all users. To keep a burst (e.g.
+  // many bots trading at once) from flooding the feed all at once, fetched trades
+  // are pushed to a queue and REVEALED one per second, so the feed reads as a
+  // steady stream instead of dumping 25 rows every poll.
   const [liveTrades, setLiveTrades] = useState<LiveTradeRow[]>([]);
-  const reloadLiveTrades = useCallback(() => { fetchLiveTrades(25).then(setLiveTrades).catch(() => {}); }, []);
+  const tradeQueueRef = useRef<LiveTradeRow[]>([]);   // unseen, oldest-first, awaiting reveal
+  const seenTradeIds = useRef<Set<string>>(new Set()); // already shown or queued
+  const tickerPrimed = useRef(false);
+  const reloadLiveTrades = useCallback(() => {
+    fetchLiveTrades(25).then(rows => {
+      const fresh = rows.filter(r => !seenTradeIds.current.has(r.id));
+      if (!fresh.length) return;
+      fresh.forEach(r => seenTradeIds.current.add(r.id));
+      // Bound the seen-set so a long session can't grow it unbounded.
+      if (seenTradeIds.current.size > 1000) {
+        seenTradeIds.current = new Set([...seenTradeIds.current].slice(-500));
+      }
+      if (!tickerPrimed.current) {
+        // First load: show immediately so the feed isn't empty while it drips.
+        tickerPrimed.current = true;
+        setLiveTrades(rows.slice(0, 25));
+      } else {
+        // Subsequent polls: enqueue oldest-first so the newest ends up on top
+        // after the per-second reveal.
+        tradeQueueRef.current.push(...fresh.reverse());
+      }
+    }).catch(() => {});
+  }, []);
   // Poll the live-trade feed every 2s, but only while this screen is focused.
   useFocusEffect(useCallback(() => {
     reloadLiveTrades();
     const id = setInterval(reloadLiveTrades, 2_000);
     return () => clearInterval(id);
   }, [reloadLiveTrades]));
+  // Reveal one queued trade per second — the "drip" that prevents flooding.
+  useFocusEffect(useCallback(() => {
+    const id = setInterval(() => {
+      const next = tradeQueueRef.current.shift();
+      if (next) setLiveTrades(prev => [next, ...prev].slice(0, 25));
+    }, 1_000);
+    return () => clearInterval(id);
+  }, []));
 
   const handleClaimPrize = async (p: UnclaimedPrize) => {
     if (claimingId) return;
