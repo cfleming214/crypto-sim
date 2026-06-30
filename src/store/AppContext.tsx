@@ -866,6 +866,10 @@ function reducer(state: AppState, action: Action): AppState {
       // Sells first so their proceeds fund the buys in the same pass.
       for (const line of plan.lines) {
         if (line.side !== 'sell') continue;
+        // Capture avg cost BEFORE mutating holdings so the sell records its
+        // realized P&L — otherwise this trade lands without realizedPnl and the
+        // profile win-rate fallback miscounts a closed position as a loss.
+        const rbSold = newHoldings.find(x => x.symbol === line.symbol);
         newHoldings = newHoldings
           .map(x => (x.symbol === line.symbol ? { ...x, units: x.units - line.units } : x))
           .filter(x => x.units > 0.000001);
@@ -874,7 +878,8 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'sell', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 10, slippage: 0.001, kind: 'rebalance',
+          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+          realizedPnl: rbSold ? realizedPnl(rbSold.avgCost, line.units, line.price) : 0, kind: 'rebalance',
         });
       }
 
@@ -926,6 +931,9 @@ function reducer(state: AppState, action: Action): AppState {
 
       for (const line of plan.lines) {
         if (line.side !== 'sell') continue;
+        // Record realized P&L (see rebalance path above) so the win rate counts
+        // this sell correctly.
+        const cpSold = newHoldings.find(x => x.symbol === line.symbol);
         newHoldings = newHoldings
           .map(x => (x.symbol === line.symbol ? { ...x, units: x.units - line.units } : x))
           .filter(x => x.units > 0.000001);
@@ -935,6 +943,7 @@ function reducer(state: AppState, action: Action): AppState {
           symbol: line.symbol, side: 'sell', amount: line.amount,
           units: line.units, price: line.price,
           timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+          realizedPnl: cpSold ? realizedPnl(cpSold.avgCost, line.units, line.price) : 0,
         });
       }
       for (const line of plan.lines) {
