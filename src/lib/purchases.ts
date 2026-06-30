@@ -162,6 +162,33 @@ export async function fetchEntitlements(): Promise<Entitlements | null> {
   }
 }
 
+// Identify the RevenueCat user with the signed-in app account (Cognito sub), so
+// entitlements are scoped PER ACCOUNT instead of per device. Without this the SDK
+// uses one anonymous device-scoped user, so every account on the device (and the
+// device's Apple ID subscription) shares the same entitlements — e.g. a brand-new
+// account inheriting Premium the device's Apple ID bought. Returns the now-active
+// user's entitlements. NOTE: to stop a sub auto-moving to a new account, also set
+// RevenueCat's transfer behavior to "Keep with original App User ID" (dashboard).
+export async function loginPurchases(appUserId: string): Promise<Entitlements | null> {
+  const sdk = loadSdk();
+  if (!sdk || !configured || !appUserId) return null;
+  try {
+    const { customerInfo } = await sdk.logIn(appUserId);
+    return entitlementsFrom(customerInfo);
+  } catch (e) {
+    console.warn('[iap] logIn failed', e);
+    return null;
+  }
+}
+
+// Drop back to a fresh anonymous user on sign-out, so the next account doesn't
+// see the previous account's entitlements. No-op if already anonymous.
+export async function logoutPurchases(): Promise<void> {
+  const sdk = loadSdk();
+  if (!sdk || !configured) return;
+  try { await sdk.logOut(); } catch { /* already anonymous — ignore */ }
+}
+
 // Subscribe to entitlement changes (purchase, renewal, expiry, restore). Returns
 // an unsubscribe fn. No-op (returns a noop) when the SDK is absent.
 export function addEntitlementListener(cb: (e: Entitlements) => void): () => void {
