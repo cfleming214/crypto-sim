@@ -474,15 +474,30 @@ export function ProfileScreen() {
 
   const pnl = state.bankroll - STARTING_CASH;
   const sellTrades = state.trades.filter(t => t.side === 'sell');
-  // Prefer the realized P&L recorded at sell time (exact); fall back to the old
-  // current-holding heuristic for legacy rows without realizedPnl.
-  const winRate = sellTrades.length > 0
-    ? Math.round(sellTrades.filter(t =>
-        typeof t.realizedPnl === 'number'
-          ? t.realizedPnl > 0
-          : t.price > (state.holdings.find(h => h.symbol === t.symbol)?.avgCost ?? t.price)
-      ).length / sellTrades.length * 100)
-    : 0;
+  // Win rate = % of sells that closed in profit. Prefer the realized P&L recorded
+  // at sell time; for any sell missing it (legacy / rebalance / copy rows), rebuild
+  // the symbol's running average cost from the BUY ledger and compare against it.
+  // The old fallback compared the sell price to the CURRENT holding's avg cost —
+  // but a fully-closed position has no current holding, so it always read as a
+  // loss and dragged the win rate down. This replays trades oldest-first instead.
+  const winRate = (() => {
+    const chron = [...state.trades].sort((a, b) => a.timestamp - b.timestamp);
+    const pos: Record<string, { units: number; cost: number }> = {};
+    let wins = 0, sells = 0;
+    for (const t of chron) {
+      const p = pos[t.symbol] ?? { units: 0, cost: 0 };
+      if (t.side === 'buy') { p.units += t.units; p.cost += t.amount; pos[t.symbol] = p; continue; }
+      if (t.side !== 'sell') continue;
+      sells++;
+      const avgCost = p.units > 0 ? p.cost / p.units : 0;
+      const win = typeof t.realizedPnl === 'number' ? t.realizedPnl > 0 : (avgCost > 0 && t.price > avgCost);
+      if (win) wins++;
+      p.units = Math.max(0, p.units - t.units);
+      p.cost = avgCost * p.units;            // shrink cost basis at avg cost
+      pos[t.symbol] = p;
+    }
+    return sells > 0 ? Math.round((wins / sells) * 100) : 0;
+  })();
   // Best rank across all joined contests: find this user's rank in each
   // live leaderboard, take the lowest (best) number.
   const myRanks: number[] = [];
