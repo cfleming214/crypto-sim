@@ -29,7 +29,8 @@ const XP_TRIPLE_KEY = 'dailyXpTripleDay';
 import { questViews } from '../data/quests';
 import { planRebalance } from '../services/rebalance';
 import { scheduleAt } from '../lib/notifications';
-import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target, Plus } from 'lucide-react-native';
+import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, GraduationCap, ChevronRight, Target, Plus, User } from 'lucide-react-native';
+import { useAuth } from '../store/AuthContext';
 import { ACADEMY } from '../data/academy';
 import { AnimatedBuyButton } from '../components/AnimatedBuyButton';
 import { PurchaseModal } from '../components/PurchaseModal';
@@ -259,6 +260,7 @@ function StopSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 export function PortfolioScreen() {
   const { colors } = useTheme();
   const { state, getCoin, getHolding, dispatch } = useApp();
+  const { status: authStatus } = useAuth();
   const nav = useNavigation<any>();
   const isMain = state.activePortfolioId === 'main';
   // Extra device-local offline practice portfolios (bought via IAP) behave like
@@ -629,12 +631,17 @@ export function PortfolioScreen() {
             </PressableScale>
           )}
           <TouchableOpacity onPress={() => nav.navigate('Profile')}>
-            <Avatar
-              initials={state.user.handle.slice(0, 2).toUpperCase() || '??'}
-              size="sm"
-              uri={state.user.avatarUri}
-              style={{ backgroundColor: state.user.avatarColor }}
-            />
+            {authStatus === 'unauthenticated' ? (
+              // Logged out: a generic person icon, not handle initials.
+              <Avatar size="sm" icon={<User color={colors.ink} size={16} strokeWidth={2} />} />
+            ) : (
+              <Avatar
+                initials={state.user.handle.slice(0, 2).toUpperCase() || '??'}
+                size="sm"
+                uri={state.user.avatarUri}
+                style={{ backgroundColor: state.user.avatarColor }}
+              />
+            )}
           </TouchableOpacity>
         </View>
       }

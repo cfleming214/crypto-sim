@@ -11,6 +11,9 @@ export type AvatarStatus = 'online' | 'away' | 'offline' | 'busy';
 
 interface AvatarProps {
   initials?: string;
+  /** Render a centered icon instead of initials (e.g. a generic person icon for
+   *  logged-out users). Ignored when `uri` is set. */
+  icon?: React.ReactNode;
   size?: AvatarSize;
   square?: boolean;
   brand?: boolean;
@@ -25,7 +28,7 @@ interface AvatarProps {
 const sizeMap: Record<AvatarSize, number> = { sm: 28, default: 36, lg: 52, xl: 64 };
 const fontSizeMap: Record<AvatarSize, number> = { sm: 11, default: 14, lg: 18, xl: 22 };
 
-export function Avatar({ initials = '?', size = 'default', square, brand, uri, style, status, frame }: AvatarProps) {
+export function Avatar({ initials = '?', icon, size = 'default', square, brand, uri, style, status, frame }: AvatarProps) {
   const { colors } = useTheme();
   const dim = sizeMap[size];
   const br = square ? 10 : dim / 2;
@@ -52,9 +55,11 @@ export function Avatar({ initials = '?', size = 'default', square, brand, uri, s
         justifyContent: 'center',
       }}
     >
-      <Text style={{ fontSize: fontSizeMap[size], fontWeight: '700', color: brand ? colors.brandOn : colors.ink }}>
-        {initials}
-      </Text>
+      {icon ?? (
+        <Text style={{ fontSize: fontSizeMap[size], fontWeight: '700', color: brand ? colors.brandOn : colors.ink }}>
+          {initials}
+        </Text>
+      )}
     </View>
   );
 

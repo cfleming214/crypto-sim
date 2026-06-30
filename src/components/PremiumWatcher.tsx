@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../store/AuthContext';
 import { monthKey } from '../services/gamification';
 import { configurePurchases, fetchEntitlements, addEntitlementListener, setEntitlements } from '../lib/purchases';
 
@@ -17,6 +18,7 @@ import { configurePurchases, fetchEntitlements, addEntitlementListener, setEntit
 //     PurchaseModal — it needs the new-or-add choice, so it's never auto-granted.)
 export function PremiumWatcher() {
   const { state, dispatch } = useApp();
+  const { status } = useAuth();
 
   useEffect(() => {
     configurePurchases();
@@ -28,9 +30,18 @@ export function PremiumWatcher() {
   }, [dispatch]);
 
   // Keep the runtime entitlement store in sync with AppState (the ad gate reads it).
+  // Entitlements only apply to a signed-in account: when logged out, force the
+  // store to ads-on so guests always see (and the SDK loads) ads, regardless of a
+  // cached/Apple-ID no-ads. The persisted AppState entitlement is left intact so
+  // signing back in (or a RevenueCat restore) re-applies it. 'loading' keeps the
+  // entitlement so a paying user doesn't flash ads on launch.
+  const loggedOut = status === 'unauthenticated';
   useEffect(() => {
-    setEntitlements({ noAds: state.noAds, premium: state.isSubscriber });
-  }, [state.noAds, state.isSubscriber]);
+    setEntitlements({
+      noAds: !loggedOut && state.noAds,
+      premium: !loggedOut && state.isSubscriber,
+    });
+  }, [state.noAds, state.isSubscriber, loggedOut]);
 
   // Reset the monthly new-portfolio allowance on a new calendar month.
   useEffect(() => {
