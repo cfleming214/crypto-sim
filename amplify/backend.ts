@@ -1,12 +1,13 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { Duration, Stack } from 'aws-cdk-lib';
-import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
+import { Rule, Schedule, RuleTargetInput } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { FunctionUrlAuthType } from 'aws-cdk-lib/aws-lambda';
 import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
 import { storage } from './storage/resource.js';
 import { tickPrices } from './functions/tick-prices/resource.js';
+import { tickOhlc } from './functions/tick-ohlc/resource.js';
 import { tickLeaderboard } from './functions/tick-leaderboard/resource.js';
 import { tickGlobalLeaderboard } from './functions/tick-global-leaderboard/resource.js';
 import { closeCompetition } from './functions/close-competition/resource.js';
@@ -37,6 +38,7 @@ const backend = defineBackend({
   data,
   storage,
   tickPrices,
+  tickOhlc,
   tickLeaderboard,
   tickGlobalLeaderboard,
   closeCompetition,
@@ -83,6 +85,7 @@ backend.data.resources.cfnResources.amplifyDynamoDbTables['LiveTrade'].timeToLiv
   enabled: true,
 };
 const tokenTable         = backend.data.resources.tables['Token'];
+const tokenHistoryTable  = backend.data.resources.tables['TokenHistory'];
 const globalBoardTable   = backend.data.resources.tables['GlobalLeaderboard'];
 // Device push tokens — read by the notification-sending Lambdas; write access
 // is for flipping dead tokens (DeviceNotRegistered) to active:false.
@@ -103,6 +106,28 @@ pricesFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 new Rule(Stack.of(pricesFn), 'TickPricesRule', {
   schedule: Schedule.rate(Duration.minutes(1)),
   targets: [new LambdaFunction(pricesFn)],
+});
+
+// --- tickOhlc: caches per-coin chart history on the TokenHistory table so the
+// Trade-screen chart reads from our backend instead of every device hitting the
+// shared CoinGecko key. Two schedules invoke the SAME function with different
+// `mode` inputs: hourly refreshes the 90-day HOURLY stream (serves 7D/30D/90D),
+// daily refreshes the 365-day DAILY stream (serves 1Y). ---
+const ohlcFn = backend.tickOhlc.resources.lambda;
+tokenTable.grantReadData(ohlcFn);              // symbol -> coingeckoId catalog
+tokenHistoryTable.grantReadWriteData(ohlcFn);  // upsert each symbol's history
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+ohlcFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+ohlcFn.addEnvironment('TOKEN_HISTORY_TABLE_NAME', tokenHistoryTable.tableName);
+
+new Rule(Stack.of(ohlcFn), 'TickOhlcHourlyRule', {
+  schedule: Schedule.rate(Duration.hours(1)),
+  targets: [new LambdaFunction(ohlcFn, { event: RuleTargetInput.fromObject({ mode: 'hourly' }) })],
+});
+new Rule(Stack.of(ohlcFn), 'TickOhlcDailyRule', {
+  schedule: Schedule.rate(Duration.days(1)),
+  targets: [new LambdaFunction(ohlcFn, { event: RuleTargetInput.fromObject({ mode: 'daily' }) })],
 });
 
 // --- tickLeaderboard: runs every 5 minutes ---

@@ -103,7 +103,10 @@ const TIMEFRAME_DAYS: Record<string, number | string> = {
   '30D': 30,
   '90D': 90,
   '1Y':  365,
-  'MAX': 'max',
+  // The Demo/public plan rejects days>365 (and days=max) with a 401, which left
+  // the chart empty. Cap at 365 so a stray "MAX" still loads the full allowed
+  // range instead of failing. True all-time history needs a CoinGecko paid plan.
+  'MAX': 365,
 };
 
 // 5-min cache so flipping timeframes / coming back to a coin doesn't burn
@@ -115,6 +118,53 @@ const OHLC_TTL_MS = 5 * 60 * 1000;
 // requests after one 429.
 let rateLimitedUntil = 0;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Synthesize candles from a [[ms, price], ...] close series: each entry becomes
+// a candle where open = previous close, close = this close, high/low = min/max of
+// the pair. Honest price-action bars with no wicks (the close series carries no
+// real intra-bar high/low). Shared by the backend and CoinGecko paths.
+function candlesFromCloses(prices: Array<[number, number]>): OhlcCandle[] {
+  const candles: OhlcCandle[] = [];
+  for (let i = 1; i < prices.length; i++) {
+    const open  = prices[i - 1][1];
+    const close = prices[i][1];
+    candles.push({
+      timestamp: prices[i][0],
+      open,
+      high: Math.max(open, close),
+      low:  Math.min(open, close),
+      close,
+    });
+  }
+  return candles;
+}
+
+// Backend-first: serve the chart from our server-cached TokenHistory (refreshed
+// by the tick-ohlc Lambda) so devices stop hitting the shared CoinGecko key. The
+// 90-day hourly stream covers 7D/30D/90D by timestamp-slicing; the 365-day daily
+// stream covers 1Y. Returns null on any miss so the CoinGecko path takes over.
+async function fetchOhlcFromBackend(symbol: string, timeframe: string): Promise<OhlcCandle[] | null> {
+  try {
+    const { fetchTokenHistory } = await import('./tokenCatalog');
+    const series = await fetchTokenHistory(symbol);
+    if (!series) return null;
+    const long = timeframe === '1Y' || timeframe === 'MAX';
+    const source = long ? series.daily : series.hourly;
+    if (!source || source.length < 2) return null;
+    // Slice the hourly stream down to the requested window; the daily stream is
+    // already the full 1Y so it's used whole.
+    const days = TIMEFRAME_DAYS[timeframe];
+    const nDays = typeof days === 'number' ? days : 365;
+    const cutoff = Date.now() - nDays * DAY_MS;
+    const sliced = source.filter(p => p[0] >= cutoff);
+    const use = sliced.length >= 2 ? sliced : source;
+    return candlesFromCloses(use);
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchOhlc(symbol: string, timeframe: string): Promise<OhlcCandle[]> {
   const geckoId = COINGECKO_IDS[symbol];
   if (!geckoId) return [];
@@ -124,6 +174,15 @@ export async function fetchOhlc(symbol: string, timeframe: string): Promise<Ohlc
   if (cached && Date.now() - cached.fetchedAt < OHLC_TTL_MS) {
     return cached.candles;
   }
+
+  // 1. Our backend cache first (one shared fetch for the whole user base).
+  const fromBackend = await fetchOhlcFromBackend(symbol, timeframe);
+  if (fromBackend && fromBackend.length > 0) {
+    ohlcCache.set(cacheKey, { fetchedAt: Date.now(), candles: fromBackend });
+    return fromBackend;
+  }
+
+  // 2. CoinGecko direct (guests, an un-warmed cache, or a missing symbol).
   // If a recent request got 429'd, don't issue another for 60s — just return
   // whatever cache we have (possibly empty) and let the chart show empty.
   if (Date.now() < rateLimitedUntil) {
@@ -144,23 +203,7 @@ export async function fetchOhlc(symbol: string, timeframe: string): Promise<Ohlc
     if (!res.ok) throw new Error(`CoinGecko market_chart ${res.status}`);
     const json = await res.json();
     const prices: Array<[number, number]> = json.prices ?? [];
-
-    // Synthesize candles from close prices: each entry becomes a candle where
-    // open = previous close, close = this close, high/low = min/max of the
-    // pair. This produces honest price-action bars with no wicks (no real
-    // intra-bar high/low data from this endpoint).
-    const candles: OhlcCandle[] = [];
-    for (let i = 1; i < prices.length; i++) {
-      const open  = prices[i - 1][1];
-      const close = prices[i][1];
-      candles.push({
-        timestamp: prices[i][0],
-        open,
-        high: Math.max(open, close),
-        low:  Math.min(open, close),
-        close,
-      });
-    }
+    const candles = candlesFromCloses(prices);
     ohlcCache.set(cacheKey, { fetchedAt: Date.now(), candles });
     return candles;
   } catch (e) {

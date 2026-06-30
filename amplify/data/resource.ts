@@ -290,6 +290,30 @@ const schema = a.schema({
     allow.authenticated().to(['read']),
   ]),
 
+  // Server-cached price history for the Trade-screen chart, keyed by symbol so a
+  // device fetches ONE row when opening a coin. The tick-ohlc Lambda refreshes it
+  // (hourly stream every hour, daily stream once a day) with a single CoinGecko
+  // request per coin for the whole user base — so charts stop hitting the shared
+  // CoinGecko key from every device (the same scaling fix as Token/tick-prices).
+  // Two granularity tiers, because CoinGecko's market_chart auto-granularity ties
+  // resolution to the range: the 90-day HOURLY stream serves 7D/30D/90D by
+  // timestamp-slicing; the 365-day DAILY stream serves 1Y. Stored as the raw
+  // [[ms, price], ...] arrays CoinGecko returns; the client synthesizes candles.
+  // Writes happen via the DynamoDB SDK (bypassing model authz, like Token); the
+  // app only reads.
+  TokenHistory: a.model({
+    symbol:          a.string().required(),   // canonical uppercase, e.g. "BTC" — the identifier
+    coingeckoId:     a.string(),              // e.g. "bitcoin"
+    hourlyJson:      a.string(),              // JSON [[ms, price], ...] ~90 days hourly
+    hourlyUpdatedAt: a.string(),              // ISO timestamp of the last hourly refresh
+    dailyJson:       a.string(),              // JSON [[ms, price], ...] ~365 days daily
+    dailyUpdatedAt:  a.string(),              // ISO timestamp of the last daily refresh
+  })
+    .identifier(['symbol'])
+    .authorization(allow => [
+      allow.authenticated().to(['read']),
+    ]),
+
   // Precomputed global leaderboard — a small, bounded (top ~100) table the
   // tick-global-leaderboard Lambda rebuilds every few minutes by valuing each
   // visible user's holdings at current Token prices and ranking them. Phones
