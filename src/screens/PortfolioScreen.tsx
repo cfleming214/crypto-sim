@@ -20,7 +20,7 @@ import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward, watchForBonusXp } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
-import { loadSnapshots, backfillGap, despikeSeries, type EquityPoint } from '../services/equitySnapshots';
+import { loadSnapshots, backfillGap, despikeSeries, clearSnapshots, appendSnapshot, type EquityPoint } from '../services/equitySnapshots';
 import { applyDailyClaim, canClaim, nextClaimAt, todayKey, dailyXp } from '../services/gamification';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -473,6 +473,35 @@ export function PortfolioScreen() {
             const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
             if (blocked) return; // a duplicate trigger while an ad is already up — ignore
             if (!granted) Alert.alert('Not reset', "The video didn't finish, so your portfolio wasn't reset.");
+          },
+        },
+      ],
+    );
+  };
+
+  // Reset ONLY the balance-history chart for the active practice portfolio —
+  // cash/holdings/trades untouched. A large one-off credit (Premium/$5M, rewarded
+  // cash) puts a huge vertical jump in the equity curve that wrecks the axis
+  // scaling; this re-baselines the graph at the current value so it reads cleanly
+  // going forward. Scoped to state.activePortfolioId (the offline/main portfolio
+  // you're on), so other portfolios' histories are left alone.
+  const handleResetGraph = () => {
+    if (!isPractice) return;
+    Alert.alert(
+      'Reset graph?',
+      'This clears the balance-history chart for this portfolio and restarts it from your current value. Your cash, holdings, and trades are not affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset graph',
+          style: 'destructive',
+          onPress: async () => {
+            const pid = state.activePortfolioId;
+            await clearSnapshots(pid);
+            // Seed a single baseline point at the current equity so the chart
+            // isn't empty; the 60s capture grows it fresh from here.
+            const series = await appendSnapshot(pid, { t: Date.now(), v: totalEquity });
+            setHistory(series);
           },
         },
       ],
@@ -990,15 +1019,24 @@ export function PortfolioScreen() {
       </Card>
 
       {isPractice && (
-        <Button
-          testID="portfolio-reset-btn"
-          variant="ghost"
-          size="sm"
-          onPress={handleResetPortfolio}
-          style={{ alignSelf: 'center' }}
-        >
-          Reset portfolio
-        </Button>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+          <Button
+            testID="portfolio-reset-btn"
+            variant="ghost"
+            size="sm"
+            onPress={handleResetPortfolio}
+          >
+            Reset portfolio
+          </Button>
+          <Button
+            testID="portfolio-reset-graph-btn"
+            variant="ghost"
+            size="sm"
+            onPress={handleResetGraph}
+          >
+            Reset graph
+          </Button>
+        </View>
       )}
 
       <PurchaseModal visible={purchaseVisible} onClose={() => setPurchaseVisible(false)} />
