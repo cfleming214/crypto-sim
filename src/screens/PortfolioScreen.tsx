@@ -487,16 +487,17 @@ export function PortfolioScreen() {
   // you're on), so other portfolios' histories are left alone.
   const handleResetGraph = () => {
     if (!isPractice) return;
+    const pid = state.activePortfolioId;
+    const activeName = isMain ? 'Main' : (state.offlinePortfolios.names[pid] ?? 'this portfolio');
     Alert.alert(
-      'Reset graph?',
-      'This clears the balance-history chart for this portfolio and restarts it from your current value. Your cash, holdings, and trades are not affected.',
+      `Reset “${activeName}” graph?`,
+      `This clears the balance-history chart for “${activeName}” only and restarts it from your current value. Your other portfolios, and this portfolio's cash, holdings, and trades, are not affected.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reset graph',
           style: 'destructive',
           onPress: async () => {
-            const pid = state.activePortfolioId;
             await clearSnapshots(pid);
             // Seed a single baseline point at the current equity so the chart
             // isn't empty; the 60s capture grows it fresh from here.
