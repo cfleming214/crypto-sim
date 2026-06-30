@@ -122,6 +122,42 @@ export async function fetchTokenPrices(): Promise<PriceData[]> {
   }
 }
 
+// Raw [[ms, price], ...] series cached server-side by the tick-ohlc Lambda.
+export interface TokenHistorySeries {
+  hourly: Array<[number, number]>;  // ~90 days hourly (serves 7D/30D/90D)
+  daily:  Array<[number, number]>;  // ~365 days daily (serves 1Y)
+}
+
+function parsePairs(json: any): Array<[number, number]> {
+  if (!json) return [];
+  try {
+    const a = JSON.parse(json);
+    return Array.isArray(a)
+      ? a.filter((p: any) => Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number')
+      : [];
+  } catch { return []; }
+}
+
+// Read ONE coin's cached chart history from the TokenHistory table (refreshed by
+// the tick-ohlc Lambda). Returns null when Amplify is unconfigured, the row is
+// missing, or both streams are empty — callers fall back to CoinGecko directly.
+export async function fetchTokenHistory(symbol: string): Promise<TokenHistorySeries | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const res = await client.models.TokenHistory.get({ symbol: symbol.toUpperCase() });
+    const row = res?.data as any;
+    if (!row) return null;
+    const hourly = parsePairs(row.hourlyJson);
+    const daily  = parsePairs(row.dailyJson);
+    if (hourly.length < 2 && daily.length < 2) return null;
+    return { hourly, daily };
+  } catch (e) {
+    console.warn('fetchTokenHistory failed:', e);
+    return null;
+  }
+}
+
 // Backend-first price source: signed-in users read the centrally-fetched prices
 // from the Token table (no per-device CoinGecko call); guests / unconfigured
 // builds / a not-yet-warmed catalog fall back to CoinGecko directly.

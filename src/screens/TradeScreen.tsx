@@ -25,6 +25,7 @@ import { NumPad } from '../components/ui/NumPad';
 const BIG_BUY_USD = 1000;
 
 const QUICK_AMOUNTS = [50, 100, 250, 500];
+const QUICK_PERCENTS = [25, 50, 75, 100];
 
 function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
   visible: boolean; side: 'buy' | 'sell'; symbol: string;
@@ -35,15 +36,32 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
   const [amount, setAmount] = useState('100');
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [limitPriceStr, setLimitPriceStr] = useState('');
+  // Preset row mode: fixed dollar chips vs. percent-of-basis chips. When a percent
+  // is selected (pctSel != null) the dollar amount is DERIVED live below, so it
+  // tracks price ticks instead of freezing at the value it had when tapped.
+  const [presetMode, setPresetMode] = useState<'usd' | 'pct'>('usd');
+  const [pctSel, setPctSel] = useState<number | null>(null);
+  // Buy↔sell rebinds the basis (cash vs. position) — drop any % selection so a
+  // 100% sell doesn't carry over as 100% of cash on the buy side.
+  useEffect(() => { setPctSel(null); }, [side]);
   const coin = getCoin(symbol);
-  if (!coin) return null;
 
-  const parsedAmount = parseFloat(amount) || 0;
   const limitPrice = parseFloat(limitPriceStr) || 0;
-  const effectivePrice = orderType === 'limit' && limitPrice > 0 ? limitPrice : coin.price;
-  const units = parsedAmount / effectivePrice;
+  const effectivePrice = orderType === 'limit' && limitPrice > 0 ? limitPrice : (coin?.price ?? 0);
   const holding = getHolding(symbol);
   const maxSell = holding ? holding.value : 0;
+  // What a % chip is a percentage OF: position value when selling, free cash when
+  // buying. Both move with the live price, which is exactly why a % selection must
+  // re-derive its dollars every render — a frozen "Max" went stale and greyed out
+  // the confirm button the moment the price moved.
+  const basis = side === 'sell' ? maxSell : state.cash;
+  const parsedAmount = pctSel != null
+    ? Math.min(basis, (pctSel / 100) * basis)
+    : (parseFloat(amount) || 0);
+  const units = effectivePrice > 0 ? parsedAmount / effectivePrice : 0;
+  const displayAmount = pctSel != null ? parsedAmount.toFixed(2) : amount;
+
+  if (!coin) return null;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -94,30 +112,55 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
 
           {/* Amount display */}
           <View style={{ alignItems: 'center', gap: 8, paddingVertical: 8 }}>
-            <Text style={{ fontSize: 44, fontWeight: '700', color: amount ? colors.ink : colors.ink3, fontVariant: ['tabular-nums'], letterSpacing: -1 }}>
-              ${amount || '0'}
+            <Text style={{ fontSize: 44, fontWeight: '700', color: parsedAmount > 0 ? colors.ink : colors.ink3, fontVariant: ['tabular-nums'], letterSpacing: -1 }}>
+              ${displayAmount || '0'}
             </Text>
             <Text style={{ fontSize: 13, color: colors.ink3 }}>
               ≈ {units.toFixed(6)} {symbol}
             </Text>
-            {/* Quick amounts */}
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {QUICK_AMOUNTS.map(a => (
-                <TouchableOpacity key={a} onPress={() => setAmount(String(a))}>
-                  <Chip variant={parsedAmount === a ? 'brand' : 'outline'}>${a}</Chip>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity onPress={() => setAmount((side === 'sell' ? maxSell : state.cash).toFixed(2))}>
-                <Chip variant="outline">Max</Chip>
-              </TouchableOpacity>
+            {/* Preset chips with a $ / % toggle */}
+            <View style={{ alignItems: 'center', gap: 10, width: '100%' }}>
+              <View style={{ flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: 8, padding: 2 }}>
+                {(['usd', 'pct'] as const).map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    testID={`trade-preset-${m}-toggle`}
+                    onPress={() => setPresetMode(m)}
+                    style={{ paddingVertical: 4, paddingHorizontal: 14, borderRadius: 6, backgroundColor: presetMode === m ? colors.surface : 'transparent' }}
+                  >
+                    <Text style={{ fontWeight: '700', fontSize: 14, color: presetMode === m ? colors.ink : colors.ink3 }}>{m === 'usd' ? '$' : '%'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {presetMode === 'usd' ? (
+                  <>
+                    {QUICK_AMOUNTS.map(a => (
+                      <TouchableOpacity key={a} onPress={() => { setPctSel(null); setAmount(String(a)); }}>
+                        <Chip variant={pctSel == null && parsedAmount === a ? 'brand' : 'outline'}>${a}</Chip>
+                      </TouchableOpacity>
+                    ))}
+                    {/* Max binds to 100% (live) rather than a frozen dollar value. */}
+                    <TouchableOpacity onPress={() => setPctSel(100)}>
+                      <Chip variant={pctSel === 100 ? 'brand' : 'outline'}>Max</Chip>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  QUICK_PERCENTS.map(p => (
+                    <TouchableOpacity key={p} onPress={() => setPctSel(p)}>
+                      <Chip variant={pctSel === p ? 'brand' : 'outline'}>{p}%</Chip>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
             </View>
           </View>
 
           {/* Numeric keypad */}
           <NumPad
-            value={amount}
-            onChange={setAmount}
-            maxValue={side === 'sell' ? maxSell : state.cash}
+            value={pctSel != null ? parsedAmount.toFixed(2) : amount}
+            onChange={(v) => { setPctSel(null); setAmount(v); }}
+            maxValue={basis}
           />
 
           <Card variant="compact" style={{ gap: 6 }}>
@@ -759,7 +802,9 @@ export function TradeScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Segmented options={['24H', '7D', '30D', '90D', '1Y', 'MAX']} value={tf} onChange={setTf} />
+            {/* No "MAX": CoinGecko's Demo plan caps coin history at 365 days, so
+                1Y is already the full available range (days=max returns a 401). */}
+            <Segmented options={['24H', '7D', '30D', '90D', '1Y']} value={tf} onChange={setTf} />
             <Button
               variant={indicatorsOpen ? 'brand' : 'ghost'}
               size="sm"
