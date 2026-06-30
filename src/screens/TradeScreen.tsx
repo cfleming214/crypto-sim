@@ -20,6 +20,7 @@ import { useApp } from '../store/AppContext';
 import { realizedPnl as calcRealizedPnl, sellXp } from '../services/gamification';
 import { Star, MoreHorizontal, Shield, Check, X, ChevronDown, ChevronLeft, Bell, Share2, ExternalLink } from 'lucide-react-native';
 import { NumPad } from '../components/ui/NumPad';
+import { track } from '../lib/analytics';
 
 // A buy of this size or larger gets a confetti celebration (a notable position).
 const BIG_BUY_USD = 1000;
@@ -628,6 +629,7 @@ export function TradeScreen() {
       return;
     }
     const units = amount / price;
+    const isFirstTrade = state.trades.length === 0;
     if (modalSide === 'buy') {
       dispatch({ type: 'BUY', symbol, amount });
       setLastTrade({ side: 'buy', amount, units, xp: 25 });
@@ -644,6 +646,9 @@ export function TradeScreen() {
       setLastTrade({ side: 'sell', amount, units: unitsToSell, xp, realizedPnl: pnl, costBasis });
       if (pnl > 0) setConfetti(c => c + 1);
     }
+    // Funnel: every executed market order, + the first-ever trade milestone.
+    track('trade_executed', { side: modalSide, symbol, amount });
+    if (isFirstTrade) track('first_trade', { side: modalSide, symbol, amount });
     setModalSide(null);
     setShowSuccess(true);
   };

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { isAmplifyConfigured } from '../lib/amplify';
+import { identifyUser, resetAnalytics, track } from '../lib/analytics';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -62,6 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUsername(user.username);
       await loadAttributes();
       setStatus('authenticated');
+      // Bind analytics events to this account (Cognito sub). Covers launch with an
+      // existing session AND post sign-in/up (both funnel through checkSession).
+      identifyUser(user.userId);
     } catch {
       setStatus('unauthenticated');
     }
@@ -113,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // "applereviewer@…" — the same normalization sign-up already does.
     await doSignIn(usernameInput.trim().toLowerCase(), password);
     await checkSession();
+    track('login', { method: 'email' });
   };
 
   const handleSignUp = async (usernameInput: string, password: string) => {
@@ -131,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     await doSignIn(email, password);
     await checkSession();
+    track('signup', { method: 'email' });
   };
 
   const handleSignOut = async () => {
@@ -141,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsername(null);
     setEmail(null);
     setEmailVerified(false);
+    resetAnalytics();   // drop identity so the next (guest) session isn't attributed
   };
 
   const handleDeleteAccount = async () => {

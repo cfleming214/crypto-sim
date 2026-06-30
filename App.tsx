@@ -20,6 +20,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
 import { initAds } from './src/lib/ads';
+import { initAnalytics, track } from './src/lib/analytics';
 import { loadAdTestMode } from './src/lib/adTestMode';
 import { AdsTestBadge } from './src/components/AdsTestBadge';
 import * as Sentry from '@sentry/react-native';
@@ -46,6 +47,9 @@ function App() {
 
   // Boot the AdMob SDK (+ iOS ATT prompt) once at launch. No-op in Expo Go / web.
   React.useEffect(() => { initAds(); }, []);
+
+  // Boot product analytics (PostHog) + record the launch. No-op when unconfigured.
+  React.useEffect(() => { initAnalytics(); track('app_open'); }, []);
 
   // Load the persisted AdMob test-mode override (QA dev toggle).
   React.useEffect(() => { loadAdTestMode(); }, []);

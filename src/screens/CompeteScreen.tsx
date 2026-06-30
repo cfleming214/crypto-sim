@@ -13,6 +13,7 @@ import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { AuthWall } from '../components/AuthWall';
 import { AdBanner } from '../components/AdBanner';
 import { watchForReward } from '../lib/rewardedRewards';
+import { track } from '../lib/analytics';
 import { useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/tokens';
 import { leagueColor } from '../components/ui/LeagueBadge';
@@ -516,6 +517,7 @@ export function CompeteScreen() {
   const finalizeJoin = async (comp: Competition) => {
     const res = await join(comp.id);
     if (res.ok) {
+      track('contest_joined', { contestId: comp.id, contestType: comp.type, prizeXp: comp.prizeXp });
       Alert.alert('Joined!', `You're now in ${comp.name}. +10 XP`, [
         { text: 'Let\'s go!', onPress: () => nav.navigate('TournamentDetail', { id: comp.id }) },
       ]);
@@ -580,6 +582,7 @@ export function CompeteScreen() {
             // pop the verify sheet at an already-verified user.
             const verified = emailVerified || (await refreshAttributes());
             if (!verified) {
+              track('email_verification_required');
               pendingJoin.current = comp;
               setVerifyOpen(true);
               return;
