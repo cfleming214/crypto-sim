@@ -564,11 +564,13 @@ export function ProfileScreen() {
               text: `Reset demo ($${(STARTING_CASH / 1000).toFixed(0)}K)`,
               onPress: () => Alert.alert(
                 'Reset demo?',
-                `Watch a short video to reset — your bankroll and trades go back to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`,
+                noAds
+                  ? `Your bankroll and trades go back to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`
+                  : `Watch a short video to reset — your bankroll and trades go back to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`,
                 [
                   { text: 'Cancel', style: 'cancel' },
                   {
-                    text: 'Watch & reset',
+                    text: noAds ? 'Reset' : 'Watch & reset',
                     onPress: async () => {
                       // Graceful fallback: reset even if no ad is available to show.
                       const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
