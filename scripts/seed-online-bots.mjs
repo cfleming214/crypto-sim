@@ -8,8 +8,8 @@
  *     authenticated AppSync path (owner-auth), exactly like the app,
  *   • creates its profile (leaderboard-visible so it's discoverable),
  *   • joins the N contests ending SOONEST (default 5) — current live/open ones,
- *   • makes 2 trades (configurable) in a joined contest, updating its entry and
- *     mirroring each to the global Live-trades feed (createLiveTrade),
+ *   • churns a random 1–4 positions (configurable) in EACH joined contest,
+ *     updating every entry and mirroring a sample to the Live-trades feed,
  *   • sets its presence (UserProfile + PublicProfile lastActiveAt = now) so it
  *     shows as ONLINE to other users; optionally kept fresh for --online-minutes.
  *
@@ -19,9 +19,9 @@
  * AppSync url from amplify_outputs.json.
  *
  * Usage:
- *   node scripts/seed-online-bots.mjs                       # 25 users, 5 contests, 2 trades
+ *   node scripts/seed-online-bots.mjs                       # 25 users, 5 contests, random 1–4 trades/contest
  *   node scripts/seed-online-bots.mjs --users 50
- *   node scripts/seed-online-bots.mjs --users 25 --contests 5 --trades 2
+ *   node scripts/seed-online-bots.mjs --users 25 --contests 5 --trades 3  # fixed 3 trades/contest
  *   node scripts/seed-online-bots.mjs --online-minutes 30   # keep them "online" 30 min
  *   node scripts/seed-online-bots.mjs --dry-run
  *   node scripts/seed-online-bots.mjs --clean               # delete this cohort (by email domain)
@@ -53,8 +53,8 @@ const flag = (name, def) => {
 };
 const USERS = Math.max(1, Math.min(500, flag('--users', 25)));      // configurable count
 const CONTESTS = Math.max(1, Math.min(20, flag('--contests', 5)));  // soonest-ending to join
-const TRADES = Math.max(0, Math.min(20, flag('--trades', 0)));      // 0 = random 1–4 per bot; >0 = fixed
-const tradesFor = () => (TRADES > 0 ? TRADES : randi(1, 4));        // per-bot churn size
+const TRADES = Math.max(0, Math.min(20, flag('--trades', 0)));      // 0 = random 1–4 per contest; >0 = fixed
+const tradesFor = () => (TRADES > 0 ? TRADES : randi(1, 4));        // per-contest churn size
 const ONLINE_MINUTES = Math.max(0, flag('--online-minutes', 0));    // keep presence fresh
 
 // ── config ──────────────────────────────────────────────────────────────────
@@ -184,6 +184,7 @@ const M_UPDATE_PROFILE = `mutation P($input: UpdateUserProfileInput!) { updateUs
 const Q_MY_PUBLIC = `query Q($owner: String!) { listPublicProfiles(filter: { owner: { eq: $owner } }, limit: 1) { items { id } } }`;
 const M_CREATE_PUBLIC = `mutation P($input: CreatePublicProfileInput!) { createPublicProfile(input: $input) { id } }`;
 const M_UPDATE_PUBLIC = `mutation P($input: UpdatePublicProfileInput!) { updatePublicProfile(input: $input) { id } }`;
+const Q_MY_ENTRIES = `query { listCompetitionEntries(limit: 200) { items { id competitionId } } }`;
 const M_CREATE_ENTRY = `mutation E($input: CreateCompetitionEntryInput!) { createCompetitionEntry(input: $input) { id } }`;
 const M_UPDATE_ENTRY = `mutation E($input: UpdateCompetitionEntryInput!) { updateCompetitionEntry(input: $input) { id } }`;
 const M_CREATE_LIVE_TRADE = `mutation L($input: CreateLiveTradeInput!) { createLiveTrade(input: $input) { id } }`;
@@ -386,31 +387,47 @@ async function main() {
     s.profileId = mine?.listUserProfiles?.items?.[0]?.id
       ?? (await gql(idToken, M_CREATE_PROFILE, { input: { handle: b.handle, xp: 0, cash: STARTING_CASH, bankroll: STARTING_CASH, holdingsJson: '[]', leaderboardVisible: true, riskScore: 100, avatarColor: b.color, lastActiveAt: new Date().toISOString() } })).createUserProfile.id;
 
-    // Join the soonest contests.
+    // Join the soonest contests. Reuse an existing entry if this bot is already
+    // in the contest (owner-auth read returns only its own rows), so a second
+    // run trades into the SAME entries instead of creating duplicates.
+    const existingEntries = {};
+    try {
+      const er = await gqlRetry(s, Q_MY_ENTRIES, {});
+      for (const it of er?.listCompetitionEntries?.items ?? []) existingEntries[it.competitionId] = it.id;
+    } catch { /* no existing entries / first run */ }
     s.joined = [];
     for (const c of soonest) {
       try {
-        const id = (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;
+        const id = existingEntries[c.id]
+          ?? (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;
         s.joined.push({ ...c, entryId: id });
       } catch { /* skip a contest that won't accept the entry */ }
     }
 
-    // Trades: each bot churns a random 1–4 positions in one joined contest —
-    // sell N held coins, rebuy N NEW ones — then update the entry + mirror each
-    // executed order to the global Live-trades feed.
+    // Trades: in EVERY joined contest the bot churns its OWN random 1–4 positions
+    // — sell N held coins, rebuy N NEW ones — updating that contest's entry, so
+    // each contest the bot is in shows real activity (not just one). A modest
+    // sample is mirrored to the global Live-trades feed so it doesn't flood.
     s.tradeCount = 0;
-    s.churnN = tradesFor();
-    if (s.joined.length) {
-      const target = pick(s.joined);
-      const p = churnPortfolio(coins, s.churnN);
-      if (p.trades.length) {
-        await gqlRetry(s, M_UPDATE_ENTRY, { input: { id: target.entryId, cash: round2(p.cash), holdingsJson: holdingsJson(p), tradesJson: JSON.stringify(p.trades), bankroll: p.bankroll, pnlPct: p.pnlPct, isActive: true } }).catch(() => {});
-        const ttl = Math.floor(Date.now() / 1000) + 30 * 86400;
+    s.churns = [];                 // per-contest { contest, n, trades }
+    s.recentTrades = [];
+    const ttl = Math.floor(Date.now() / 1000) + 30 * 86400;
+    let mirrored = false;
+    for (const target of s.joined) {
+      const n = tradesFor();       // independent random 1–4 per contest
+      const p = churnPortfolio(coins, n);
+      if (!p.trades.length) continue;
+      await gqlRetry(s, M_UPDATE_ENTRY, { input: { id: target.entryId, cash: round2(p.cash), holdingsJson: holdingsJson(p), tradesJson: JSON.stringify(p.trades), bankroll: p.bankroll, pnlPct: p.pnlPct, isActive: true } }).catch(() => {});
+      s.tradeCount += p.trades.length;
+      s.churns.push({ contest: target.name, n, trades: p.trades.length });
+      // Mirror only the first contest's churn to the global feed (keeps the live
+      // ticker believable instead of flooding it with every bot×contest trade).
+      if (!mirrored) {
         for (const tr of p.trades) {
           await gqlRetry(s, M_CREATE_LIVE_TRADE, { input: { feed: 'global', handle: b.handle, symbol: tr.symbol, side: tr.side, amountUsd: tr.amount, units: tr.units, price: tr.price, avatarColor: b.color, tradedAt: new Date(tr.t).toISOString(), expiresAt: ttl } }).catch(() => {});
         }
-        s.tradeCount = p.trades.length;
         s.recentTrades = p.trades.map((t) => ({ symbol: t.symbol, side: t.side, amount: t.amount, units: t.units, price: t.price, t: t.t }));
+        mirrored = true;
       }
     }
 
@@ -435,7 +452,7 @@ async function main() {
   // Roster file for the user's records.
   writeRoster(states.map((s) => ({
     handle: s.bot.handle, email: s.bot.email, owner: s.bot.owner,
-    contests: s.joined?.map((c) => c.name) ?? [], churn: s.churnN ?? 0, orders: s.tradeCount ?? 0,
+    contests: s.joined?.map((c) => c.name) ?? [], trades: s.tradeCount ?? 0, perContest: s.churns ?? [],
   })), soonest);
 
   // Optionally keep them "online" by refreshing presence every 60s.
@@ -452,8 +469,8 @@ async function main() {
     }
   }
 
-  const totalSold = states.reduce((a, s) => a + (s.churnN || 0), 0);
-  console.log(`\nDone. ${states.length} players online, joined ${soonest.length} contest(s), churned ${totalSold} positions (sell+rebuy, random 1–4 each). Leaderboards rerank within ~5 min.`);
+  const totalTrades = states.reduce((a, s) => a + (s.tradeCount || 0), 0);
+  console.log(`\nDone. ${states.length} players online, joined ${soonest.length} contest(s), traded ${totalTrades} positions across all joined contests (random 1–4 per contest, sell+rebuy). Leaderboards rerank within ~5 min.`);
 }
 
 let coins = [];
