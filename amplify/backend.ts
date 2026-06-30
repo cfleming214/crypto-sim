@@ -121,12 +121,16 @@ ohlcFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 ohlcFn.addEnvironment('TOKEN_HISTORY_TABLE_NAME', tokenHistoryTable.tableName);
 
+// Cron (not rate) with offset minutes so the hourly and daily runs NEVER fire in
+// the same minute — two concurrent keyless walkers just 429 each other. Hourly at
+// :05 every hour; daily at 04:35 UTC (a quiet hour). A full walk takes minutes but
+// finishes well before the next hourly tick.
 new Rule(Stack.of(ohlcFn), 'TickOhlcHourlyRule', {
-  schedule: Schedule.rate(Duration.hours(1)),
+  schedule: Schedule.cron({ minute: '5' }),
   targets: [new LambdaFunction(ohlcFn, { event: RuleTargetInput.fromObject({ mode: 'hourly' }) })],
 });
 new Rule(Stack.of(ohlcFn), 'TickOhlcDailyRule', {
-  schedule: Schedule.rate(Duration.days(1)),
+  schedule: Schedule.cron({ minute: '35', hour: '4' }),
   targets: [new LambdaFunction(ohlcFn, { event: RuleTargetInput.fromObject({ mode: 'daily' }) })],
 });
 

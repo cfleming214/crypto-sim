@@ -17,13 +17,41 @@ const MODES = {
   daily:  { days: 365, field: 'dailyJson',  tsField: 'dailyUpdatedAt'  },
 } as const;
 
-// Space requests so a burst of per-coin calls stays under CoinGecko's limit
-// (keyless is the tightest, ~5-15/min). With a demo key we can go faster.
-const SPACING_MS = process.env.COINGECKO_API_KEY ? 2500 : 5000;
+// Space requests so the catalog walk stays under CoinGecko's keyless BURST
+// throttle. Keyless tolerates only a short burst before it 429s everything for a
+// while, so coins late in a fast walk starve — 12s (~5/min) keeps us under it for
+// the whole walk. With a demo key we can go much faster.
+const SPACING_MS = process.env.COINGECKO_API_KEY ? 2500 : 12000;
+// On a 429 we RETRY the same coin (rather than skip it) with escalating backoff,
+// so one run actually populates the whole catalog instead of leaving gaps for the
+// next run. Bounded so a coin that's persistently failing can't stall forever.
+const MAX_ATTEMPTS = 4;
+const BACKOFF_MS = [15000, 30000, 45000];
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 interface OhlcEvent { mode?: 'hourly' | 'daily' }
+
+// Fetch one coin's market_chart, retrying on 429. Returns the prices array, or
+// null if it never succeeded within MAX_ATTEMPTS.
+async function fetchPrices(geckoId: string, days: number, headers: Record<string, string>): Promise<Array<[number, number]> | null> {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${geckoId}/market_chart?vs_currency=usd&days=${days}`,
+      { headers },
+    );
+    if (res.status === 429) {
+      await sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
+      continue;
+    }
+    if (!res.ok) { console.error('tick-ohlc http', geckoId, res.status); return null; }
+    const json = await res.json();
+    const prices: Array<[number, number]> = Array.isArray(json?.prices) ? json.prices : [];
+    return prices;
+  }
+  console.warn('tick-ohlc gave up after 429s', geckoId);
+  return null;
+}
 
 // Scheduled by EventBridge (hourly + daily, see backend.ts). Refreshes one
 // granularity tier per invocation based on event.mode (defaults to hourly).
@@ -46,6 +74,14 @@ export const handler = async (event: OhlcEvent = {}): Promise<{ mode: string; wr
     coins.push({ symbol, geckoId: t.coingeckoId });
   }
 
+  // Shuffle so that if the keyless throttle ever does bite mid-walk, the coins
+  // left unfilled differ each run — across the hourly schedule every coin gets
+  // covered instead of the same tail (in stable scan order) starving forever.
+  for (let i = coins.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [coins[i], coins[j]] = [coins[j], coins[i]];
+  }
+
   const headers: Record<string, string> = { accept: 'application/json' };
   if (process.env.COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = process.env.COINGECKO_API_KEY;
 
@@ -57,19 +93,8 @@ export const handler = async (event: OhlcEvent = {}): Promise<{ mode: string; wr
   for (let i = 0; i < coins.length; i++) {
     const c = coins[i];
     try {
-      const res = await fetch(
-        `https://api.coingecko.com/api/v3/coins/${c.geckoId}/market_chart?vs_currency=usd&days=${days}`,
-        { headers },
-      );
-      if (res.status === 429) {
-        console.warn('tick-ohlc 429 — backing off', c.symbol);
-        await sleep(15000);
-        continue;
-      }
-      if (!res.ok) { console.error('tick-ohlc', c.symbol, res.status); await sleep(SPACING_MS); continue; }
-      const json = await res.json();
-      const prices: Array<[number, number]> = Array.isArray(json?.prices) ? json.prices : [];
-      if (prices.length < 2) { await sleep(SPACING_MS); continue; }
+      const prices = await fetchPrices(c.geckoId, days, headers);
+      if (!prices || prices.length < 2) { await sleep(SPACING_MS); continue; }
 
       await ddb.send(new UpdateItemCommand({
         TableName: histTable,
