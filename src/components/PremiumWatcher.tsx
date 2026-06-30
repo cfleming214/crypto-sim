@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { monthKey } from '../services/gamification';
-import { configurePurchases, fetchEntitlements, addEntitlementListener, setEntitlements } from '../lib/purchases';
+import { configurePurchases, fetchEntitlements, addEntitlementListener, setEntitlements, loginPurchases, logoutPurchases } from '../lib/purchases';
 
 // Owns the RevenueCat ↔ app-state bridge and the Premium monthly grants. Renders
 // nothing (mirrors the other watchers).
@@ -18,7 +18,7 @@ import { configurePurchases, fetchEntitlements, addEntitlementListener, setEntit
 //     PurchaseModal — it needs the new-or-add choice, so it's never auto-granted.)
 export function PremiumWatcher() {
   const { state, dispatch } = useApp();
-  const { status } = useAuth();
+  const { status, userId } = useAuth();
 
   useEffect(() => {
     configurePurchases();
@@ -28,6 +28,22 @@ export function PremiumWatcher() {
     const unsub = addEntitlementListener(e => dispatch({ type: 'SET_ENTITLEMENTS', noAds: e.noAds, premium: e.premium }));
     return unsub;
   }, [dispatch]);
+
+  // Identify RevenueCat with the signed-in account so entitlements are scoped per
+  // account, not per device — otherwise a new account on the same device/Apple ID
+  // inherits the device's Premium (the "chef has Premium" bug). On sign-in, logIn
+  // with the Cognito sub + re-read entitlements; on sign-out, logOut to a fresh
+  // anonymous user and clear entitlements locally.
+  useEffect(() => {
+    configurePurchases();
+    if (status === 'authenticated' && userId) {
+      loginPurchases(userId).then(e => {
+        if (e) dispatch({ type: 'SET_ENTITLEMENTS', noAds: e.noAds, premium: e.premium });
+      });
+    } else if (status === 'unauthenticated') {
+      logoutPurchases().then(() => dispatch({ type: 'SET_ENTITLEMENTS', noAds: false, premium: false }));
+    }
+  }, [status, userId, dispatch]);
 
   // Keep the runtime entitlement store in sync with AppState (the ad gate reads it).
   // Entitlements only apply to a signed-in account: when logged out, force the
