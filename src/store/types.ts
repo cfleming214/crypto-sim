@@ -317,6 +317,13 @@ export interface AppState {
   // `portfolioMonthKey` = month the 3-new-portfolio allowance was reset;
   // `portfoliosThisMonth` = how many of the 3 have been used this month.
   premiumGrants: { balanceMonthKey: string | null; portfolioMonthKey: string | null; portfoliosThisMonth: number };
+  // Total PURCHASED/Premium-granted cash credited to each practice portfolio (by
+  // id), e.g. a $5M consumable added to 'main' or an offline portfolio created/
+  // topped-up from a Premium grant. A reset restores STARTING_CASH + this amount
+  // so a paying user never loses money they bought. Free rewarded boosts (the
+  // +$50K ad reward) are NOT counted here, so they reset away. Device-local
+  // (iap.v1), keyed by portfolio id.
+  purchasedCash: Record<string, number>;
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

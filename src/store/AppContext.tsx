@@ -233,6 +233,7 @@ const INITIAL_STATE: AppState = {
   noAds: false,
   offlinePortfolios: { ids: [], names: {} },
   premiumGrants: { balanceMonthKey: null, portfolioMonthKey: null, portfoliosThisMonth: 0 },
+  purchasedCash: {},
   cosmetics: { titles: [], frames: [], equippedTitle: null, equippedFrame: null },
   activePrediction: null,
   blockedUsers: [],
@@ -312,7 +313,7 @@ type Action =
   | { type: 'ADD_OFFLINE_BALANCE'; portfolioId: string; amount: number }
   | { type: 'GRANT_PREMIUM_MONTH'; monthKey: string }
   | { type: 'CLAIM_PREMIUM_BALANCE'; monthKey: string }
-  | { type: 'HYDRATE_IAP'; data: { noAds?: boolean; isSubscriber?: boolean; offlinePortfolios?: AppState['offlinePortfolios']; premiumGrants?: AppState['premiumGrants']; portfolios?: Record<string, PortfolioSlice> } }
+  | { type: 'HYDRATE_IAP'; data: { noAds?: boolean; isSubscriber?: boolean; offlinePortfolios?: AppState['offlinePortfolios']; premiumGrants?: AppState['premiumGrants']; purchasedCash?: Record<string, number>; portfolios?: Record<string, PortfolioSlice> } }
   | { type: 'CLAIM_SEASON_TIER'; tier: number; kind: 'xp' | 'cash' | 'title' | 'frame'; value: number | string }
   | { type: 'EQUIP_COSMETIC'; slot: 'title' | 'frame'; id: string | null }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
@@ -1220,6 +1221,8 @@ function reducer(state: AppState, action: Action): AppState {
           names: { ...state.offlinePortfolios.names, [action.id]: action.name },
         },
         premiumGrants: grants,
+        // The create grant is purchased/Premium money — preserve it on reset.
+        purchasedCash: { ...state.purchasedCash, [action.id]: action.cash },
         portfolios: stashed,
         activePortfolioId: action.id,
         cash: newSlice.cash,
@@ -1243,6 +1246,8 @@ function reducer(state: AppState, action: Action): AppState {
         symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.amount,
         units: 0, price: 0, timestamp: Date.now(), xpEarned: 0, slippage: 0, kind: 'reward',
       };
+      // Purchased/Premium money — preserve it on reset (see RESET_DEMO).
+      const purchasedCash = { ...state.purchasedCash, [pid]: (state.purchasedCash[pid] ?? 0) + action.amount };
       if (pid === state.activePortfolioId) {
         const newCash = state.cash + action.amount;
         const holdingsValue = state.holdings.reduce((s, h) => {
@@ -1254,12 +1259,14 @@ function reducer(state: AppState, action: Action): AppState {
           cash: newCash,
           bankroll: newCash + holdingsValue,
           trades: [bonusTrade, ...state.trades],
+          purchasedCash,
         };
       }
       // Inactive portfolio — credit its stashed slice in the map.
       const slice = state.portfolios[pid] ?? { cash: 0, holdings: [], trades: [] };
       return {
         ...state,
+        purchasedCash,
         portfolios: {
           ...state.portfolios,
           [pid]: { ...slice, cash: slice.cash + action.amount, trades: [bonusTrade, ...slice.trades] },
@@ -1288,6 +1295,7 @@ function reducer(state: AppState, action: Action): AppState {
         isSubscriber: d.isSubscriber ?? state.isSubscriber,
         offlinePortfolios: d.offlinePortfolios ?? state.offlinePortfolios,
         premiumGrants: d.premiumGrants ?? state.premiumGrants,
+        purchasedCash: d.purchasedCash ?? state.purchasedCash,
         portfolios: mergedPortfolios,
       };
     }
@@ -1462,6 +1470,7 @@ function reducer(state: AppState, action: Action): AppState {
         isSubscriber: state.isSubscriber,
         offlinePortfolios: state.offlinePortfolios,
         premiumGrants: state.premiumGrants,
+        purchasedCash: state.purchasedCash,
         portfolios: keptOfflinePortfolios,
       };
     }
@@ -1550,28 +1559,33 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'DISMISS_NUDGE':
       return { ...state, dismissedNudgeIds: [...state.dismissedNudgeIds, action.nudgeId] };
-    case 'RESET_DEMO':
-      // Offline/main practice portfolio ONLY. The top-level cash/holdings/trades
-      // are whatever portfolio is active, so guard against resetting a contest or
-      // replay portfolio by accident — those are never resettable.
-      if (state.activePortfolioId !== 'main') return state;
-      // Reset ONLY the practice TRADING portfolio: fresh $100K, no holdings,
-      // trades, or position orders. It must NEVER wipe the account — so online
-      // stats (xp/league/division/streak), achievements, joined contests +
-      // their portfolios, quests, season, predictions, cosmetics, watchlist, and
-      // price alerts are all preserved. resetAt re-anchors the equity graph.
+    case 'RESET_DEMO': {
+      // Practice portfolios ONLY (main + offline) — never a contest/replay (those
+      // are isolated at their fixed bankroll).
+      const resetId = state.activePortfolioId;
+      const isPractice = resetId === 'main' || state.offlinePortfolios.ids.includes(resetId);
+      if (!isPractice) return state;
+      // Restore STARTING_CASH PLUS any purchased/Premium-granted cash for this
+      // portfolio, so a paying user never loses money they bought (free rewarded
+      // boosts aren't tracked, so they reset away). Clears holdings/trades; never
+      // touches online stats, achievements, contests, quests, etc. resetAt
+      // re-anchors the equity graph. Position orders/stops are main-only state, so
+      // only clear them when resetting main.
+      const base = STARTING_CASH + (state.purchasedCash[resetId] ?? 0);
+      const isMainReset = resetId === 'main';
       return {
         ...state,
         resetAt: Date.now(),
-        bankroll: STARTING_CASH,
-        cash: STARTING_CASH,
+        bankroll: base,
+        cash: base,
         holdings: [],
         trades: [],
-        pendingOrders: [],
-        stopLosses: {},
-        buyStops: {},
+        pendingOrders: isMainReset ? [] : state.pendingOrders,
+        stopLosses: isMainReset ? {} : state.stopLosses,
+        buyStops: isMainReset ? {} : state.buyStops,
         riskScore: 100,
       };
+    }
     default:
       return state;
   }
@@ -1864,22 +1878,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [state.bankroll, state.activePortfolioId, state.trades, state.user.createdAt, profileLoaded, authStatus]);
 
-  // Re-anchor the equity graph on RESET_DEMO. A reset means "fresh $100K
-  // portfolio starting now", so we wipe the old curve and seed a new origin at
-  // the reset moment (the account's createdAt is deliberately left untouched).
-  // Overwriting the cloud backup stops a reload from restoring the pre-reset
-  // history. resetAt is ephemeral (not persisted), so this never re-fires on
-  // app reload.
+  // Re-anchor the equity graph on RESET_DEMO. A reset means "fresh portfolio
+  // starting now", so we wipe the old curve and seed a new origin at the reset
+  // moment, valued at the post-reset bankroll (STARTING_CASH + any preserved
+  // purchased cash). Works for whichever practice portfolio was reset (main or an
+  // offline one). Overwriting the cloud backup stops a reload from restoring the
+  // pre-reset history (main only — offline portfolios are device-local). resetAt
+  // is ephemeral, so this never re-fires on reload.
   const lastHandledResetRef = useRef(0);
   useEffect(() => {
     const resetAt = state.resetAt ?? 0;
     if (!resetAt || resetAt === lastHandledResetRef.current) return;
     lastHandledResetRef.current = resetAt;
     seededOriginRef.current = true; // we seed explicitly here; block the mount-seed
+    const pid = stateRef.current.activePortfolioId;
+    const v = stateRef.current.cash; // post-reset baseline (STARTING_CASH + purchased)
     (async () => {
-      await clearSnapshots('main');
-      const series = await appendSnapshot('main', { t: resetAt, v: STARTING_CASH });
-      flushEquityToCloud(series); // overwrite the cloud backup with the cleared series
+      await clearSnapshots(pid);
+      const series = await appendSnapshot(pid, { t: resetAt, v });
+      if (pid === 'main' && authRef.current === 'authenticated') flushEquityToCloud(series); // cloud backup is main-only
     })();
   }, [state.resetAt]);
 
@@ -2245,6 +2262,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 ? { ids: g.offlinePortfolios.ids.filter((x: any) => typeof x === 'string'), names: g.offlinePortfolios.names ?? {} }
                 : undefined,
               premiumGrants: g.premiumGrants && typeof g.premiumGrants === 'object' ? g.premiumGrants : undefined,
+              purchasedCash: g.purchasedCash && typeof g.purchasedCash === 'object' ? g.purchasedCash : undefined,
               portfolios: g.slices && typeof g.slices === 'object' ? g.slices : undefined,
             },
           });
@@ -2266,7 +2284,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       && !state.noAds
       && !state.isSubscriber
       && state.premiumGrants.balanceMonthKey === null
-      && state.premiumGrants.portfolioMonthKey === null;
+      && state.premiumGrants.portfolioMonthKey === null
+      && Object.keys(state.purchasedCash).length === 0;
     if (empty) return;
     const slices: Record<string, PortfolioSlice> = {};
     for (const id of state.offlinePortfolios.ids) {
@@ -2279,9 +2298,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isSubscriber: state.isSubscriber,
       offlinePortfolios: state.offlinePortfolios,
       premiumGrants: state.premiumGrants,
+      purchasedCash: state.purchasedCash,
       slices,
     })).catch(() => {});
-  }, [state.noAds, state.isSubscriber, state.offlinePortfolios, state.premiumGrants, state.activePortfolioId, state.portfolios, state.cash, state.holdings, state.trades]);
+  }, [state.noAds, state.isSubscriber, state.offlinePortfolios, state.premiumGrants, state.purchasedCash, state.activePortfolioId, state.portfolios, state.cash, state.holdings, state.trades]);
 
   // Auth-gated leaderboard subscriptions, one per joined competition.
   // CompetitionEntry is allow.authenticated().to(['read']) so still needs a JWT.

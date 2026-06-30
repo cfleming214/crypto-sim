@@ -450,13 +450,16 @@ export function PortfolioScreen() {
   };
 
   const handleResetPortfolio = () => {
-    // Offline/main practice portfolio only — never a contest/replay portfolio.
-    if (state.activePortfolioId !== 'main') return;
+    // Practice portfolios only (main + offline) — never a contest/replay portfolio.
+    if (!isPractice) return;
+    // Reset restores the $100K base PLUS any purchased/Premium cash for this
+    // portfolio, so a paying user keeps what they bought.
+    const resetAmount = STARTING_CASH + (state.purchasedCash[state.activePortfolioId] ?? 0);
     Alert.alert(
       'Reset portfolio?',
       noAds
-        ? `This clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`
-        : `Watch a short video to reset — this clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`,
+        ? `This clears your holdings and trade history and starts you over with $${resetAmount.toLocaleString()} cash.`
+        : `Watch a short video to reset — this clears your holdings and trade history and starts you over with $${resetAmount.toLocaleString()} cash.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -979,7 +982,7 @@ export function PortfolioScreen() {
         ))}
       </Card>
 
-      {isMain && (
+      {isPractice && (
         <Button
           testID="portfolio-reset-btn"
           variant="ghost"

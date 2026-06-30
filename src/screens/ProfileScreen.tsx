@@ -565,8 +565,8 @@ export function ProfileScreen() {
               onPress: () => Alert.alert(
                 'Reset demo?',
                 noAds
-                  ? `Your bankroll and trades go back to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`
-                  : `Watch a short video to reset — your bankroll and trades go back to $${STARTING_CASH.toLocaleString()}. Profile settings are kept.`,
+                  ? `Your bankroll and trades go back to $${(STARTING_CASH + (state.purchasedCash[state.activePortfolioId] ?? 0)).toLocaleString()}. Profile settings are kept.`
+                  : `Watch a short video to reset — your bankroll and trades go back to $${(STARTING_CASH + (state.purchasedCash[state.activePortfolioId] ?? 0)).toLocaleString()}. Profile settings are kept.`,
                 [
                   { text: 'Cancel', style: 'cancel' },
                   {
