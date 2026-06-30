@@ -3,6 +3,7 @@ import { View, ScrollView, Pressable, Animated, Easing, useWindowDimensions, Sty
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { track } from '../lib/analytics';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -772,6 +773,7 @@ export function OnboardingWalkthrough() {
   };
 
   const finish = async () => {
+    track('onboarding_completed', { slides: SLIDES.length });
     await AsyncStorage.setItem('hasOnboarded', 'true');
     const rewarded = await AsyncStorage.getItem('onboardingRewarded');
     if (!rewarded) {
