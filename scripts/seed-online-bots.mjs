@@ -184,6 +184,7 @@ const M_UPDATE_PROFILE = `mutation P($input: UpdateUserProfileInput!) { updateUs
 const Q_MY_PUBLIC = `query Q($owner: String!) { listPublicProfiles(filter: { owner: { eq: $owner } }, limit: 1) { items { id } } }`;
 const M_CREATE_PUBLIC = `mutation P($input: CreatePublicProfileInput!) { createPublicProfile(input: $input) { id } }`;
 const M_UPDATE_PUBLIC = `mutation P($input: UpdatePublicProfileInput!) { updatePublicProfile(input: $input) { id } }`;
+const Q_MY_ENTRIES = `query { listCompetitionEntries(limit: 200) { items { id competitionId } } }`;
 const M_CREATE_ENTRY = `mutation E($input: CreateCompetitionEntryInput!) { createCompetitionEntry(input: $input) { id } }`;
 const M_UPDATE_ENTRY = `mutation E($input: UpdateCompetitionEntryInput!) { updateCompetitionEntry(input: $input) { id } }`;
 const M_CREATE_LIVE_TRADE = `mutation L($input: CreateLiveTradeInput!) { createLiveTrade(input: $input) { id } }`;
@@ -386,11 +387,19 @@ async function main() {
     s.profileId = mine?.listUserProfiles?.items?.[0]?.id
       ?? (await gql(idToken, M_CREATE_PROFILE, { input: { handle: b.handle, xp: 0, cash: STARTING_CASH, bankroll: STARTING_CASH, holdingsJson: '[]', leaderboardVisible: true, riskScore: 100, avatarColor: b.color, lastActiveAt: new Date().toISOString() } })).createUserProfile.id;
 
-    // Join the soonest contests.
+    // Join the soonest contests. Reuse an existing entry if this bot is already
+    // in the contest (owner-auth read returns only its own rows), so a second
+    // run trades into the SAME entries instead of creating duplicates.
+    const existingEntries = {};
+    try {
+      const er = await gqlRetry(s, Q_MY_ENTRIES, {});
+      for (const it of er?.listCompetitionEntries?.items ?? []) existingEntries[it.competitionId] = it.id;
+    } catch { /* no existing entries / first run */ }
     s.joined = [];
     for (const c of soonest) {
       try {
-        const id = (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;
+        const id = existingEntries[c.id]
+          ?? (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;
         s.joined.push({ ...c, entryId: id });
       } catch { /* skip a contest that won't accept the entry */ }
     }
