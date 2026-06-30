@@ -22,9 +22,14 @@
  *   node scripts/seed-online-bots.mjs                       # 25 users, 5 contests, random 1–4 trades/contest
  *   node scripts/seed-online-bots.mjs --users 50
  *   node scripts/seed-online-bots.mjs --users 25 --contests 5 --trades 3  # fixed 3 trades/contest
+ *   node scripts/seed-online-bots.mjs --fresh               # add a NEW random group instead of reusing
  *   node scripts/seed-online-bots.mjs --online-minutes 30   # keep them "online" 30 min
  *   node scripts/seed-online-bots.mjs --dry-run
  *   node scripts/seed-online-bots.mjs --clean               # delete this cohort (by email domain)
+ *
+ * By DEFAULT the cohort is STABLE (deterministic slots phantom-NNN@…): a second
+ * run reuses the same bots + their contest entries and tops up trades. Pass
+ * --fresh to mint an additional brand-new random group to grow the crowd.
  */
 import {
   CognitoIdentityProviderClient,
@@ -45,6 +50,7 @@ const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
 const CLEAN = argv.includes('--clean');
 const ROSTER = argv.includes('--roster'); // re-dump the live cohort to a roster file
+const FRESH = argv.includes('--fresh');   // mint a NEW random group instead of reusing the stable cohort
 const flag = (name, def) => {
   const i = argv.indexOf(name);
   if (i < 0) return def;
@@ -104,16 +110,39 @@ async function mapLimit(items, limit, fn) {
 
 // Unique, human-style handle with no "bot" in it.
 function makeRoster(n) {
-  const handles = new Set();
+  if (FRESH) {
+    // --fresh: a one-off RANDOM group (grow the crowd). New unique handles +
+    // random emails each run, so these are always brand-new bots.
+    const handles = new Set();
+    const roster = [];
+    let guard = 0;
+    while (roster.length < n && guard++ < n * 80) {
+      // Mix: ~half the handles get a number suffix, ~half are word-only.
+      const handle = `${pick(ADJ)}${pick(NOUN)}${Math.random() < 0.5 ? randi(2, 999) : ''}`;
+      if (handles.has(handle) || /bot/i.test(handle)) continue;
+      handles.add(handle);
+      const email = `${handle.toLowerCase()}.${randomBytes(3).toString('hex')}@${EMAIL_DOMAIN}`;
+      roster.push({ handle, email, color: COLORS[roster.length % COLORS.length] });
+    }
+    return roster;
+  }
+  // DEFAULT: a STABLE cohort keyed by slot, so re-running reuses the SAME bots
+  // (Cognito user + profile + contest entries) instead of minting new ones —
+  // that's what lets a second run top up trades in contests they're already in.
+  // Handles are deterministic, varied (some numbered), unique, and never "bot".
+  // adj index = i (distinct for the first 25); a coprime noun stride + a dedup
+  // guard keep handles unique past 25 too.
+  const seen = new Set();
   const roster = [];
-  let guard = 0;
-  while (roster.length < n && guard++ < n * 80) {
-    // Mix: ~half the handles get a number suffix, ~half are word-only.
-    const handle = `${pick(ADJ)}${pick(NOUN)}${Math.random() < 0.5 ? randi(2, 999) : ''}`;
-    if (handles.has(handle) || /bot/i.test(handle)) continue;
-    handles.add(handle);
-    const email = `${handle.toLowerCase()}.${randomBytes(3).toString('hex')}@${EMAIL_DOMAIN}`;
-    roster.push({ handle, email, color: COLORS[roster.length % COLORS.length] });
+  for (let i = 0; i < n; i++) {
+    const a = ADJ[i % ADJ.length];
+    const no = NOUN[(i * 7) % NOUN.length];
+    const num = i % 2 === 0 ? '' : String(100 + (i * 37) % 900);
+    let handle = `${a}${no}${num}`;
+    if (seen.has(handle) || /bot/i.test(handle)) handle = `${a}${no}${i + 1}`;
+    seen.add(handle);
+    const email = `phantom-${String(i + 1).padStart(3, '0')}@${EMAIL_DOMAIN}`;
+    roster.push({ handle, email, color: COLORS[i % COLORS.length] });
   }
   return roster;
 }
