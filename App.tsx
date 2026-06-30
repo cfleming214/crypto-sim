@@ -15,6 +15,7 @@ import { QuestWatcher } from './src/components/QuestWatcher';
 import { EventWatcher } from './src/components/EventWatcher';
 import { PredictionWatcher } from './src/components/PredictionWatcher';
 import { PremiumWatcher } from './src/components/PremiumWatcher';
+import { ContestRewardWatcher } from './src/components/ContestRewardWatcher';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
@@ -77,6 +78,7 @@ function App() {
                   <EventWatcher />
                   <PredictionWatcher />
                   <PremiumWatcher />
+                  <ContestRewardWatcher />
                 </ErrorBoundary>
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>
