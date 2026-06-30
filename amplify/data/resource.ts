@@ -40,7 +40,40 @@ const schema = a.schema({
     // portfolioService.touchPresence). Drives the online/away/offline dot on
     // avatars; carried onto GlobalLeaderboard/PublicProfile for other viewers.
     lastActiveAt: a.string(),
+    // Referral program ("Recruit & Rise"). referralCode = this user's own
+    // permanent invite code; referredByCode = the code they signed up with;
+    // activatedReferrals = cumulative count of invitees who completed their first
+    // contest, written by the settle-recruiter-cup Lambda (drives milestone tiers).
+    referralCode: a.string(),
+    referredByCode: a.string(),
+    activatedReferrals: a.integer(),
   }).authorization(allow => [allow.owner()]),
+
+  // Public code → referrer lookup so a brand-new (or any) authenticated user can
+  // resolve an invite code to its owner (UserProfile is owner-only and can't be
+  // queried cross-user). Owner = the referrer (id = the code). Read-only to others.
+  ReferralCode: a.model({
+    code:           a.string().required(),   // the 6-char invite code = identifier
+    referrerUserId: a.string().required(),   // bare Cognito sub
+    referrerHandle: a.string(),
+  })
+    .identifier(['code'])
+    .authorization(allow => [allow.owner(), allow.authenticated().to(['read'])]),
+
+  // One row per (referrer, referee) relationship, created by the REFEREE on
+  // signup-with-code (owner = referee). status flips pending→activated when the
+  // referee finishes their first contest. authenticated-read so the referrer and
+  // the settle-recruiter-cup Lambda can aggregate activations per referrer.
+  Referral: a.model({
+    code:           a.string().required(),   // the referrer's code used
+    referrerUserId: a.string().required(),
+    referrerHandle: a.string(),
+    refereeUserId:  a.string().required(),
+    refereeHandle:  a.string(),
+    status:         a.string().required(),   // 'pending' | 'activated'
+    createdAt:      a.string(),
+    activatedAt:    a.string(),
+  }).authorization(allow => [allow.owner(), allow.authenticated().to(['read'])]),
 
   Trade: a.model({
     tradeId: a.string().required(),

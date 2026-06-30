@@ -269,6 +269,7 @@ const INITIAL_STATE: AppState = {
   quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
   season: { id: null, baselineXp: 0, claimedTiers: [] },
   passes: { balance: 0, lastWeeklyGrantKey: null },
+  referral: { code: null, referredByCode: null, rewardClaimed: false },
   isSubscriber: false,
   noAds: false,
   offlinePortfolios: { ids: [], names: {} },
@@ -348,6 +349,9 @@ type Action =
   | { type: 'ADD_PASS'; amount: number }
   | { type: 'SPEND_PASS' }
   | { type: 'GRANT_BONUS_CASH'; amount: number; xp?: number }
+  | { type: 'SET_REFERRAL_CODE'; code: string }
+  | { type: 'SET_REFERRED_BY'; code: string }
+  | { type: 'CLAIM_REFERRAL_REWARD'; passes: number; xp: number }
   | { type: 'SET_ENTITLEMENTS'; noAds: boolean; premium: boolean }
   | { type: 'CREATE_OFFLINE_PORTFOLIO'; id: string; name: string; cash: number; premiumMonthKey?: string }
   | { type: 'ADD_OFFLINE_BALANCE'; portfolioId: string; amount: number }
@@ -361,7 +365,7 @@ type Action =
   | { type: 'UNBLOCK_USER'; owner: string }
   | { type: 'HYDRATE_BLOCKED'; blockedUsers: BlockedUser[] }
   | { type: 'HYDRATE_DISMISSED_NUDGES'; ids: string[] }
-  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests']; season?: AppState['season']; cosmetics?: AppState['cosmetics']; passes?: AppState['passes'] } };
+  | { type: 'HYDRATE_GAMIFICATION'; data: { lastClaimDay: string | null; streak?: number; achievements?: Record<string, number>; academyCompleted?: string[]; predictionWins?: number; predictionLosses?: number; predictionStreak?: number; activePrediction?: AppState['activePrediction']; claimedContestIds?: string[]; duelsCreated?: number; quests?: AppState['quests']; season?: AppState['season']; cosmetics?: AppState['cosmetics']; passes?: AppState['passes']; referral?: AppState['referral'] } };
 
 // Exposed so feature modules (e.g. the rewarded-reward registry) can type a
 // dispatch parameter without re-declaring the action union.
@@ -1053,6 +1057,7 @@ function reducer(state: AppState, action: Action): AppState {
         season: action.data.season ?? state.season,
         cosmetics: action.data.cosmetics ?? state.cosmetics,
         passes: action.data.passes ?? state.passes,
+        referral: action.data.referral ?? state.referral,
         user: typeof action.data.streak === 'number'
           ? { ...state.user, streak: action.data.streak }
           : state.user,
@@ -1211,6 +1216,24 @@ function reducer(state: AppState, action: Action): AppState {
     case 'ADD_PASS':
       // Earned by watching a rewarded ad (never purchased).
       return { ...state, passes: { ...state.passes, balance: state.passes.balance + action.amount } };
+    case 'SET_REFERRAL_CODE':
+      if (state.referral.code === action.code) return state;
+      return { ...state, referral: { ...state.referral, code: action.code } };
+    case 'SET_REFERRED_BY':
+      // Record the code this user signed up with (one-time; ignore later changes).
+      if (state.referral.referredByCode) return state;
+      return { ...state, referral: { ...state.referral, referredByCode: action.code } };
+    case 'CLAIM_REFERRAL_REWARD': {
+      // Invitee welcome reward — granted once, when their referral activates
+      // (first contest). Idempotent on rewardClaimed so it can't double-grant.
+      if (state.referral.rewardClaimed) return state;
+      return {
+        ...state,
+        passes: { ...state.passes, balance: state.passes.balance + action.passes },
+        user: { ...state.user, xp: state.user.xp + action.xp },
+        referral: { ...state.referral, rewardClaimed: true },
+      };
+    }
     case 'SPEND_PASS':
       // Consumed when joining a Lane-A contest. No-op if empty (caller gates first).
       if (state.passes.balance <= 0) return state;
@@ -2221,6 +2244,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         season: state.season,
         cosmetics: state.cosmetics,
         passes: state.passes,
+        referral: state.referral,
       }),
     ).catch(() => {});
   }, [state.lastClaimDay, state.user.streak, state.achievements, state.academyCompleted, state.predictionWins, state.predictionLosses, state.predictionStreak, state.activePrediction, state.claimedContestIds, state.duelsCreated, state.quests, state.season, state.cosmetics, state.passes]);

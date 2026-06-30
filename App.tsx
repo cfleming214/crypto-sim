@@ -16,11 +16,13 @@ import { EventWatcher } from './src/components/EventWatcher';
 import { PredictionWatcher } from './src/components/PredictionWatcher';
 import { PremiumWatcher } from './src/components/PremiumWatcher';
 import { ContestRewardWatcher } from './src/components/ContestRewardWatcher';
+import { ReferralWatcher } from './src/components/ReferralWatcher';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
 import { initAds } from './src/lib/ads';
 import { initAnalytics, track } from './src/lib/analytics';
+import { startReferralLinkCapture } from './src/lib/referralLink';
 import { loadAdTestMode } from './src/lib/adTestMode';
 import { AdsTestBadge } from './src/components/AdsTestBadge';
 import * as Sentry from '@sentry/react-native';
@@ -50,6 +52,10 @@ function App() {
 
   // Boot product analytics (PostHog) + record the launch. No-op when unconfigured.
   React.useEffect(() => { initAnalytics(); track('app_open'); }, []);
+
+  // Capture referral codes from deep links (cryptocomp://r/CODE) + log opens.
+  // Scheme-based (no Branch yet); ReferralWatcher records it once authenticated.
+  React.useEffect(() => startReferralLinkCapture(url => track('deep_link_opened', { url })), []);
 
   // Load the persisted AdMob test-mode override (QA dev toggle).
   React.useEffect(() => { loadAdTestMode(); }, []);
@@ -83,6 +89,7 @@ function App() {
                   <PredictionWatcher />
                   <PremiumWatcher />
                   <ContestRewardWatcher />
+                  <ReferralWatcher />
                 </ErrorBoundary>
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>
