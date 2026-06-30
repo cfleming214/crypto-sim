@@ -33,7 +33,7 @@ import { Shield, X, ArrowUpRight, ArrowDownLeft, Lightbulb, Gift, Flame, Graduat
 import { ACADEMY } from '../data/academy';
 import { AnimatedBuyButton } from '../components/AnimatedBuyButton';
 import { PurchaseModal } from '../components/PurchaseModal';
-import { usePurchasesReady } from '../lib/purchases';
+import { usePurchasesReady, useEntitlements } from '../lib/purchases';
 
 // Marker-popup timestamp: "Jun 14, 3:42 PM" for old trades, time-only if today.
 function markerTimeLabel(ts: number): string {
@@ -272,6 +272,7 @@ export function PortfolioScreen() {
   const [tf, setTf] = useState(isPractice ? '7D' : '1H');
   const [purchaseVisible, setPurchaseVisible] = useState(false);
   const purchasesReady = usePurchasesReady(); // hide IAP UI on builds without the native module
+  const { noAds } = useEntitlements(); // No-Ads/Premium → reward actions skip the ad
   // If the user switches to/from a contest, clamp the timeframe into the new list.
   React.useEffect(() => {
     if (!tfOptions.includes(tf)) setTf(tfOptions[tfOptions.length - 1]);
@@ -453,11 +454,13 @@ export function PortfolioScreen() {
     if (state.activePortfolioId !== 'main') return;
     Alert.alert(
       'Reset portfolio?',
-      `Watch a short video to reset — this clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`,
+      noAds
+        ? `This clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`
+        : `Watch a short video to reset — this clears your holdings and trade history and starts you over with $${STARTING_CASH.toLocaleString()} cash.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Watch & reset',
+          text: noAds ? 'Reset' : 'Watch & reset',
           onPress: async () => {
             // Rewarded ad grants the reset (registry dispatches RESET_DEMO). Graceful
             // fallback: if AdMob has no ad to show, reset anyway so the user isn't
@@ -853,7 +856,9 @@ export function PortfolioScreen() {
             )}
             {tripleAvailable && (
               <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 10 }}>
-                {`Watch a short video to triple today's reward — +${(dailyXp(state.user.streak) * 3).toLocaleString()} XP total.`}
+                {noAds
+                  ? `Triple today's reward — +${(dailyXp(state.user.streak) * 3).toLocaleString()} XP total.`
+                  : `Watch a short video to triple today's reward — +${(dailyXp(state.user.streak) * 3).toLocaleString()} XP total.`}
               </Text>
             )}
           </Card>

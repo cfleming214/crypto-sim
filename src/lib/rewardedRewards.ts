@@ -1,5 +1,6 @@
 import type { AppDispatch } from '../store/AppContext';
 import { showRewarded, type AdPlacement } from './adManager';
+import { isNoAds } from './purchases';
 
 // The catalog of things a rewarded ad can grant. EVERY reward is virtual — it can
 // only dispatch actions that touch play-money / passes / cosmetics, never cash,
@@ -68,6 +69,8 @@ export async function watchForReward(
 ): Promise<{ granted: boolean; shown: boolean; blocked?: boolean }> {
   const reward = REWARDED_REWARDS[placement];
   if (!reward) return { granted: false, shown: false };
+  // No-Ads / Premium: never show an ad — grant the (virtual) reward directly.
+  if (isNoAds()) { reward.grant(dispatch); return { granted: true, shown: false }; }
   const { earned, shown, blocked } = await showRewarded(placement, { lane: 'A', surface: opts.surface ?? 'rewarded' });
   if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
@@ -84,6 +87,8 @@ export async function watchForBonusXp(
   opts: { surface?: string; grantOnUnavailable?: boolean } = {},
 ): Promise<{ granted: boolean; shown: boolean; blocked?: boolean }> {
   if (!(xp > 0)) return { granted: false, shown: false };
+  // No-Ads / Premium: grant the XP directly, no ad.
+  if (isNoAds()) { dispatch({ type: 'ADD_XP', amount: xp }); return { granted: true, shown: false }; }
   const { earned, shown, blocked } = await showRewarded('rewardedBonusXp', { lane: 'A', surface: opts.surface ?? 'rewarded-xp' });
   if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
