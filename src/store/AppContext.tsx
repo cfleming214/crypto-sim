@@ -269,7 +269,7 @@ const INITIAL_STATE: AppState = {
   quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
   season: { id: null, baselineXp: 0, claimedTiers: [] },
   passes: { balance: 0, lastWeeklyGrantKey: null },
-  referral: { code: null, referredByCode: null, rewardClaimed: false },
+  referral: { code: null, referredByCode: null, rewardClaimed: false, referrerRewardedCount: 0 },
   isSubscriber: false,
   noAds: false,
   offlinePortfolios: { ids: [], names: {} },
@@ -352,6 +352,7 @@ type Action =
   | { type: 'SET_REFERRAL_CODE'; code: string }
   | { type: 'SET_REFERRED_BY'; code: string }
   | { type: 'CLAIM_REFERRAL_REWARD'; passes: number; xp: number }
+  | { type: 'CLAIM_REFERRER_REWARDS'; count: number; passesEach: number; xpEach: number }
   | { type: 'SET_ENTITLEMENTS'; noAds: boolean; premium: boolean }
   | { type: 'CREATE_OFFLINE_PORTFOLIO'; id: string; name: string; cash: number; premiumMonthKey?: string }
   | { type: 'ADD_OFFLINE_BALANCE'; portfolioId: string; amount: number }
@@ -1232,6 +1233,19 @@ function reducer(state: AppState, action: Action): AppState {
         passes: { ...state.passes, balance: state.passes.balance + action.passes },
         user: { ...state.user, xp: state.user.xp + action.xp },
         referral: { ...state.referral, rewardClaimed: true },
+      };
+    }
+    case 'CLAIM_REFERRER_REWARDS': {
+      // Referrer reward — granted per newly-activated referral. The delta between
+      // my live activated count and the count I've already been paid for is the
+      // number of new payouts. Advancing referrerRewardedCount makes it idempotent.
+      const delta = action.count - state.referral.referrerRewardedCount;
+      if (delta <= 0) return state;
+      return {
+        ...state,
+        passes: { ...state.passes, balance: state.passes.balance + delta * action.passesEach },
+        user: { ...state.user, xp: state.user.xp + delta * action.xpEach },
+        referral: { ...state.referral, referrerRewardedCount: action.count },
       };
     }
     case 'SPEND_PASS':

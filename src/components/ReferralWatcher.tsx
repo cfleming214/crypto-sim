@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { ensureMyReferralCode, recordReferral } from '../services/referralService';
+import { ensureMyReferralCode, recordReferral, countMyActivatedReferrals } from '../services/referralService';
 import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralLink';
 import { track } from '../lib/analytics';
 
@@ -42,6 +42,23 @@ export function ReferralWatcher() {
     });
     return () => { cancelled = true; };
   }, [status, state.referral.referredByCode, handle, dispatch]);
+
+  // 3. Referrer reward: grant +2 passes + 750 XP for each of MY referrals that
+  // have activated since I was last paid. Polled on launch + every few minutes.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    let cancelled = false;
+    const sweep = () => {
+      countMyActivatedReferrals().then(count => {
+        if (!cancelled && count > state.referral.referrerRewardedCount) {
+          dispatch({ type: 'CLAIM_REFERRER_REWARDS', count, passesEach: 2, xpEach: 750 });
+        }
+      }).catch(() => {});
+    };
+    sweep();
+    const id = setInterval(sweep, 5 * 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [status, state.referral.referrerRewardedCount, dispatch]);
 
   return null;
 }

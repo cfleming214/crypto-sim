@@ -374,6 +374,23 @@ const schema = a.schema({
     allow.authenticated().to(['read']),
   ]),
 
+  // Precomputed Recruiter Cup standings — the bounded top-N "Top Recruiters this
+  // season" board the Compete tab reads. Rebuilt by the settle-recruiter-cup
+  // Lambda from activated Referral rows (id = rank "1".."100"). Same Lambda-writes
+  // / clients-read shape as GlobalLeaderboard.
+  RecruiterCupLeaderboard: a.model({
+    rank:             a.integer().required(),
+    owner:           a.string().required(),  // referrer Cognito sub — self-highlight
+    handle:          a.string().required(),
+    seasonActivated: a.integer(),            // activated referrals THIS season (ranking metric)
+    totalActivated:  a.integer(),            // lifetime activated (tier display)
+    avatarColor:     a.string(),
+    seasonId:        a.integer(),            // which season these standings belong to
+    updatedAt:       a.string(),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+  ]),
+
   // One row per device push token. The client registers/refreshes its own row
   // (owner-auth); the send Lambdas (close-competition, tick-global-leaderboard,
   // price-watch, notification-dispatcher) read every active token for a given

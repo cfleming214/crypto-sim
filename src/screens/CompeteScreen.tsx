@@ -14,6 +14,7 @@ import { AuthWall } from '../components/AuthWall';
 import { AdBanner } from '../components/AdBanner';
 import { watchForReward } from '../lib/rewardedRewards';
 import { track } from '../lib/analytics';
+import { RecruiterCupBoard } from '../components/RecruiterCupBoard';
 import { useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/tokens';
 import { leagueColor } from '../components/ui/LeagueBadge';
@@ -79,6 +80,7 @@ const CONTEST_TABS: { label: string; type: string | null }[] = [
   { label: 'Featured', type: 'featured' },
   { label: '1v1',      type: '1v1' },
   { label: 'Replay',   type: 'replay' },
+  { label: 'Cup',      type: null },     // Recruiter Cup standings (referral leaderboard)
   { label: 'Past',     type: null },     // shows finished contests (separate table)
 ];
 
@@ -854,6 +856,7 @@ export function CompeteScreen() {
           </View>
         )
       ) : contestTab === 'Replay' ? renderReplayContests('tab')
+      : contestTab === 'Cup' ? <RecruiterCupBoard />
       : listComps.length === 0 ? (
         <Card variant="tinted">
           <Text style={{ color: colors.ink3, fontSize: 13 }}>
