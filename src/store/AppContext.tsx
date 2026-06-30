@@ -1472,6 +1472,12 @@ function reducer(state: AppState, action: Action): AppState {
         premiumGrants: state.premiumGrants,
         purchasedCash: state.purchasedCash,
         portfolios: keptOfflinePortfolios,
+        // Onboarding is a device-level "has this install seen the intro" flag
+        // (persisted in AsyncStorage 'hasOnboarded'), not per-account. Without
+        // carrying it over, the unauthenticated effect's CLEAR_USER_DATA resets
+        // it to false on every logged-out launch and the walkthrough reappears.
+        hasOnboarded: state.hasOnboarded,
+        onboardingChecked: state.onboardingChecked,
       };
     }
     case 'SWITCH_PORTFOLIO': {
