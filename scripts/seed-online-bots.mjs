@@ -24,22 +24,26 @@
  *   node scripts/seed-online-bots.mjs --users 25 --contests 5 --trades 2
  *   node scripts/seed-online-bots.mjs --online-minutes 30   # keep them "online" 30 min
  *   node scripts/seed-online-bots.mjs --dry-run
+ *   node scripts/seed-online-bots.mjs --clean               # delete this cohort (by email domain)
  */
 import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
   AdminSetUserPasswordCommand,
   AdminGetUserCommand,
+  AdminDeleteUserCommand,
+  ListUsersCommand,
   InitiateAuthCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { DynamoDBClient, ListTablesCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
-import { unmarshall } from '@aws-sdk/util-dynamodb';
+import { DynamoDBClient, ListTablesCommand, ScanCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
 // ── flags ───────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
+const CLEAN = argv.includes('--clean');
 const flag = (name, def) => {
   const i = argv.indexOf(name);
   if (i < 0) return def;
@@ -220,6 +224,52 @@ async function touchPresence(s) {
   if (s.publicId) await gqlRetry(s, M_UPDATE_PUBLIC, { input: { id: s.publicId, lastActiveAt: nowIso } }).catch(() => {});
 }
 
+// ── teardown ──────────────────────────────────────────────────────────────────
+// Identify the cohort by their email domain (no roster file needed), then delete
+// their owner-scoped rows across the data tables + the Cognito users.
+async function listCohort() {
+  const users = [];
+  let token;
+  do {
+    const res = await cog.send(new ListUsersCommand({ UserPoolId: USER_POOL, Limit: 60, PaginationToken: token }));
+    for (const u of res.Users ?? []) {
+      const email = u.Attributes?.find((a) => a.Name === 'email')?.Value;
+      const sub = u.Attributes?.find((a) => a.Name === 'sub')?.Value;
+      if (email && email.endsWith(`@${EMAIL_DOMAIN}`)) users.push({ email, sub, username: u.Username });
+    }
+    token = res.PaginationToken;
+  } while (token);
+  return users;
+}
+async function clean() {
+  console.log(`Tearing down @${EMAIL_DOMAIN} players${DRY ? '  (dry-run)' : ''}…`);
+  const cohort = await listCohort();
+  const subs = new Set(cohort.map((u) => u.sub).filter(Boolean));
+  console.log(`  found ${cohort.length} users.`);
+  if (!cohort.length) return;
+
+  for (const name of ['UserProfile', 'PublicProfile', 'CompetitionEntry', 'Trade', 'LiveTrade']) {
+    const table = await findTable(name);
+    if (!table) continue;
+    let deleted = 0;
+    for await (const row of scanAll(table)) {
+      const ownerSub = typeof row.owner === 'string' ? row.owner.split('::')[0] : null;
+      if (ownerSub && subs.has(ownerSub)) {
+        if (!DRY) await ddb.send(new DeleteItemCommand({ TableName: table, Key: marshall({ id: row.id }) })).catch(() => {});
+        deleted++;
+      }
+    }
+    console.log(`  ${name}: ${DRY ? 'would delete' : 'deleted'} ${deleted}`);
+  }
+  let du = 0;
+  for (const u of cohort) {
+    if (DRY) { du++; continue; }
+    try { await cog.send(new AdminDeleteUserCommand({ UserPoolId: USER_POOL, Username: u.username })); du++; } catch { /* ignore */ }
+  }
+  console.log(`  Cognito: ${DRY ? 'would delete' : 'deleted'} ${du} users.`);
+  console.log('Teardown done.');
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 async function main() {
   console.log(`Seeding ${USERS} online players · join ${CONTESTS} soonest contests · ${TRADES} trades each${DRY ? '  (dry-run)' : ''}`);
@@ -343,6 +393,7 @@ function writeRoster(rows, contests) {
 }
 
 (async () => {
+  if (CLEAN) { await clean(); return; }
   coins = await loadCoins();
   await main();
 })().catch((e) => { console.error(e); process.exit(1); });
