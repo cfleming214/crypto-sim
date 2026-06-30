@@ -19,6 +19,7 @@ import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
+import { settleRecruiterCup } from './functions/settle-recruiter-cup/resource.js';
 import { tickReplayLeaderboard } from './functions/tick-replay-leaderboard/resource.js';
 import { closeReplayContest } from './functions/close-replay-contest/resource.js';
 import { priceWatch } from './functions/price-watch/resource.js';
@@ -50,6 +51,7 @@ const backend = defineBackend({
   executeTrade,
   runMirror,
   settleSeason,
+  settleRecruiterCup,
   tickReplayLeaderboard,
   closeReplayContest,
   priceWatch,
@@ -295,6 +297,27 @@ seasonFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 new Rule(Stack.of(seasonFn), 'SettleSeasonRule', {
   schedule: Schedule.rate(Duration.days(7)),
   targets: [new LambdaFunction(seasonFn)],
+});
+
+// --- settleRecruiterCup: every 5 min, rebuild the Recruiter Cup standings (top
+// recruiters by activated referrals this season) for the Compete tab + write each
+// referrer's lifetime activatedReferrals back onto UserProfile. ---
+const cupFn = backend.settleRecruiterCup.resources.lambda;
+const referralTable = backend.data.resources.tables['Referral'];
+const cupBoardTable = backend.data.resources.tables['RecruiterCupLeaderboard'];
+referralTable.grantReadData(cupFn);
+profileTable.grantReadWriteData(cupFn);   // read profiles + write activatedReferrals
+cupBoardTable.grantReadWriteData(cupFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('REFERRAL_TABLE_NAME', referralTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('RECRUITER_CUP_LEADERBOARD_TABLE_NAME', cupBoardTable.tableName);
+
+new Rule(Stack.of(cupFn), 'SettleRecruiterCupRule', {
+  schedule: Schedule.rate(Duration.minutes(5)),
+  targets: [new LambdaFunction(cupFn)],
 });
 
 // --- tickReplayLeaderboard: runs every 5 minutes ---

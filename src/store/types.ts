@@ -304,6 +304,10 @@ export interface AppState {
     code: string | null;
     referredByCode: string | null;
     rewardClaimed: boolean;
+    // How many of MY activated referrals I've already been rewarded for (as the
+    // referrer). When my live activated count exceeds this, the delta is granted
+    // (+passes/+XP per referral) and this advances — so each referral pays once.
+    referrerRewardedCount: number;
   };
   // Premium subscriber entitlement (RevenueCat `premium`). Drives the larger
   // weekly pass grant + the monthly $5M / 3-portfolio offline grants. RevenueCat

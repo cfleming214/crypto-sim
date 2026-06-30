@@ -136,6 +136,37 @@ export async function activateMyReferral(): Promise<boolean> {
   }
 }
 
+export interface CupRow {
+  rank: number;
+  owner: string;
+  handle: string;
+  seasonActivated: number;
+  totalActivated: number;
+  avatarColor?: string;
+}
+
+/** Read the Recruiter Cup standings (top recruiters this season), rank-ascending. */
+export async function fetchRecruiterCup(limit = 100): Promise<CupRow[]> {
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    const res = await client.models.RecruiterCupLeaderboard.list({ limit });
+    const rows = (res?.data ?? []) as any[];
+    return rows
+      .map(r => ({
+        rank: Number(r.rank) || 9999,
+        owner: String(r.owner ?? ''),
+        handle: String(r.handle ?? 'Recruiter'),
+        seasonActivated: Number(r.seasonActivated) || 0,
+        totalActivated: Number(r.totalActivated) || 0,
+        avatarColor: r.avatarColor ?? undefined,
+      }))
+      .sort((a, b) => a.rank - b.rank);
+  } catch {
+    return [];
+  }
+}
+
 /** Count my ACTIVATED referrals as the referrer (drives tier display). */
 export async function countMyActivatedReferrals(): Promise<number> {
   const client = await getClient();
