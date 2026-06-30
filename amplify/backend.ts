@@ -200,16 +200,17 @@ new Rule(Stack.of(weeklyFn), 'CreateWeeklyContestRule', {
   targets: [new LambdaFunction(weeklyFn)],
 });
 
-// --- createRollingContest: a fresh 6-hour XP contest every 6 hours ---
-// Each run ensures the current window's contest (live) + the next window's
-// (scheduled) exist, so there's always one running and one queued. 20-player
-// cap, 5000 XP, free entry.
+// --- createRollingContest: rolling XP contests on multiple cadences (2h/3h/6h) ---
+// Each run ensures the current + next window of EVERY cadence exists, so each has
+// one running and one queued. Runs hourly — more frequent than the smallest (2h)
+// window — so the next window is always pre-created before the current ends.
+// 20-player cap, 5000 XP, free entry. (Idempotent conditional puts → no dupes.)
 const rollingFn = backend.createRollingContest.resources.lambda;
 competitionTable.grantWriteData(rollingFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 rollingFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
 new Rule(Stack.of(rollingFn), 'CreateRollingContestRule', {
-  schedule: Schedule.rate(Duration.hours(6)),
+  schedule: Schedule.rate(Duration.hours(1)),
   targets: [new LambdaFunction(rollingFn)],
 });
 
