@@ -52,7 +52,8 @@ const flag = (name, def) => {
 };
 const USERS = Math.max(1, Math.min(500, flag('--users', 25)));      // configurable count
 const CONTESTS = Math.max(1, Math.min(20, flag('--contests', 5)));  // soonest-ending to join
-const TRADES = Math.max(0, Math.min(20, flag('--trades', 2)));      // trades per user
+const TRADES = Math.max(0, Math.min(20, flag('--trades', 0)));      // 0 = random 1–4 per bot; >0 = fixed
+const tradesFor = () => (TRADES > 0 ? TRADES : randi(1, 4));        // per-bot churn size
 const ONLINE_MINUTES = Math.max(0, flag('--online-minutes', 0));    // keep presence fresh
 
 // ── config ──────────────────────────────────────────────────────────────────
@@ -105,8 +106,9 @@ function makeRoster(n) {
   const handles = new Set();
   const roster = [];
   let guard = 0;
-  while (roster.length < n && guard++ < n * 50) {
-    const handle = `${pick(ADJ)}${pick(NOUN)}${randi(10, 999)}`;
+  while (roster.length < n && guard++ < n * 80) {
+    // Mix: ~half the handles get a number suffix, ~half are word-only.
+    const handle = `${pick(ADJ)}${pick(NOUN)}${Math.random() < 0.5 ? randi(2, 999) : ''}`;
     if (handles.has(handle) || /bot/i.test(handle)) continue;
     handles.add(handle);
     const email = `${handle.toLowerCase()}.${randomBytes(3).toString('hex')}@${EMAIL_DOMAIN}`;
@@ -196,23 +198,54 @@ async function loadCoins() {
   return coins.length >= 4 ? coins : FALLBACK_COINS.map((c) => ({ ...c }));
 }
 const priceOf = (coins, sym) => coins.find((c) => c.symbol === sym)?.price ?? 0;
-// Build a fresh contest portfolio and run `n` buys of distinct coins.
-function tradePortfolio(coins, n) {
+const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+// Churn a portfolio: SELL `n` coins it already holds, then REBUY `n` NEW coins —
+// never re-buying a coin it just sold, and never selling a coin it just bought.
+// The starting holdings are INITIALIZED (a pre-existing portfolio), NOT recorded
+// as trades, so the only recorded trades are the n sells + n buys (the churn).
+function churnPortfolio(coins, n) {
+  const tradeable = shuffle(coins.filter((c) => c.symbol !== 'USDC' && c.price > 0));
+  if (tradeable.length < n + 1) return { trades: [] };
+  // Starting basket bigger than n (so selling n doesn't empty it), leaving room
+  // for n brand-new coins afterwards: basket B in [n, min(n+3, len-n)].
+  const B = Math.max(n, Math.min(n + randi(0, 3), tradeable.length - n));
+  const basket = tradeable.slice(0, B);
   const p = { cash: STARTING_CASH, holdings: [], trades: [] };
-  const used = new Set();
-  for (let i = 0; i < n; i++) {
-    const buyable = coins.filter((c) => c.symbol !== 'USDC' && c.price > 0 && !used.has(c.symbol));
-    if (!buyable.length || p.cash < 50) break;
-    const c = pick(buyable); used.add(c.symbol);
-    const amount = Math.max(50, Math.min(p.cash, p.cash * rand(0.15, 0.5)));
+  // Pre-existing holdings (no trade rows — we must not "sell what we just bought").
+  const per = (STARTING_CASH * rand(0.5, 0.75)) / B;
+  for (const c of basket) {
+    const units = per / c.price;
+    p.holdings.push({ symbol: c.symbol, units, avgCost: c.price });
+    p.cash -= per;
+  }
+  let ts = Date.now();
+  // SELL n held coins.
+  const sold = new Set();
+  for (const c of basket.slice(0, n)) {
+    const h = p.holdings.find((x) => x.symbol === c.symbol);
+    if (!h) continue;
+    const proceeds = h.units * c.price;
+    p.cash += proceeds;
+    p.holdings = p.holdings.filter((x) => x !== h);
+    sold.add(c.symbol);
+    p.trades.push({ symbol: c.symbol, side: 'sell', amount: round2(proceeds), units: round6(h.units), price: c.price, t: ts++ });
+  }
+  // BUY n NEW coins — not currently held, not just sold.
+  const held = new Set(p.holdings.map((h) => h.symbol));
+  const fresh = tradeable.filter((c) => !held.has(c.symbol) && !sold.has(c.symbol)).slice(0, n);
+  const per2 = (p.cash * rand(0.4, 0.7)) / Math.max(1, fresh.length);
+  for (const c of fresh) {
+    const amount = Math.max(50, Math.min(p.cash, per2));
+    if (amount < 50 || amount > p.cash) continue;
     const units = amount / c.price;
     p.holdings.push({ symbol: c.symbol, units, avgCost: c.price });
     p.cash -= amount;
-    p.trades.push({ symbol: c.symbol, side: 'buy', amount: round2(amount), units: round6(units), price: c.price, t: Date.now() });
+    p.trades.push({ symbol: c.symbol, side: 'buy', amount: round2(amount), units: round6(units), price: c.price, t: ts++ });
   }
   const val = p.holdings.reduce((s, h) => s + h.units * (priceOf(coins, h.symbol) || h.avgCost), 0);
   p.bankroll = round2(p.cash + val);
   p.pnlPct = round2(((p.bankroll - STARTING_CASH) / STARTING_CASH) * 100);
+  p.churn = { sold: [...sold], bought: fresh.map((c) => c.symbol) };
   return p;
 }
 const holdingsJson = (p) => JSON.stringify(p.holdings.map((h) => ({ symbol: h.symbol, units: round6(h.units), avgCost: round2(h.avgCost) })));
@@ -316,7 +349,7 @@ async function clean() {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log(`Seeding ${USERS} online players · join ${CONTESTS} soonest contests · ${TRADES} trades each${DRY ? '  (dry-run)' : ''}`);
+  console.log(`Seeding ${USERS} online players · join ${CONTESTS} soonest contests · ${TRADES > 0 ? `${TRADES}` : 'random 1–4'} churn trades each${DRY ? '  (dry-run)' : ''}`);
   const roster = makeRoster(USERS);
   if (roster.length < USERS) console.warn(`  (could only generate ${roster.length} unique handles)`);
 
@@ -361,12 +394,14 @@ async function main() {
       } catch { /* skip a contest that won't accept the entry */ }
     }
 
-    // Trades: run TRADES buys in one joined contest, update that entry + mirror
-    // each to the global Live-trades feed.
+    // Trades: each bot churns a random 1–4 positions in one joined contest —
+    // sell N held coins, rebuy N NEW ones — then update the entry + mirror each
+    // executed order to the global Live-trades feed.
     s.tradeCount = 0;
-    if (TRADES > 0 && s.joined.length) {
+    s.churnN = tradesFor();
+    if (s.joined.length) {
       const target = pick(s.joined);
-      const p = tradePortfolio(coins, TRADES);
+      const p = churnPortfolio(coins, s.churnN);
       if (p.trades.length) {
         await gqlRetry(s, M_UPDATE_ENTRY, { input: { id: target.entryId, cash: round2(p.cash), holdingsJson: holdingsJson(p), tradesJson: JSON.stringify(p.trades), bankroll: p.bankroll, pnlPct: p.pnlPct, isActive: true } }).catch(() => {});
         const ttl = Math.floor(Date.now() / 1000) + 30 * 86400;
@@ -399,7 +434,7 @@ async function main() {
   // Roster file for the user's records.
   writeRoster(states.map((s) => ({
     handle: s.bot.handle, email: s.bot.email, owner: s.bot.owner,
-    contests: s.joined?.map((c) => c.name) ?? [], trades: s.tradeCount ?? 0,
+    contests: s.joined?.map((c) => c.name) ?? [], churn: s.churnN ?? 0, orders: s.tradeCount ?? 0,
   })), soonest);
 
   // Optionally keep them "online" by refreshing presence every 60s.
@@ -416,7 +451,8 @@ async function main() {
     }
   }
 
-  console.log(`\nDone. ${states.length} players online, joined ${soonest.length} contest(s), ${TRADES} trades each. Leaderboards rerank within ~5 min.`);
+  const totalSold = states.reduce((a, s) => a + (s.churnN || 0), 0);
+  console.log(`\nDone. ${states.length} players online, joined ${soonest.length} contest(s), churned ${totalSold} positions (sell+rebuy, random 1–4 each). Leaderboards rerank within ~5 min.`);
 }
 
 let coins = [];
