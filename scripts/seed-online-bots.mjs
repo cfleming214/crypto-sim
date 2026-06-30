@@ -202,9 +202,22 @@ async function gql(idToken, query, variables) {
   if (!res.ok) throw new Error(`AppSync HTTP ${res.status}`);
   return json?.data;
 }
+// Retry on expired token (re-sign-in) AND on transient errors (AppSync throttle /
+// 5xx / network). The latter matters a lot here: 8 bots writing entries + trades
+// concurrently routinely trips throttling, and a swallowed failure used to leave
+// a bot sitting all-cash in a contest. Up to 4 attempts with backoff + jitter.
 async function gqlRetry(s, query, variables) {
-  try { return await gql(s.idToken, query, variables); }
-  catch (e) { if (!e.unauthorized) throw e; s.idToken = await signIn(s.bot.email); return gql(s.idToken, query, variables); }
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try { return await gql(s.idToken, query, variables); }
+    catch (e) {
+      lastErr = e;
+      if (e.unauthorized) { s.idToken = await signIn(s.bot.email); continue; }
+      // Transient — back off and retry (250ms, 600ms, 1.2s + jitter).
+      await sleep([250, 600, 1200][Math.min(attempt, 2)] + randi(0, 200));
+    }
+  }
+  throw lastErr;
 }
 
 const Q_MY_PROFILE = `query { listUserProfiles(limit: 1) { items { id } } }`;
@@ -236,7 +249,10 @@ const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 // as trades, so the only recorded trades are the n sells + n buys (the churn).
 function churnPortfolio(coins, n) {
   const tradeable = shuffle(coins.filter((c) => c.symbol !== 'USDC' && c.price > 0));
-  if (tradeable.length < n + 1) return { trades: [] };
+  if (tradeable.length < 2) return { trades: [] };  // truly nothing to trade
+  // Clamp the churn size to what's tradeable so a small coin list still produces
+  // a real (never all-cash) portfolio instead of bailing out.
+  n = Math.max(1, Math.min(n, tradeable.length - 1));
   // Starting basket bigger than n (so selling n doesn't empty it), leaving room
   // for n brand-new coins afterwards: basket B in [n, min(n+3, len-n)].
   const B = Math.max(n, Math.min(n + randi(0, 3), tradeable.length - n));
