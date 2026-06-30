@@ -847,6 +847,9 @@ export function OnboardingWalkthrough() {
                   <Text style={{ color: '#03120a', fontSize: 16, fontWeight: '700' }}>{ctaLabel}</Text>
                 </LinearGradient>
               </Pressable>
+              {/* Invisible spacer mirroring the back button so the CTA stays
+                  centered on screen whether or not the back button is shown. */}
+              <View pointerEvents="none" style={{ width: 52, height: 52 }} />
             </View>
             {/* Skip */}
             <Pressable onPress={finish} disabled={isLast} style={{ alignItems: 'center', paddingVertical: 12, opacity: isLast ? 0 : 1 }}>
