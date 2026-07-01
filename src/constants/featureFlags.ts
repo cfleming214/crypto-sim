@@ -15,6 +15,12 @@
 // Terms rewrite disclosing cash prizes, LIVE Stripe keys).
 export const PAYOUTS_ENABLED = process.env.EXPO_PUBLIC_PAYOUTS_ENABLED === 'true';
 
+// APPLE_SIGNIN_ENABLED gates the "Continue with Apple" button. OFF by default so
+// the button never appears until the Cognito Apple provider + hosted-UI OAuth are
+// configured and a native build ships — otherwise it would open a broken flow.
+// Flip via EXPO_PUBLIC_APPLE_SIGNIN_ENABLED once that setup is done.
+export const APPLE_SIGNIN_ENABLED = process.env.EXPO_PUBLIC_APPLE_SIGNIN_ENABLED === 'true';
+
 // CONTEST_CASH_PRIZES gates whether contests advertise/award real cash. When OFF
 // (the production default), contests reward XP instead — the prize is shown as XP
 // and the winner claims XP, with no cash settlement surfaced. Tied to the same

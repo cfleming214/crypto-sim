@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { FeatureHero } from '../components/FeatureHero';
 import { useAuth } from '../store/AuthContext';
+import { APPLE_SIGNIN_ENABLED } from '../constants/featureFlags';
 import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 
@@ -18,7 +19,7 @@ type AuthMode = 'signin' | 'signup';
 
 export function AuthScreen() {
   const { colors } = useTheme();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithApple } = useAuth();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const [mode, setMode] = useState<AuthMode>(route.params?.mode ?? 'signin');
@@ -95,6 +96,19 @@ export function AuthScreen() {
       if (nav.canGoBack()) nav.goBack();
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApple = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await signInWithApple();
+      if (nav.canGoBack()) nav.goBack();
+    } catch (e: any) {
+      Alert.alert('Apple sign-in unavailable', e?.message ?? 'Please try email for now.');
     } finally {
       setLoading(false);
     }
@@ -186,6 +200,20 @@ export function AuthScreen() {
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
+
+            {/* Sign in with Apple — gated behind APPLE_SIGNIN_ENABLED so it only
+                appears once the Cognito Apple provider + OAuth are configured. */}
+            {APPLE_SIGNIN_ENABLED && (
+              <Button
+                testID="auth-apple-btn"
+                variant="surface"
+                onPress={handleApple}
+                disabled={loading}
+                style={{ marginTop: 8 }}
+              >
+                 Continue with Apple
+              </Button>
+            )}
           </Card>
 
           <TouchableOpacity testID="auth-toggle-mode" onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
@@ -194,6 +222,18 @@ export function AuthScreen() {
               <Text style={{ fontWeight: '700', color: colors.brandOn }}>
                 {mode === 'signin' ? 'Sign up' : 'Sign in'}
               </Text>
+            </Text>
+          </TouchableOpacity>
+
+          {/* Explicit guest path — the demo portfolio + markets work without an
+              account, so let people in rather than dead-ending at the wall. */}
+          <TouchableOpacity
+            testID="auth-continue-guest"
+            onPress={() => { if (nav.canGoBack()) nav.goBack(); }}
+            style={{ paddingVertical: 6 }}
+          >
+            <Text style={{ textAlign: 'center', fontSize: 14, color: `${colors.brandOn}AA` }}>
+              Continue as guest
             </Text>
           </TouchableOpacity>
 
