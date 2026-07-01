@@ -6,6 +6,7 @@ import { Button } from './ui/Button';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { countMyActivatedReferrals, referralTier, recordReferral } from '../services/referralService';
+import { buildReferralLink } from '../lib/attribution';
 
 // Profile referral surface for "Recruit & Rise": shows the user's invite code
 // (share), their activated-referral count + milestone tier, and a field to enter
@@ -28,7 +29,7 @@ export function ReferralCard() {
     if (!code) return;
     try {
       await Share.share({
-        message: `Trade crypto & compete with me on CryptoComp — same $100k, best P&L wins. Use my code ${code} for a bonus when you join your first contest: cryptocomp://r/${code}`,
+        message: `Trade crypto & compete with me on CryptoComp — same $100k, best P&L wins. Use my code ${code} for a bonus when you join your first contest: ${buildReferralLink(code)}`,
       });
     } catch { /* cancelled */ }
   };
