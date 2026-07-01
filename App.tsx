@@ -22,7 +22,8 @@ import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider
 import { startOtaUpdates } from './src/lib/otaUpdates';
 import { initAds } from './src/lib/ads';
 import { initAnalytics, track } from './src/lib/analytics';
-import { startReferralLinkCapture } from './src/lib/referralLink';
+import { startReferralLinkCapture, setPendingReferralCode } from './src/lib/referralLink';
+import { initAttribution } from './src/lib/attribution';
 import { loadAdTestMode } from './src/lib/adTestMode';
 import { AdsTestBadge } from './src/components/AdsTestBadge';
 import * as Sentry from '@sentry/react-native';
@@ -56,6 +57,10 @@ function App() {
   // Capture referral codes from deep links (cryptocomp://r/CODE) + log opens.
   // Scheme-based (no Branch yet); ReferralWatcher records it once authenticated.
   React.useEffect(() => startReferralLinkCapture(url => track('deep_link_opened', { url })), []);
+
+  // Branch install attribution — GUARDED and OFF (no-op) until Branch is set up.
+  // When enabled it feeds the referral code into the same pipeline as scheme links.
+  React.useEffect(() => initAttribution(code => setPendingReferralCode(code)), []);
 
   // Load the persisted AdMob test-mode override (QA dev toggle).
   React.useEffect(() => { loadAdTestMode(); }, []);
