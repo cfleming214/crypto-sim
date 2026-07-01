@@ -12,6 +12,9 @@ interface AuthContextValue {
   emailVerified: boolean;
   signIn: (username: string, password: string) => Promise<void>;
   signUp: (username: string, password: string) => Promise<void>;
+  /** Federated Sign in with Apple via Cognito hosted UI. Requires the Cognito
+   *  Apple provider + OAuth config; gated behind APPLE_SIGNIN_ENABLED in the UI. */
+  signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
   /** Permanently delete the account + all cloud data, then drop to guest. */
   deleteAccount: () => Promise<void>;
@@ -33,6 +36,7 @@ const AuthContext = createContext<AuthContextValue>({
   emailVerified: false,
   signIn: async () => {},
   signUp: async () => {},
+  signInWithApple: async () => {},
   signOut: async () => {},
   deleteAccount: async () => {},
   refreshAttributes: async () => false,
@@ -120,6 +124,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     track('login', { method: 'email' });
   };
 
+  // Federated Sign in with Apple through the Cognito hosted UI. On success the
+  // redirect returns and Amplify's Hub establishes the session (checkSession picks
+  // it up). Throws if the Apple provider / OAuth domain isn't configured yet — the
+  // UI only shows this behind APPLE_SIGNIN_ENABLED, so that can't be hit by users.
+  const handleSignInWithApple = async () => {
+    const { signInWithRedirect } = await import('aws-amplify/auth');
+    track('login', { method: 'apple' });
+    await signInWithRedirect({ provider: 'Apple' });
+  };
+
   const handleSignUp = async (usernameInput: string, password: string) => {
     const { signUp } = await import('aws-amplify/auth');
     // The deployed pool signs in by email (usernameAttributes = ['email']) and
@@ -193,6 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       emailVerified,
       signIn: handleSignIn,
       signUp: handleSignUp,
+      signInWithApple: handleSignInWithApple,
       signOut: handleSignOut,
       deleteAccount: handleDeleteAccount,
       refreshAttributes: loadAttributes,
