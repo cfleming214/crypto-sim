@@ -308,12 +308,23 @@ const cupBoardTable = backend.data.resources.tables['RecruiterCupLeaderboard'];
 referralTable.grantReadData(cupFn);
 profileTable.grantReadWriteData(cupFn);   // read profiles + write activatedReferrals
 cupBoardTable.grantReadWriteData(cupFn);
+// WS6: cash settlement of the cup's top-5 (gated OFF via CONTEST_CASH_PRIZES) reuses
+// the contest Payout + 1099 rails.
+payoutTable.grantReadWriteData(cupFn);
+annualWinningsTable.grantReadWriteData(cupFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 cupFn.addEnvironment('REFERRAL_TABLE_NAME', referralTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 cupFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 cupFn.addEnvironment('RECRUITER_CUP_LEADERBOARD_TABLE_NAME', cupBoardTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('ANNUAL_WINNINGS_TABLE_NAME', annualWinningsTable.tableName);
+// Cash-prize gate — mirror the client flag. Dormant (XP-only) until set to 'true'.
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('CONTEST_CASH_PRIZES', process.env.EXPO_PUBLIC_PAYOUTS_ENABLED === 'true' ? 'true' : 'false');
 
 new Rule(Stack.of(cupFn), 'SettleRecruiterCupRule', {
   schedule: Schedule.rate(Duration.minutes(5)),
