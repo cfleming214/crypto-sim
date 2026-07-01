@@ -62,6 +62,43 @@ export async function recordLiveTrade(
   }
 }
 
+export interface TradeMixSlice { symbol: string; count: number; pct: number }
+
+// Top coins by trade count over the last 24h across the global feed, with each
+// coin's share of all 24h trades. Samples up to `sampleLimit` recent rows (newest
+// first) and aggregates client-side — enough for the "what's being traded" widget
+// without a dedicated aggregate table. Returns the top `top` slices (default 5).
+export async function fetchTradeMix24h(sampleLimit = 500, top = 5): Promise<TradeMixSlice[]> {
+  if (!(await hasAuthSession())) return [];
+  const client = await getClient();
+  if (!client) return [];
+  try {
+    const { data } = await client.models.LiveTrade.liveTradesByFeed(
+      { feed: FEED },
+      { sortDirection: 'DESC', limit: sampleLimit },
+    );
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (const t of data as any[]) {
+      const at = t.tradedAt ? Date.parse(t.tradedAt) : NaN;
+      if (!Number.isFinite(at) || at < cutoff) continue;
+      const sym = String(t.symbol || '').toUpperCase();
+      if (!sym) continue;
+      counts[sym] = (counts[sym] ?? 0) + 1;
+      total += 1;
+    }
+    if (total === 0) return [];
+    return Object.entries(counts)
+      .map(([symbol, count]) => ({ symbol, count, pct: Math.round((count / total) * 100) }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, top);
+  } catch (e) {
+    console.warn('fetchTradeMix24h failed', e);
+    return [];
+  }
+}
+
 // The latest `limit` trades across all users, newest first.
 export async function fetchLiveTrades(limit = 25): Promise<LiveTradeRow[]> {
   if (!(await hasAuthSession())) return [];                        // userPool-only read

@@ -15,6 +15,7 @@ import { AdBanner } from '../components/AdBanner';
 import { watchForReward } from '../lib/rewardedRewards';
 import { track } from '../lib/analytics';
 import { RecruiterCupBoard } from '../components/RecruiterCupBoard';
+import { TradeMix24h } from '../components/TradeMix24h';
 import { useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/tokens';
 import { leagueColor } from '../components/ui/LeagueBadge';
@@ -973,6 +974,9 @@ export function CompeteScreen() {
           </Card>
         )}
       </View>
+
+      {/* Top-5 most-traded coins over the last 24h (share of all trades). */}
+      <TradeMix24h />
 
       {/* AdMob banner — real unit in production (AD_UNITS.banner), test ad in dev.
           No-ops in Expo Go / web. */}
