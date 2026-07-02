@@ -76,7 +76,7 @@ const cog = new CognitoIdentityProviderClient({ region: REGION });
 const ddb = new DynamoDBClient({ region: REGION });
 
 const STARTING_CASH = 100_000;
-const PASSWORD = 'OnlineSeed!2026';
+const PASSWORD = process.env.BOT_SEED_PASSWORD || 'OnlineSeed!2026'; // override via env; default = throwaway bots
 // Distinct email domain so this cohort is identifiable later (handles are random
 // and have no "bot"). The handle — the only user-visible name — never says "bot".
 const EMAIL_DOMAIN = 'sim.cryptocomp.app';

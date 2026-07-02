@@ -285,7 +285,7 @@ async function fetchPrices(symbols: Set<string>, geckoIds: Record<string, string
   const headers: Record<string, string> = { accept: 'application/json' };
   if (process.env.COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = process.env.COINGECKO_API_KEY;
   try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}`, { headers });
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}`, { headers, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) { console.error('CoinGecko', res.status); return out; }
     const json = (await res.json()) as Array<{ id?: string; current_price?: number }>;
     const byGecko: Record<string, number> = {};

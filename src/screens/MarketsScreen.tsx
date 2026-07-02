@@ -22,7 +22,9 @@ import { Search, Star, SlidersHorizontal, X, Info } from 'lucide-react-native';
 // 24h % change (prev = price / (1 + pct/100)). Returned unsigned and compactly
 // formatted; the caller supplies the +/− sign and color.
 function fmtMoneyDelta(price: number, changePct: number): string {
-  const prev = price / (1 + changePct / 100);
+  // Guard the −100% edge (denominator 0 → Infinity): treat prev as 0 (moved from ~nothing).
+  const denom = 1 + changePct / 100;
+  const prev = denom > 0 ? price / denom : 0;
   const d = Math.abs(price - prev);
   if (d >= 1000) return d.toLocaleString('en-US', { maximumFractionDigits: 0 });
   if (d >= 1) return d.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -240,7 +242,8 @@ export function MarketsScreen() {
           </Text>
           {state.globalStats && (() => {
             const { totalMarketCap: mc, change24h: pct } = state.globalStats;
-            const delta = mc - mc / (1 + pct / 100);   // 24h $ change
+            const mcDenom = 1 + pct / 100;              // guard −100% (÷0 → Infinity)
+            const delta = mcDenom > 0 ? mc - mc / mcDenom : mc;   // 24h $ change
             const up = pct >= 0;
             return (
               <Text style={{ fontSize: 11, color: up ? colors.up : colors.down, fontVariant: ['tabular-nums'], marginTop: 1 }}>

@@ -38,7 +38,7 @@ async function fetchPrices(geckoId: string, days: number, headers: Record<string
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/coins/${geckoId}/market_chart?vs_currency=usd&days=${days}`,
-      { headers },
+      { headers, signal: AbortSignal.timeout(10_000) },
     );
     if (res.status === 429) {
       await sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
