@@ -308,6 +308,9 @@ const cupBoardTable = backend.data.resources.tables['RecruiterCupLeaderboard'];
 referralTable.grantReadData(cupFn);
 profileTable.grantReadWriteData(cupFn);   // read profiles + write activatedReferrals
 cupBoardTable.grantReadWriteData(cupFn);
+entryTable.grantReadData(cupFn);          // server-verify referral activation vs finished entries
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+cupFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
 // WS6: cash settlement of the cup's top-5 (gated OFF via CONTEST_CASH_PRIZES) reuses
 // the contest Payout + 1099 rails.
 payoutTable.grantReadWriteData(cupFn);

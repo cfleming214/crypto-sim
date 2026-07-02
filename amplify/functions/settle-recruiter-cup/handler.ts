@@ -28,7 +28,8 @@ export const handler = async (): Promise<{ ranked: number; settled: number }> =>
   const referralTable = process.env.REFERRAL_TABLE_NAME;
   const profileTable = process.env.USER_PROFILE_TABLE_NAME;
   const boardTable = process.env.RECRUITER_CUP_LEADERBOARD_TABLE_NAME;
-  if (!referralTable || !profileTable || !boardTable) throw new Error('table env vars not set');
+  const entryTable = process.env.COMPETITION_ENTRY_TABLE_NAME;
+  if (!referralTable || !profileTable || !boardTable || !entryTable) throw new Error('table env vars not set');
   const cashMode = process.env.CONTEST_CASH_PRIZES === 'true';
 
   const now = Date.now();
@@ -37,11 +38,22 @@ export const handler = async (): Promise<{ ranked: number; settled: number }> =>
   const prevStart = seasonStart - SEASON_MS; // previous (just-completed) season window
   const prevSid = sid - 1;
 
-  // 1. Aggregate activated referrals per referrer: lifetime, this season, prev season.
+  // 0. SERVER-VERIFY activation: a referral only counts once the referee has
+  // independently finished a contest. Client-set Referral.status is NOT trusted
+  // (it's owner-writable — a modified client could self-activate to farm rewards).
+  // Build the set of subs that own ≥1 finished (isActive=false) CompetitionEntry.
+  const finishedSubs = new Set<string>();
+  for await (const raw of scanAll(entryTable)) {
+    const e = unmarshall(raw) as { owner?: string; isActive?: boolean };
+    if (e.isActive === false && e.owner) finishedSubs.add(e.owner.split('::')[0]);
+  }
+
+  // 1. Aggregate VERIFIED activated referrals per referrer: lifetime, this/prev season.
   const agg: Record<string, { total: number; season: number; prev: number; handle?: string }> = {};
   for await (const raw of scanAll(referralTable)) {
-    const r = unmarshall(raw) as { referrerUserId?: string; referrerHandle?: string; status?: string; activatedAt?: string };
-    if (r.status !== 'activated' || !r.referrerUserId) continue;
+    const r = unmarshall(raw) as { referrerUserId?: string; referrerHandle?: string; refereeUserId?: string; activatedAt?: string };
+    // Count only if the REFEREE has a real finished contest — ignore client status.
+    if (!r.referrerUserId || !r.refereeUserId || !finishedSubs.has(r.refereeUserId)) continue;
     const a = (agg[r.referrerUserId] ||= { total: 0, season: 0, prev: 0 });
     a.total += 1;
     if (r.referrerHandle && !a.handle) a.handle = r.referrerHandle;
