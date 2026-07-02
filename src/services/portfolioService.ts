@@ -512,7 +512,11 @@ export async function saveProfile(state: AppState): Promise<void> {
       allocationJson:    JSON.stringify(allocation),
       lastActiveAt:      new Date(now).toISOString(),
     };
-    if (existingPublic.length) {
+    if (state.user.leaderboardVisible === false) {
+      // Opted out of the public leaderboard/discovery — never publish, and remove
+      // any existing row so the opt-out doesn't rely solely on server-side filtering.
+      if (existingPublic.length) await client.models.PublicProfile.delete({ id: existingPublic[0].id });
+    } else if (existingPublic.length) {
       await client.models.PublicProfile.update({ id: existingPublic[0].id, ...publicPayload });
     } else {
       await client.models.PublicProfile.create(publicPayload);

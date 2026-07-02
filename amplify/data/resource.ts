@@ -182,10 +182,12 @@ const schema = a.schema({
     isActive: a.boolean(),
     // Per-contest portfolio — separate from the user's main UserProfile.
     // Each contest gives the player a fresh $100K and tracks its own holdings
-    // and trade history independently.
-    cash: a.float(),
-    holdingsJson: a.string(),
-    tradesJson: a.string(),
+    // and trade history independently. These three are OWNER-ONLY (field-level
+    // auth): only the player sees their own cash/holdings/trades — the model-level
+    // authenticated read exposes just the leaderboard-safe fields above.
+    cash: a.float().authorization(allow => [allow.owner()]),
+    holdingsJson: a.string().authorization(allow => [allow.owner()]),
+    tradesJson: a.string().authorization(allow => [allow.owner()]),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
@@ -229,9 +231,10 @@ const schema = a.schema({
     rank: a.integer(),
     joinedAt: a.string().required(),
     isActive: a.boolean(),
-    cash: a.float(),
-    holdingsJson: a.string(),
-    tradesJson: a.string(),
+    // Owner-only (field-level), like CompetitionEntry — hide opponents' portfolios.
+    cash: a.float().authorization(allow => [allow.owner()]),
+    holdingsJson: a.string().authorization(allow => [allow.owner()]),
+    tradesJson: a.string().authorization(allow => [allow.owner()]),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
