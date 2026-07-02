@@ -1,6 +1,5 @@
 import {
   DynamoDBClient,
-  ScanCommand,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
@@ -34,19 +33,15 @@ async function syncAccount(acct: Stripe.Account) {
   const table = process.env.STRIPE_ACCOUNT_TABLE_NAME!;
   const derived = deriveStatus(acct);
 
-  let id = userId;
-  if (!id) {
-    const { Items = [] } = await ddb.send(new ScanCommand({
-      TableName: table,
-      FilterExpression: 'stripeAccountId = :a',
-      ExpressionAttributeValues: marshall({ ':a': acct.id }),
-    }));
-    id = Items[0] ? (Items[0].id as any).S : undefined;
-  }
-  if (!id) {
-    console.warn('account.updated: no StripeAccount row for', acct.id);
+  // The row id IS the userId, which we set as metadata.userId at account creation
+  // (see stripe-connect). The Function URL is public, so we do NOT fall back to a
+  // full-table Scan on a missing/spoofed userId (DoS-by-cost) — just no-op. If a
+  // real event ever lacks it, add a stripeAccountId GSI + Query (see future-fixes.md).
+  if (!userId) {
+    console.warn('account.updated: no metadata.userId for', acct.id, '— skipping');
     return;
   }
+  const id = userId;
 
   await ddb.send(new UpdateItemCommand({
     TableName: table,
