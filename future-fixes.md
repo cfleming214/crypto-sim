@@ -94,22 +94,39 @@ Fine for XP; **theft once money is on**. Do ALL of the following before flipping
    when `CONTEST_CASH_PRIZES` is on + apply the returned cash/holdings into AppContext (XP contests keep
    trading locally). Until then `saveContestPortfolio` still persists unvalidated client holdings.
 3. **[CRITICAL] Server-derived XP for anything that converts to money.** XP is fully client-trusted.
-   Recruiter Cup cash + cash prizes must derive rank/XP server-side (e.g. a `Trade` DynamoDB-stream
-   Lambda), not from client-written `UserProfile.xp`.
+   ✅ NO-OP TODAY (verified): after PR4 (rank from live holdings) + §1.2 (referral server-verify), **no
+   cash surface reads client `UserProfile.xp`** — contest cash derives from server-recomputed rank, the
+   Recruiter Cup from server-verified referral counts. Re-audit if a future cash prize keys on XP; only
+   then add a `Trade`-stream XP Lambda.
 4. **[HIGH] Invitee referral reward server-verification.** The invitee's welcome passes/XP are
-   self-granted client-side (`CLAIM_REFERRAL_REWARD`); grant them server-side on verified first-contest
-   finish.
-5. **[HIGH] Payout claim/withdraw idempotency + amount re-validation.** Harden `stripe-connect`
-   `claimPrize` against double-credit (strict conditional / claim-request dedupe) and re-validate
-   `Payout.amountCents` against the contest's `prizesJson` + rank in `process-withdrawals`.
-6. **[MEDIUM] Portfolio reconciliation job.** Periodic server check that a profile's cash/holdings
-   reconcile with its `Trade` ledger; alert on drift.
+   self-granted client-side (`CLAIM_REFERRAL_REWARD`). This is a **virtual** welcome reward (not cash),
+   so it's XP-class client-trust, not a cash exploit. Grant it server-side on verified first-contest
+   finish when the server-XP work (item 3) is done. ⏳ cash-enable nicety.
+5. **[HIGH] Payout claim/withdraw idempotency + amount re-validation.** ✅ ALREADY SAFE (verified):
+   `claimPrize` guards with an atomic conditional `UpdateItem` (`attribute_not_exists(claimed) OR
+   claimed=:f`) and only credits AFTER it succeeds — a concurrent second call gets
+   `ConditionalCheckFailedException` and returns `alreadyClaimed` (no double-credit). `requestWithdrawal`
+   reserves each Payout with a conditional write (race-safe) and sums server-set `amountCents`. Payout
+   rows are **owner-read-only, Lambda-written**, and `amountCents` is set by `close-competition` from
+   `prizes[rank-1]` with the PR4 server rank — so there's no client-tamperable amount to re-validate.
+   No change needed.
+6. **[MEDIUM] Portfolio reconciliation job.** Periodic server check that an entry's cash/holdings
+   reconcile with its trade ledger; alert on drift. ⏳ Correctly a **cash-enable-time** item: it only makes
+   sense once contest trades are server-authoritative (item 2's client routing). Run before it and it
+   just flags the intentionally client-owned XP state as "drift."
 
 ---
 
 ## Cash-enable checklist (gate for `EXPO_PUBLIC_PAYOUTS_ENABLED=true`)
-- [ ] Section 2 items 1–6 shipped + verified in Stripe test mode.
-- [ ] Section 1.2 (referral server-verify) + 1.3 (webhook hardening) shipped.
+- [x] §2.1 settlement re-rank from live holdings (PR4).
+- [x] §2.2 server-authoritative `executeContestTrade` mutation (PR5, server side).
+- [ ] §2.2 REMAINING: route `TradeScreen` contest trades through the mutation when `CONTEST_CASH_PRIZES` on.
+- [x] §2.3 server-XP — verified no-op today (re-audit if a cash prize ever keys on XP).
+- [ ] §2.4 invitee reward server-grant (virtual; do with §2.3 work).
+- [x] §2.5 payout claim/withdraw idempotency — verified already safe.
+- [ ] §2.6 portfolio reconciliation cron (build after §2.2 client routing).
+- [x] §1.1 privacy, §1.2 referral server-verify, §1.3 webhook, §1.4 opt-out, §1.5 robustness — shipped.
+- [ ] Verify the full cash path in Stripe test mode (join → trade via mutation → settle → claim → withdraw).
 - [ ] Legal: sweepstakes registration, 1099/$600 process, `docs/official-contest-rules.html` current,
       `$4,999` prize-pool cap enforced (already in `contestCompliance.ts`).
 - [ ] Load/QA: a modified client cannot inflate a contest result that survives settlement.
