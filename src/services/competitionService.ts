@@ -400,6 +400,30 @@ export async function fetchEntryPortfolio(competitionId: string, handle: string)
   }
 }
 
+// Server-authoritative CONTEST trade (future-fixes 2.2). The executeContestTrade
+// mutation validates the caller's own CompetitionEntry cash/holdings at the SERVER
+// price and returns the new ledger — so contest holdings can't be forged from a
+// modified client. Wire this into the trade flow for CASH contests when
+// CONTEST_CASH_PRIZES is enabled; XP contests keep trading locally until then.
+export async function executeContestTrade(
+  competitionId: string,
+  symbol: string,
+  side: 'buy' | 'sell',
+  amount: number,
+): Promise<{ ok: boolean; cash?: number; holdings?: Holding[]; error?: string }> {
+  const client = await getClient();
+  if (!client) return { ok: false, error: 'Offline' };
+  try {
+    const { data, errors } = await client.mutations.executeContestTrade({ competitionId, symbol, side, amount });
+    if (errors?.length) return { ok: false, error: errors[0].message };
+    const res = typeof data === 'string' ? JSON.parse(data) : (data as any);
+    return { ok: !!res?.ok, cash: res?.cash, holdings: res?.holdings, error: res?.error };
+  } catch (e) {
+    console.warn('executeContestTrade failed', e);
+    return { ok: false, error: String(e) };
+  }
+}
+
 export async function fetchCompetitionLeaderboard(
   competitionId: string,
 ): Promise<CompetitionEntry[]> {

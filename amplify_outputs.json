@@ -3650,6 +3650,38 @@
             }
           }
         },
+        "executeContestTrade": {
+          "name": "executeContestTrade",
+          "isArray": false,
+          "type": "AWSJSON",
+          "isRequired": false,
+          "arguments": {
+            "competitionId": {
+              "name": "competitionId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "symbol": {
+              "name": "symbol",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "side": {
+              "name": "side",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "amount": {
+              "name": "amount",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": true
+            }
+          }
+        },
         "requestWithdrawal": {
           "name": "requestWithdrawal",
           "isArray": false,

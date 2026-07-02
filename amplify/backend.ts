@@ -271,14 +271,16 @@ coachFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 coachFn.addEnvironment('COACH_NUDGE_TABLE_NAME', coachNudgeTable.tableName);
 
-// --- executeTrade: user-invoked, server-side validated trade execution ---
+// --- executeContestTrade: server-authoritative contest trade (future-fixes 2.2) ---
+// Validates the caller's CompetitionEntry at the SERVER price and writes the
+// ledger back. Reads Token for price; read/writes CompetitionEntry.
 const execFn = backend.executeTrade.resources.lambda;
-profileTable.grantReadWriteData(execFn);
-tradeTable.grantWriteData(execFn);
+entryTable.grantReadWriteData(execFn);
+tokenTable.grantReadData(execFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
-execFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+execFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
-execFn.addEnvironment('TRADE_TABLE_NAME', tradeTable.tableName);
+execFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 
 // --- runMirror: DynamoDB stream trigger on Trade table, copies trades to followers ---
 const mirrorFn = backend.runMirror.resources.lambda;
