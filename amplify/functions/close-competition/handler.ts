@@ -10,6 +10,32 @@ import { pushToUser } from '../lib/expoPush';
 
 const ddb = new DynamoDBClient({});
 
+// Each contest funds a fresh $100K (matches STARTING_CASH + tick-leaderboard).
+const STARTING_BANKROLL = 100000;
+type Holding = { symbol: string; units: number };
+
+// Current price for every token, keyed by uppercase symbol — used to revalue
+// entries at settlement so payouts don't trust client-written bankroll/rank.
+async function buildPriceMap(tokenTable: string): Promise<Record<string, number>> {
+  const priceMap: Record<string, number> = {};
+  let start: Record<string, any> | undefined;
+  do {
+    const res = await ddb.send(new ScanCommand({
+      TableName: tokenTable,
+      ExclusiveStartKey: start,
+      ProjectionExpression: '#s, lastPrice',
+      ExpressionAttributeNames: { '#s': 'symbol' },
+    }));
+    for (const it of res.Items ?? []) {
+      const sym = it.symbol?.S;
+      const price = it.lastPrice?.N ? Number(it.lastPrice.N) : 0;
+      if (sym && price > 0) priceMap[sym.toUpperCase()] = price;
+    }
+    start = res.LastEvaluatedKey;
+  } while (start);
+  return priceMap;
+}
+
 // Amplify owner fields can be stored as "<sub>::<username>" or just "<sub>".
 // Payout rows are keyed by the bare sub, so normalize before use.
 const subFromOwner = (owner: string | undefined): string =>
@@ -120,7 +146,7 @@ async function settleWinner(
   }
 }
 
-async function settleCompetition(compTable: string, entryTable: string, comp: any) {
+async function settleCompetition(entryTable: string, comp: any, priceMap: Record<string, number>) {
   const payoutTable = process.env.PAYOUT_TABLE_NAME;
   if (!payoutTable) throw new Error('PAYOUT_TABLE_NAME not set');
 
@@ -135,13 +161,28 @@ async function settleCompetition(compTable: string, entryTable: string, comp: an
     ExpressionAttributeValues: marshall({ ':cid': comp.id }),
   }));
 
-  for (const raw of entryItems) {
-    const entry = unmarshall(raw) as { owner?: string; rank?: number };
-    const rank = entry.rank ?? 999;
-    if (rank < 1 || rank > numberOfPrizes) continue;
-    const dollars = prizes[rank - 1];
+  // Recompute standings HERE from holdings × current price — do NOT trust the
+  // client-written bankroll or the stored rank at settlement (future-fixes 2.1).
+  // This is money-critical: it makes the payout independent of tick-leaderboard
+  // timing and of a forged bankroll number. (Forged HOLDINGS are addressed by
+  // PR5 — routing contest trades through execute-trade.)
+  const valued = entryItems.map(raw => {
+    const e = unmarshall(raw) as { owner?: string; bankroll?: number; cash?: number; holdingsJson?: string };
+    let value = e.bankroll ?? STARTING_BANKROLL;
+    if (e.holdingsJson != null) {
+      let holdings: Holding[] = [];
+      try { holdings = JSON.parse(e.holdingsJson || '[]'); } catch { holdings = []; }
+      const held = holdings.reduce((s, h) => s + (h.units || 0) * (priceMap[(h.symbol || '').toUpperCase()] ?? 0), 0);
+      value = (e.cash ?? 0) + held;
+    }
+    return { owner: e.owner, value };
+  });
+  valued.sort((a, b) => b.value - a.value);
+
+  for (let i = 0; i < valued.length && i < numberOfPrizes; i++) {
+    const dollars = prizes[i];
     if (!dollars || dollars <= 0) continue;
-    await settleWinner(payoutTable, comp, entry, Math.round(dollars * 100));
+    await settleWinner(payoutTable, comp, { owner: valued[i].owner, rank: i + 1 }, Math.round(dollars * 100));
   }
 }
 
@@ -165,6 +206,12 @@ export const handler = async (): Promise<void> => {
     ExpressionAttributeValues: marshall({ ':live': 'live', ':open': 'open', ':now': now }),
   }));
 
+  // Snapshot prices ONCE per run (only if something is due) to revalue entries at
+  // settlement. Missing table/prices → empty map; settleCompetition then falls
+  // back to stored bankroll per-entry so nothing is stranded.
+  const tokenTable = process.env.TOKEN_TABLE_NAME;
+  const priceMap = (Items.length && tokenTable) ? await buildPriceMap(tokenTable) : {};
+
   const finishedTable = process.env.FINISHED_COMPETITION_TABLE_NAME;
 
   for (const raw of Items) {
@@ -173,7 +220,7 @@ export const handler = async (): Promise<void> => {
 
     // Settle prizes BEFORE archiving, so a crash mid-settle leaves the contest
     // 'live' and the next run re-settles (idempotently) what's missing.
-    await settleCompetition(compTable, entryTable, comp);
+    await settleCompetition(entryTable, comp, priceMap);
 
     // Mark all entries inactive while the contest still exists.
     const { Items: entryItems = [] } = await ddb.send(new ScanCommand({

@@ -188,6 +188,11 @@ entryTable.grantReadWriteData(closeFn);
 closeFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 closeFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
+// Revalue entries from holdings × live price at settlement (server-authoritative
+// rank — never trust the client-written bankroll/rank; future-fixes 2.1).
+tokenTable.grantReadData(closeFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeFn.addEnvironment('TOKEN_TABLE_NAME', tokenTable.tableName);
 // Settlement: write Payout rows and read onboarding state to auto-Transfer.
 payoutTable.grantReadWriteData(closeFn);
 stripeAccountTable.grantReadData(closeFn);
