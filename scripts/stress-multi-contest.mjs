@@ -72,7 +72,7 @@ const ddb = new DynamoDBClient({ region: REGION });
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const STARTING_CASH = 100_000;
-const PASSWORD = 'StressBot!2026';
+const PASSWORD = process.env.BOT_SEED_PASSWORD || 'StressBot!2026'; // override via env; default = throwaway bots
 const CREATED_BY = 'stress-multi';
 const HANDLE_PREFIX = 'StressBot';
 const HOUR = 60 * 60 * 1000;

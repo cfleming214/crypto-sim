@@ -44,7 +44,7 @@ export const handler = async (): Promise<void> => {
   try {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h&sparkline=true`,
-      { headers },
+      { headers, signal: AbortSignal.timeout(10_000) },   // don't let a hung API burn the Lambda timeout
     );
     if (!res.ok) { console.error('CoinGecko markets', res.status); return; }
     markets = (await res.json()) as Market[];

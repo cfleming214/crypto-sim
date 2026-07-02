@@ -68,7 +68,7 @@ const ddb = new DynamoDBClient({ region: REGION });
 
 // ── tunables (must match the app + the seed scripts) ─────────────────────────
 const STARTING_CASH = 100_000;
-const SEED_PASSWORD = 'SeedBot!2026';
+const SEED_PASSWORD = process.env.BOT_SEED_PASSWORD || 'SeedBot!2026'; // override via env; default = throwaway bots
 const CREATED_BY    = 'seed-script';   // so seed:contests:clean removes it too
 const CONTEST_NAME  = 'stress test';
 const HOUR = 60 * 60 * 1000;

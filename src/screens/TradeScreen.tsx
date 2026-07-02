@@ -609,7 +609,8 @@ export function TradeScreen() {
   const isUp = change24h >= 0;
   // Absolute 24h move in dollars (prev = price / (1 + pct/100)), compactly
   // formatted; the sign/color is applied where it's rendered.
-  const abs24hChange = Math.abs(price - price / (1 + change24h / 100));
+  const chgDenom = 1 + change24h / 100;   // guard −100% (÷0 → Infinity)
+  const abs24hChange = chgDenom > 0 ? Math.abs(price - price / chgDenom) : price;
   const change24hStr =
     abs24hChange >= 1000 ? abs24hChange.toLocaleString('en-US', { maximumFractionDigits: 0 })
     : abs24hChange >= 1   ? abs24hChange.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

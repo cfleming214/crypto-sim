@@ -40,6 +40,14 @@ if (SENTRY_DSN) {
     dsn: SENTRY_DSN,
     tracesSampleRate: 0,
     enableAutoSessionTracking: true,
+    sendDefaultPii: false,
+    // Scrub PII before events leave the device: drop request URLs (may carry a
+    // referral code / handle) and cookies/headers. Errors-only, so this is cheap.
+    beforeSend(event) {
+      if (event.request) { delete event.request.url; delete event.request.cookies; delete event.request.headers; }
+      if (event.user) { delete event.user.email; delete event.user.ip_address; }
+      return event;
+    },
   });
 }
 

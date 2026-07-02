@@ -77,7 +77,7 @@ const ddb = new DynamoDBClient({ region: REGION });
 
 // ── Tunables ────────────────────────────────────────────────────────────────
 const STARTING_CASH = 100_000;           // must match the app's STARTING_CASH
-const SEED_PASSWORD = 'SeedBot!2026';    // fixed password for every bot account
+const SEED_PASSWORD = process.env.BOT_SEED_PASSWORD || 'SeedBot!2026'; // override via env; default = throwaway bots
 const CREATED_BY    = 'seed-script';     // marker so reruns can find + replace
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 
