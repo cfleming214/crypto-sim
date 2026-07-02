@@ -1,5 +1,6 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { stripeConnect } from '../functions/stripe-connect/resource.js';
+import { executeTrade } from '../functions/execute-trade/resource.js';
 
 const schema = a.schema({
   UserProfile: a.model({
@@ -619,6 +620,22 @@ const schema = a.schema({
     .arguments({ payoutId: a.string().required() })
     .returns(a.json())
     .handler(a.handler.function(stripeConnect))
+    .authorization(allow => [allow.authenticated()]),
+
+  // Server-authoritative CONTEST trade (future-fixes 2.2). Validates the caller's
+  // own CompetitionEntry cash/holdings at the SERVER price and writes back the
+  // ledger — so a modified client can't forge contest holdings. The client price
+  // is never trusted; identity comes from AppSync (event.identity.sub). Used for
+  // cash contests; XP contests still trade locally until cash is enabled.
+  executeContestTrade: a.mutation()
+    .arguments({
+      competitionId: a.string().required(),
+      symbol: a.string().required(),
+      side: a.string().required(),   // 'buy' | 'sell'
+      amount: a.float().required(),  // USD notional
+    })
+    .returns(a.json())
+    .handler(a.handler.function(executeTrade))
     .authorization(allow => [allow.authenticated()]),
 
   // Open a pending withdrawal of the user's full available balance.
