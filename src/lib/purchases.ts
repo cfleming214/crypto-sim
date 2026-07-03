@@ -147,9 +147,12 @@ export function entitlementsFrom(customerInfo: any): Entitlements {
   return { noAds, premium };
 }
 
-// Fetch current entitlements (e.g. on launch). Returns null on any failure
-// (SDK absent, no network) so the caller can keep the cached value rather than
-// clobbering a real entitlement to false when offline.
+// Fetch current entitlements (e.g. on launch / foreground). Returns null on any
+// failure (SDK absent, no network) so the caller can keep the cached value rather
+// than clobbering a real entitlement to false when offline. getCustomerInfo may
+// return the SDK's cached snapshot; RevenueCat refreshes it in the background and
+// the customerInfo listener applies the update — see refreshEntitlements() to
+// force a network re-read on demand.
 export async function fetchEntitlements(): Promise<Entitlements | null> {
   const sdk = loadSdk();
   if (!sdk || !configured) return null;
@@ -158,6 +161,23 @@ export async function fetchEntitlements(): Promise<Entitlements | null> {
     return entitlementsFrom(info);
   } catch (e) {
     console.warn('[iap] getCustomerInfo failed', e);
+    return null;
+  }
+}
+
+// Force a network re-read of entitlements: invalidate RevenueCat's customerInfo
+// cache, then getCustomerInfo. Use for a manual "Refresh" action so a lapsed
+// subscription (esp. flaky sandbox expiry) is picked up without waiting for a
+// cold launch. Same null-on-failure contract as fetchEntitlements.
+export async function refreshEntitlements(): Promise<Entitlements | null> {
+  const sdk = loadSdk();
+  if (!sdk || !configured) return null;
+  try {
+    try { await sdk.invalidateCustomerInfoCache?.(); } catch { /* older SDK — ignore */ }
+    const info = await sdk.getCustomerInfo();
+    return entitlementsFrom(info);
+  } catch (e) {
+    console.warn('[iap] refreshEntitlements failed', e);
     return null;
   }
 }

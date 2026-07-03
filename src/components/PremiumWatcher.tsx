@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AppState as RNAppState } from 'react-native';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { monthKey } from '../services/gamification';
@@ -44,6 +45,22 @@ export function PremiumWatcher() {
       logoutPurchases().then(() => dispatch({ type: 'SET_ENTITLEMENTS', noAds: false, premium: false }));
     }
   }, [status, userId, dispatch]);
+
+  // Re-read entitlements every time the app returns to the FOREGROUND. Without
+  // this the only revocation triggers are a cold launch / sign-in / RevenueCat
+  // push — so a subscription that lapsed while the app was backgrounded (or a
+  // flaky sandbox expiry) could keep Premium for days until the next cold start.
+  // A null result (offline / SDK unconfigured) is ignored, so we never flash ads
+  // on a transient failure — the cached entitlement survives, same as on launch.
+  useEffect(() => {
+    const sub = RNAppState.addEventListener('change', s => {
+      if (s !== 'active') return;
+      fetchEntitlements().then(e => {
+        if (e) dispatch({ type: 'SET_ENTITLEMENTS', noAds: e.noAds, premium: e.premium });
+      });
+    });
+    return () => sub.remove();
+  }, [dispatch]);
 
   // Keep the runtime entitlement store in sync with AppState (the ad gate reads it).
   // Entitlements only apply to a signed-in account: when logged out, force the
