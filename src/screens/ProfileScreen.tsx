@@ -31,7 +31,7 @@ import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
-import { restore as restorePurchases, useEntitlements, usePurchasesReady, entitlementDiagnostic } from '../lib/purchases';
+import { restore as restorePurchases, refreshEntitlements, useEntitlements, usePurchasesReady, entitlementDiagnostic } from '../lib/purchases';
 import { PurchaseModal } from '../components/PurchaseModal';
 import { OfflinePortfolioChooser, type OfflineGrantSource } from '../components/OfflinePortfolioChooser';
 import { OFFLINE_BALANCE_GRANT } from '../constants/featureFlags';
@@ -54,6 +54,24 @@ async function doRestore(dispatch: AppDispatch) {
   Alert.alert(
     any ? 'Purchases restored' : 'Nothing to restore',
     any ? 'Your subscription has been restored.' : 'No active purchases were found for your Apple ID.',
+  );
+}
+
+// Force a network re-read of entitlements (invalidate the RevenueCat cache +
+// getCustomerInfo) so a LAPSED/cancelled subscription is picked up immediately,
+// without waiting for a cold launch. Unlike Restore (which re-applies a receipt),
+// this can also turn Premium OFF when the sub is gone. Reports the resulting
+// state so a tester can confirm removal (esp. useful with flaky sandbox expiry).
+async function doRefresh(dispatch: AppDispatch) {
+  const e = await refreshEntitlements();
+  if (!e) {
+    Alert.alert('Couldn’t refresh', 'Subscription status is unavailable right now — you may be offline, or in-app purchases aren’t configured on this build.');
+    return;
+  }
+  dispatch({ type: 'SET_ENTITLEMENTS', noAds: e.noAds, premium: e.premium });
+  Alert.alert(
+    e.premium ? 'Premium active' : e.noAds ? 'No-Ads active' : 'No active subscription',
+    e.premium || e.noAds ? 'Your subscription is active.' : 'No active subscription was found — Premium perks and No-Ads are now off.',
   );
 }
 
@@ -887,11 +905,25 @@ export function ProfileScreen() {
           </CardSection>
         </TouchableOpacity>
         <TouchableOpacity testID="profile-manage-sub" onPress={openManageSubscriptions}>
-          <CardSection last={!premium && !showEntitlementDiag}>
+          <CardSection>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Crown color={colors.ink} size={18} strokeWidth={1.75} />
                 <Text style={{ fontWeight: '600', color: colors.ink }}>Manage subscription</Text>
+              </View>
+              <Text style={{ color: colors.ink3 }}>›</Text>
+            </View>
+          </CardSection>
+        </TouchableOpacity>
+        <TouchableOpacity testID="profile-refresh-entitlements" onPress={() => doRefresh(dispatch)}>
+          <CardSection last={!premium && !showEntitlementDiag}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <RefreshCw color={colors.ink} size={18} strokeWidth={1.75} />
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={{ fontWeight: '600', color: colors.ink }}>Refresh subscription status</Text>
+                  <Text style={{ fontSize: 11, color: colors.ink3 }}>Re-check after cancelling, or if perks look wrong</Text>
+                </View>
               </View>
               <Text style={{ color: colors.ink3 }}>›</Text>
             </View>
