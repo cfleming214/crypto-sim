@@ -3,9 +3,10 @@ import { View, Share, TextInput, Alert } from 'react-native';
 import { Text } from './ui/Text';
 import { Card, CardSection } from './ui/Card';
 import { Button } from './ui/Button';
+import { Check, Lock } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
-import { countMyActivatedReferrals, referralTier, recordReferral } from '../services/referralService';
+import { countMyActivatedReferrals, referralTier, recordReferral, REFERRAL_TIERS } from '../services/referralService';
 import { buildReferralLink } from '../lib/attribution';
 
 // Profile referral surface for "Recruit & Rise": shows the user's invite code
@@ -72,6 +73,36 @@ export function ReferralCard() {
           {tier.next && (
             <Text style={{ fontSize: 12, color: colors.ink3 }}>{tier.toNext} to {tier.next}</Text>
           )}
+        </View>
+      </CardSection>
+
+      {/* Reward levels — every tier, its threshold + perk, and what you've unlocked. */}
+      <CardSection last={!!state.referral.referredByCode}>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink, marginBottom: 8 }}>Reward levels</Text>
+        <View style={{ gap: 10 }}>
+          {REFERRAL_TIERS.map(t => {
+            const unlocked = activated >= t.min;
+            const isNext = !unlocked && tier.next === t.name;
+            return (
+              <View key={t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: unlocked ? `${colors.up}22` : colors.surface2 }}>
+                  {unlocked
+                    ? <Check color={colors.up} size={13} strokeWidth={2.5} />
+                    : <Lock color={colors.ink3} size={11} strokeWidth={2} />}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: unlocked ? colors.ink : colors.ink2 }}>
+                    {t.name}
+                    <Text style={{ fontSize: 11, fontWeight: '500', color: colors.ink3 }}>{`  ·  ${t.min} ${t.min === 1 ? 'referral' : 'referrals'}`}</Text>
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>{t.perk}</Text>
+                </View>
+                {isNext && (
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand, textTransform: 'uppercase', letterSpacing: 0.5 }}>Next</Text>
+                )}
+              </View>
+            );
+          })}
         </View>
       </CardSection>
 
