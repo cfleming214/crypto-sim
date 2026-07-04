@@ -1634,6 +1634,12 @@ function reducer(state: AppState, action: Action): AppState {
         premiumCash: state.premiumCash,
         premiumPortfolioIds: state.premiumPortfolioIds,
         portfolios: keptOfflinePortfolios,
+        // Achievements are device-local (gamification.v1) and largely derived from
+        // the offline-portfolio trade history we preserve above — so they must
+        // survive a sign-out too. Otherwise wiping them to {} while the earning
+        // trades remain makes AchievementWatcher RE-UNLOCK them (e.g. "Big winner"
+        // re-toasting on every logged-out launch / account switch).
+        achievements: state.achievements,
         // Onboarding is a device-level "has this install seen the intro" flag
         // (persisted in AsyncStorage 'hasOnboarded'), not per-account. Without
         // carrying it over, the unauthenticated effect's CLEAR_USER_DATA resets
