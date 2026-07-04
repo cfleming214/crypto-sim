@@ -21,6 +21,10 @@ export function AchievementWatcher() {
   // the initial load window (hydration + cloud profile fetch) is merged silently
   // so a fresh device doesn't toast the user's entire back-catalogue at once.
   const armedRef = useRef(false);
+  // Ids we've already toasted THIS session — a hard stop against re-toasting the
+  // same achievement if state.achievements is ever transiently emptied (e.g. a
+  // sign-out/CLEAR_USER_DATA) while the earning trades remain.
+  const toastedRef = useRef<Set<AchievementId>>(new Set());
 
   useEffect(() => {
     const t = setTimeout(() => { armedRef.current = true; }, 3500);
@@ -88,8 +92,11 @@ export function AchievementWatcher() {
     // Celebrate only genuine, in-session unlocks: after the warm-up window and
     // only a small batch (1–3). A larger batch means an initial reconciliation
     // (fresh device / first run after this feature shipped) — merge silently.
-    if (armedRef.current && newIds.length <= 3) {
-      for (const id of newIds) {
+    // Skip anything already toasted this session (re-detection after a wipe).
+    const fresh = newIds.filter(id => !toastedRef.current.has(id));
+    for (const id of newIds) toastedRef.current.add(id);
+    if (armedRef.current && fresh.length > 0 && fresh.length <= 3) {
+      for (const id of fresh) {
         const def = DEFS_BY_ID[id];
         if (!def) continue;
         show({ title: 'Achievement unlocked', subtitle: def.name, icon: achievementIcon(def.icon), variant: 'up' });
