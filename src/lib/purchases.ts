@@ -165,6 +165,42 @@ export async function fetchEntitlements(): Promise<Entitlements | null> {
   }
 }
 
+export interface EntitlementOwner {
+  appUserId: string;               // current RevenueCat App User ID
+  isAnonymous: boolean;            // true for $RCAnonymousID:… (no account scoping)
+  active: boolean;                 // any active entitlement right now
+  expirationDate: string | null;  // ISO expiry of the active sub, if any
+  willRenew: boolean | null;       // auto-renew on? (sandbox renews on an accelerated clock)
+  productId: string | null;
+}
+
+// WHO owns the entitlement on this device, per RevenueCat. Lets the Profile
+// diagnostic show whether the active sub is attributed to THIS account, another
+// account (a transfer/leak), or an anonymous device user — the exact thing that
+// goes wrong when RevenueCat's transfer behavior isn't "Keep with original App
+// User ID". Null when the SDK is absent/unconfigured/offline.
+export async function entitlementOwner(): Promise<EntitlementOwner | null> {
+  const sdk = loadSdk();
+  if (!sdk || !configured) return null;
+  try {
+    const appUserId: string = await sdk.getAppUserID();
+    const info = await sdk.getCustomerInfo();
+    const active = info?.entitlements?.active ?? {};
+    const ent = active[ENTITLEMENT_PREMIUM] || active[ENTITLEMENT_NO_ADS] || Object.values(active)[0];
+    return {
+      appUserId: appUserId ?? '(unknown)',
+      isAnonymous: typeof appUserId === 'string' && appUserId.startsWith('$RCAnonymousID'),
+      active: Object.keys(active).length > 0,
+      expirationDate: (ent as any)?.expirationDate ?? null,
+      willRenew: ent ? !!(ent as any).willRenew : null,
+      productId: (ent as any)?.productIdentifier ?? null,
+    };
+  } catch (e) {
+    console.warn('[iap] entitlementOwner failed', e);
+    return null;
+  }
+}
+
 // Force a network re-read of entitlements: invalidate RevenueCat's customerInfo
 // cache, then getCustomerInfo. Use for a manual "Refresh" action so a lapsed
 // subscription (esp. flaky sandbox expiry) is picked up without waiting for a

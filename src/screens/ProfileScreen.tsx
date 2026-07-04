@@ -31,7 +31,7 @@ import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
-import { restore as restorePurchases, refreshEntitlements, useEntitlements, usePurchasesReady, entitlementDiagnostic } from '../lib/purchases';
+import { restore as restorePurchases, refreshEntitlements, entitlementOwner, type EntitlementOwner, useEntitlements, usePurchasesReady, entitlementDiagnostic } from '../lib/purchases';
 import { PurchaseModal } from '../components/PurchaseModal';
 import { OfflinePortfolioChooser, type OfflineGrantSource } from '../components/OfflinePortfolioChooser';
 import { OFFLINE_BALANCE_GRANT } from '../constants/featureFlags';
@@ -363,6 +363,16 @@ export function ProfileScreen() {
   // not attached / wrong identifier".
   const entDiag = entitlementDiagnostic();
   const showEntitlementDiag = purchasesReady && !premium && !noAds && (entDiag.subscriptions.length > 0 || entDiag.entitlements.length > 0);
+  // WHO RevenueCat attributes the sub to on this device — surfaces a transfer/leak
+  // (sub attributed to another account) vs this account vs an anonymous device
+  // user. Re-loads when entitlements change (e.g. after Refresh) so it stays live.
+  const [entOwner, setEntOwner] = useState<EntitlementOwner | null>(null);
+  useEffect(() => {
+    let alive = true;
+    entitlementOwner().then(o => { if (alive) setEntOwner(o); });
+    return () => { alive = false; };
+  }, [premium, noAds, purchasesReady]);
+  const showOwnerDiag = purchasesReady && !!entOwner;
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
@@ -915,8 +925,8 @@ export function ProfileScreen() {
             </View>
           </CardSection>
         </TouchableOpacity>
-        <TouchableOpacity testID="profile-refresh-entitlements" onPress={() => doRefresh(dispatch)}>
-          <CardSection last={!premium && !showEntitlementDiag}>
+        <TouchableOpacity testID="profile-refresh-entitlements" onPress={async () => { await doRefresh(dispatch); entitlementOwner().then(setEntOwner); }}>
+          <CardSection last={!premium && !showEntitlementDiag && !showOwnerDiag}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <RefreshCw color={colors.ink} size={18} strokeWidth={1.75} />
@@ -929,6 +939,45 @@ export function ProfileScreen() {
             </View>
           </CardSection>
         </TouchableOpacity>
+
+        {/* Entitlement-owner diagnostic — which RevenueCat identity owns the sub on
+            this device. Flags a transfer/leak (attributed to ANOTHER account) vs
+            this account vs an anonymous device user. */}
+        {showOwnerDiag && entOwner && (() => {
+          const mine = !entOwner.isAnonymous && !!userId && entOwner.appUserId === userId;
+          const leaked = !entOwner.isAnonymous && !!userId && entOwner.appUserId !== userId;
+          const ownerLabel = entOwner.isAnonymous
+            ? 'Anonymous device user (not scoped to an account)'
+            : mine
+              ? `This account (@${state.user.handle})`
+              : 'Another account — attributed elsewhere';
+          const ownerColor = entOwner.isAnonymous || leaked ? colors.warn : colors.ink3;
+          const exp = entOwner.expirationDate ? new Date(entOwner.expirationDate) : null;
+          const expLabel = exp && !isNaN(exp.getTime())
+            ? `${entOwner.willRenew ? 'Renews' : 'Expires'} ${exp.toLocaleDateString()} ${exp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : null;
+          return (
+            <CardSection last={!premium && !showEntitlementDiag}>
+              <Text style={{ fontSize: 11, color: colors.ink3, fontWeight: '700', marginBottom: 3 }}>Subscription identity</Text>
+              <Text style={{ fontSize: 12, color: ownerColor, fontWeight: '600' }}>
+                {leaked ? '⚠️ ' : ''}{ownerLabel}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }} numberOfLines={1}>
+                RevenueCat ID: {entOwner.appUserId}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
+                {entOwner.active
+                  ? `Active${entOwner.productId ? ` · ${entOwner.productId.split('.').pop()}` : ''}${expLabel ? ` · ${expLabel}` : ''}`
+                  : 'No active subscription'}
+              </Text>
+              {leaked && (
+                <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 4, lineHeight: 15 }}>
+                  A sub bought on another account transferred to this one. Set RevenueCat transfer behavior to “Keep with original App User ID” to prevent this.
+                </Text>
+              )}
+            </CardSection>
+          );
+        })()}
 
         {/* Diagnostic: subscribed but the app sees no entitlement → almost always
             the entitlement isn't attached to the product (or the ID differs). */}
