@@ -29,7 +29,7 @@ import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/wal
 import { fetchLiveTrades, type LiveTradeRow } from '../services/liveTradeService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { Clock, Flame, Bell, Trophy, Target, Swords, X, Rewind, ChevronRight } from 'lucide-react-native';
+import { Clock, Flame, Bell, Trophy, Target, Swords, X, Rewind, ChevronRight, Users } from 'lucide-react-native';
 import type { Competition } from '../store/types';
 
 const SEASON_DURATION = 30;
@@ -918,8 +918,14 @@ export function CompeteScreen() {
                   </Text>
                 </View>
                 {isJoined(comp.id) && renderJoinedStanding(comp.id)}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.hairline }}>
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>{comp.stake}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Users color={colors.ink3} size={12} strokeWidth={1.75} />
+                    <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                      {comp.entryCount.toLocaleString()}{comp.maxPlayers > 0 ? `/${comp.maxPlayers.toLocaleString()}` : ''}
+                    </Text>
+                  </View>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
                 </View>
               </Card>

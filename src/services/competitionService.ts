@@ -113,17 +113,35 @@ function mapEntry(d: any): CompetitionEntry {
   };
 }
 
+// All entries for a contest via the competitionId secondary index (Query, not a
+// full-table filtered Scan), paginated so a large table never truncates a
+// leaderboard or an entry count. A plain .list({filter}) only returns the first
+// scanned page — the cause of contests showing "5/25" once the table grew.
+export async function entriesByCompetition(client: any, competitionId: string): Promise<any[]> {
+  const out: any[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const res: any = await client.models.CompetitionEntry.competitionEntriesByCompetition(
+      { competitionId },
+      { limit: 1000, nextToken },
+    );
+    for (const e of (res?.data ?? [])) out.push(e);
+    nextToken = res?.nextToken;
+  } while (nextToken);
+  return out;
+}
+
 // Layers real entry counts (from CompetitionEntry rows) over a raw list of
 // Competition rows. Used by both fetchCompetitions and subscribeToCompetitions
-// so the resulting Competition[] shape is identical.
+// so the resulting Competition[] shape is identical. Counts per contest via the
+// index (one Query each) so counts are exact regardless of table size.
 async function layerEntryCounts(client: any, comps: Competition[]): Promise<Competition[]> {
   try {
-    const { data: entries } = await client.models.CompetitionEntry.list();
-    const counts: Record<string, number> = {};
-    for (const e of entries as any[]) {
-      if (e.isActive !== false) counts[e.competitionId] = (counts[e.competitionId] ?? 0) + 1;
-    }
-    return comps.map(c => ({ ...c, entryCount: counts[c.id] ?? 0 }));
+    const counts = await Promise.all(
+      comps.map(async c => [c.id, (await entriesByCompetition(client, c.id)).filter(e => e.isActive !== false).length] as const),
+    );
+    const byId = Object.fromEntries(counts);
+    return comps.map(c => ({ ...c, entryCount: byId[c.id] ?? 0 }));
   } catch {
     return comps;
   }
@@ -193,10 +211,9 @@ export async function joinCompetition(
     // it instead of creating a duplicate. Without this, re-joining (e.g. across
     // sessions, or before joinedTournamentIds has synced) created two rows and
     // the player showed up twice on the leaderboard.
-    const existing = await client.models.CompetitionEntry.list({
-      filter: { and: [{ competitionId: { eq: competitionId } }, { handle: { eq: handle } }] },
-    });
-    const mine = (existing?.data ?? []).find(Boolean);
+    // Via the index (Query) so a large table can't hide the existing entry on a
+    // later page — which would make find-or-create create a DUPLICATE.
+    const mine = (await entriesByCompetition(client, competitionId)).find(e => e.handle === handle);
     if (mine) {
       // Re-activate if a prior leave/settle had deactivated it.
       if (mine.isActive === false) {
@@ -335,17 +352,8 @@ export async function deactivateCompetitionEntriesForUser(competitionId: string,
   const client = await getClient();
   if (!client) return;
   try {
-    const mine: any[] = [];
-    let nextToken: string | null | undefined;
-    do {
-      const res: any = await client.models.CompetitionEntry.list({
-        filter: { competitionId: { eq: competitionId } },
-        limit: 1000,
-        nextToken,
-      });
-      for (const e of (res?.data ?? [])) if (e.handle === handle && e.isActive !== false) mine.push(e);
-      nextToken = res?.nextToken;
-    } while (nextToken);
+    const mine = (await entriesByCompetition(client, competitionId))
+      .filter(e => e.handle === handle && e.isActive !== false);
     await Promise.all(mine.map(e => client.models.CompetitionEntry.update({ id: e.id, isActive: false }).catch(() => {})));
   } catch (e) {
     console.warn('deactivateCompetitionEntriesForUser failed:', e);
@@ -358,17 +366,8 @@ export async function leaveCompetitionForUser(competitionId: string, handle: str
   try {
     // Paginate — a popular contest can have more entries than one page, which
     // would otherwise leave this user's row(s) undeleted (and re-appearing).
-    const mine: any[] = [];
-    let nextToken: string | null | undefined;
-    do {
-      const res: any = await client.models.CompetitionEntry.list({
-        filter: { competitionId: { eq: competitionId } },
-        limit: 1000,
-        nextToken,
-      });
-      for (const e of (res?.data ?? [])) if (e.handle === handle) mine.push(e);
-      nextToken = res?.nextToken;
-    } while (nextToken);
+    const mine = (await entriesByCompetition(client, competitionId))
+      .filter(e => e.handle === handle);
     await Promise.all(mine.map(e => client.models.CompetitionEntry.delete({ id: e.id }).catch(() => {})));
   } catch (e) {
     console.warn('leaveCompetitionForUser failed:', e);
@@ -381,10 +380,8 @@ export async function fetchEntryPortfolio(competitionId: string, handle: string)
   const client = await getClient();
   if (!client) return null;
   try {
-    const { data } = await client.models.CompetitionEntry.list({
-      filter: { competitionId: { eq: competitionId } },
-    });
-    const row = (data as any[]).find(e => e.handle === handle && e.isActive !== false);
+    const entries = await entriesByCompetition(client, competitionId);
+    const row = entries.find(e => e.handle === handle && e.isActive !== false);
     if (!row) return null;
     let holdings: Holding[] = [];
     try { holdings = row.holdingsJson ? JSON.parse(row.holdingsJson) : []; } catch {}
@@ -430,10 +427,8 @@ export async function fetchCompetitionLeaderboard(
   const client = await getClient();
   if (!client) return [];
   try {
-    const { data } = await client.models.CompetitionEntry.list({
-      filter: { competitionId: { eq: competitionId } },
-    });
-    return (data as any[]).map(mapEntry).sort((a, b) => a.rank - b.rank);
+    const entries = await entriesByCompetition(client, competitionId);
+    return entries.map(mapEntry).sort((a, b) => a.rank - b.rank);
   } catch {
     return [];
   }
