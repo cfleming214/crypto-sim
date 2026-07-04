@@ -32,7 +32,7 @@ export function TradeMix24h() {
         <Text style={{ fontSize: 12, color: colors.ink3 }}>· last 24h</Text>
       </View>
       <Card style={{ gap: 12 }}>
-        {mix.map((s, i) => (
+        {mix.map(s => (
           <View key={s.symbol} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <CoinGlyph symbol={s.symbol} size={26} />
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -40,9 +40,14 @@ export function TradeMix24h() {
                 <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink }}>{s.symbol}</Text>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{s.pct}%</Text>
               </View>
-              {/* Bar scaled to the leader so the ranking reads at a glance. */}
+              {/* Bar scaled to the leader so the ranking reads at a glance. The
+                  fill is split green (buys) / red (sells) in proportion to that
+                  coin's buy-vs-sell trades over the 24h window. */}
               <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surface2, overflow: 'hidden' }}>
-                <View style={{ height: 8, borderRadius: 4, width: `${Math.max(6, (s.pct / leader) * 100)}%`, backgroundColor: i === 0 ? colors.brand : colors.up }} />
+                <View style={{ height: 8, borderRadius: 4, overflow: 'hidden', flexDirection: 'row', width: `${Math.max(6, (s.pct / leader) * 100)}%` }}>
+                  {s.buys > 0 && <View style={{ flex: s.buys, backgroundColor: colors.up }} />}
+                  {s.sells > 0 && <View style={{ flex: s.sells, backgroundColor: colors.down }} />}
+                </View>
               </View>
             </View>
           </View>
