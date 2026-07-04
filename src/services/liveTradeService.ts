@@ -62,7 +62,7 @@ export async function recordLiveTrade(
   }
 }
 
-export interface TradeMixSlice { symbol: string; count: number; pct: number }
+export interface TradeMixSlice { symbol: string; count: number; pct: number; buys: number; sells: number }
 
 // Top coins by trade count over the last 24h across the global feed, with each
 // coin's share of all 24h trades. Samples up to `sampleLimit` recent rows (newest
@@ -78,19 +78,21 @@ export async function fetchTradeMix24h(sampleLimit = 500, top = 5): Promise<Trad
       { sortDirection: 'DESC', limit: sampleLimit },
     );
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const counts: Record<string, number> = {};
+    const agg: Record<string, { count: number; buys: number; sells: number }> = {};
     let total = 0;
     for (const t of data as any[]) {
       const at = t.tradedAt ? Date.parse(t.tradedAt) : NaN;
       if (!Number.isFinite(at) || at < cutoff) continue;
       const sym = String(t.symbol || '').toUpperCase();
       if (!sym) continue;
-      counts[sym] = (counts[sym] ?? 0) + 1;
+      const a = (agg[sym] ??= { count: 0, buys: 0, sells: 0 });
+      a.count += 1;
+      if (String(t.side).toLowerCase() === 'sell') a.sells += 1; else a.buys += 1;
       total += 1;
     }
     if (total === 0) return [];
-    return Object.entries(counts)
-      .map(([symbol, count]) => ({ symbol, count, pct: Math.round((count / total) * 100) }))
+    return Object.entries(agg)
+      .map(([symbol, a]) => ({ symbol, count: a.count, buys: a.buys, sells: a.sells, pct: Math.round((a.count / total) * 100) }))
       .sort((a, b) => b.count - a.count)
       .slice(0, top);
   } catch (e) {
