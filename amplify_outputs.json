@@ -1168,6 +1168,16 @@
               "properties": {}
             },
             {
+              "type": "key",
+              "properties": {
+                "name": "competitionEntriesByCompetitionId",
+                "queryField": "competitionEntriesByCompetition",
+                "fields": [
+                  "competitionId"
+                ]
+              }
+            },
+            {
               "type": "auth",
               "properties": {
                 "rules": [

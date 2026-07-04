@@ -1,4 +1,5 @@
 import { isAmplifyConfigured } from '../lib/amplify';
+import { entriesByCompetition } from './competitionService';
 import type { AppState, Trade, CompetitionEntry, PortfolioSlice } from '../store/types';
 import type { EquityPoint } from './equitySnapshots';
 import { STARTING_CASH } from '../constants/featureFlags';
@@ -265,14 +266,11 @@ export async function saveContestPortfolio(competitionId: string, slice: Portfol
     // a competitionId filter returns all users' entries (allow.authenticated
     // read), so we have to narrow by owner client-side.
     const ownerId = await getCurrentOwnerId();
-    // Filter by competitionId AND owner so a large contest (many players, more
-    // than one page) can't push this user's own entry outside the result set.
-    const { data: entries } = await client.models.CompetitionEntry.list({
-      filter: ownerId
-        ? { and: [{ competitionId: { eq: competitionId } }, { owner: { beginsWith: ownerId } }] }
-        : { competitionId: { eq: competitionId } },
-    });
-    const own = (entries as any[]).find(e => e.competitionId === competitionId && ownedByMe(e, ownerId));
+    // Query the contest's entries via the competitionId index (paginated) so a
+    // large contest can't push this user's own entry onto a later page and make
+    // the save silently no-op. Narrow to the owner client-side.
+    const entries = await entriesByCompetition(client, competitionId);
+    const own = entries.find(e => ownedByMe(e, ownerId));
     if (!own) return; // user hasn't joined this contest — nothing to save against
     await client.models.CompetitionEntry.update({
       id: own.id,

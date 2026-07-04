@@ -189,10 +189,17 @@ const schema = a.schema({
     cash: a.float().authorization(allow => [allow.owner()]),
     holdingsJson: a.string().authorization(allow => [allow.owner()]),
     tradesJson: a.string().authorization(allow => [allow.owner()]),
-  }).authorization(allow => [
-    allow.authenticated().to(['read']),
-    allow.owner(),
-  ]),
+  })
+    // Query a contest's entries directly (Query, not a full-table filtered Scan)
+    // so leaderboards + entry counts return ALL entries and stay correct as the
+    // table grows — a filtered .list() only returns the first scanned page.
+    .secondaryIndexes((index) => [
+      index('competitionId').queryField('competitionEntriesByCompetition'),
+    ])
+    .authorization(allow => [
+      allow.authenticated().to(['read']),
+      allow.owner(),
+    ]),
 
   // ── Replay contests ───────────────────────────────────────────────────────
   // A competitive 7-day replay of a real historical window for a single coin.
