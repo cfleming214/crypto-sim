@@ -17,6 +17,7 @@ import { PredictionWatcher } from './src/components/PredictionWatcher';
 import { PremiumWatcher } from './src/components/PremiumWatcher';
 import { ContestRewardWatcher } from './src/components/ContestRewardWatcher';
 import { ReferralWatcher } from './src/components/ReferralWatcher';
+import { PremiumDowngradeWatcher } from './src/components/PremiumDowngradeWatcher';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CoachmarkProvider } from './src/components/coachmarks/CoachmarkProvider';
 import { startOtaUpdates } from './src/lib/otaUpdates';
@@ -103,6 +104,7 @@ function App() {
                   <PremiumWatcher />
                   <ContestRewardWatcher />
                   <ReferralWatcher />
+                  <PremiumDowngradeWatcher />
                 </ErrorBoundary>
                 <CoachmarkProvider>
                   <NavigationContainer ref={navigationRef}>
