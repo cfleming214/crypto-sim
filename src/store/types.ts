@@ -337,6 +337,14 @@ export interface AppState {
   // +$50K ad reward) are NOT counted here, so they reset away. Device-local
   // (iap.v1), keyed by portfolio id.
   purchasedCash: Record<string, number>;
+  // Subset of `purchasedCash` that came specifically from a PREMIUM grant (the
+  // monthly $5M / premium-created portfolios), keyed by portfolio id — vs cash the
+  // user separately PAID for (the $5M consumable). On a Premium downgrade this is
+  // what gets clawed back; paid consumable cash is kept. Device-local (iap.v1).
+  premiumCash: Record<string, number>;
+  // Offline portfolio ids that were CREATED from a Premium grant (not the paid
+  // consumable). Removed on a Premium downgrade; paid ones are kept. (iap.v1).
+  premiumPortfolioIds: string[];
   // The one in-flight price prediction (only one at a time). Persisted in the
   // gamification.v1 blob so it survives navigating away / backgrounding, and
   // surfaced on the Compete page. null when no round is pending.

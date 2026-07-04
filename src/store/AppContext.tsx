@@ -275,6 +275,8 @@ const INITIAL_STATE: AppState = {
   offlinePortfolios: { ids: [], names: {} },
   premiumGrants: { balanceMonthKey: null, portfolioMonthKey: null, portfoliosThisMonth: 0 },
   purchasedCash: {},
+  premiumCash: {},
+  premiumPortfolioIds: [],
   cosmetics: { titles: [], frames: [], equippedTitle: null, equippedFrame: null },
   activePrediction: null,
   blockedUsers: [],
@@ -355,10 +357,11 @@ type Action =
   | { type: 'CLAIM_REFERRER_REWARDS'; count: number; passesEach: number; xpEach: number }
   | { type: 'SET_ENTITLEMENTS'; noAds: boolean; premium: boolean }
   | { type: 'CREATE_OFFLINE_PORTFOLIO'; id: string; name: string; cash: number; premiumMonthKey?: string }
-  | { type: 'ADD_OFFLINE_BALANCE'; portfolioId: string; amount: number }
+  | { type: 'ADD_OFFLINE_BALANCE'; portfolioId: string; amount: number; fromPremium?: boolean }
   | { type: 'GRANT_PREMIUM_MONTH'; monthKey: string }
   | { type: 'CLAIM_PREMIUM_BALANCE'; monthKey: string }
-  | { type: 'HYDRATE_IAP'; data: { noAds?: boolean; isSubscriber?: boolean; offlinePortfolios?: AppState['offlinePortfolios']; premiumGrants?: AppState['premiumGrants']; purchasedCash?: Record<string, number>; portfolios?: Record<string, PortfolioSlice> } }
+  | { type: 'PREMIUM_DOWNGRADE' }
+  | { type: 'HYDRATE_IAP'; data: { noAds?: boolean; isSubscriber?: boolean; offlinePortfolios?: AppState['offlinePortfolios']; premiumGrants?: AppState['premiumGrants']; purchasedCash?: Record<string, number>; premiumCash?: Record<string, number>; premiumPortfolioIds?: string[]; portfolios?: Record<string, PortfolioSlice> } }
   | { type: 'CLAIM_SEASON_TIER'; tier: number; kind: 'xp' | 'cash' | 'title' | 'frame'; value: number | string }
   | { type: 'EQUIP_COSMETIC'; slot: 'title' | 'frame'; id: string | null }
   | { type: 'SET_ACHIEVEMENTS'; achievements: Record<string, number> }
@@ -1297,8 +1300,9 @@ function reducer(state: AppState, action: Action): AppState {
         [action.id]: newSlice,
       };
       // Consume a Premium monthly-allowance slot when this create came from it.
-      const grants = action.premiumMonthKey
-        ? { ...state.premiumGrants, portfolioMonthKey: action.premiumMonthKey, portfoliosThisMonth: state.premiumGrants.portfoliosThisMonth + 1 }
+      const fromPremium = !!action.premiumMonthKey;
+      const grants = fromPremium
+        ? { ...state.premiumGrants, portfolioMonthKey: action.premiumMonthKey!, portfoliosThisMonth: state.premiumGrants.portfoliosThisMonth + 1 }
         : state.premiumGrants;
       return {
         ...state,
@@ -1309,6 +1313,10 @@ function reducer(state: AppState, action: Action): AppState {
         premiumGrants: grants,
         // The create grant is purchased/Premium money — preserve it on reset.
         purchasedCash: { ...state.purchasedCash, [action.id]: action.cash },
+        // Track Premium-sourced content so a downgrade can reclaim ONLY it (paid
+        // consumable portfolios are kept). See PREMIUM_DOWNGRADE.
+        premiumCash: fromPremium ? { ...state.premiumCash, [action.id]: action.cash } : state.premiumCash,
+        premiumPortfolioIds: fromPremium ? [...state.premiumPortfolioIds, action.id] : state.premiumPortfolioIds,
         portfolios: stashed,
         activePortfolioId: action.id,
         cash: newSlice.cash,
@@ -1334,6 +1342,11 @@ function reducer(state: AppState, action: Action): AppState {
       };
       // Purchased/Premium money — preserve it on reset (see RESET_DEMO).
       const purchasedCash = { ...state.purchasedCash, [pid]: (state.purchasedCash[pid] ?? 0) + action.amount };
+      // Track the Premium-sourced portion separately so a downgrade can claw back
+      // ONLY Premium cash (not a $5M consumable the user paid for).
+      const premiumCash = action.fromPremium
+        ? { ...state.premiumCash, [pid]: (state.premiumCash[pid] ?? 0) + action.amount }
+        : state.premiumCash;
       if (pid === state.activePortfolioId) {
         const newCash = state.cash + action.amount;
         const holdingsValue = state.holdings.reduce((s, h) => {
@@ -1346,6 +1359,7 @@ function reducer(state: AppState, action: Action): AppState {
           bankroll: newCash + holdingsValue,
           trades: [bonusTrade, ...state.trades],
           purchasedCash,
+          premiumCash,
         };
       }
       // Inactive portfolio — credit its stashed slice in the map.
@@ -1353,6 +1367,7 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         purchasedCash,
+        premiumCash,
         portfolios: {
           ...state.portfolios,
           [pid]: { ...slice, cash: slice.cash + action.amount, trades: [bonusTrade, ...slice.trades] },
@@ -1369,6 +1384,63 @@ function reducer(state: AppState, action: Action): AppState {
       // CREATE/ADD the chooser dispatches). Idempotent on monthKey.
       if (state.premiumGrants.balanceMonthKey === action.monthKey) return state;
       return { ...state, premiumGrants: { ...state.premiumGrants, balanceMonthKey: action.monthKey } };
+    case 'PREMIUM_DOWNGRADE': {
+      // A Premium subscription lapsed and the user chose NOT to resubscribe.
+      // Reclaim ONLY Premium-granted content: reset contest passes to the free
+      // baseline (5), remove Premium-CREATED offline portfolios (paid consumable
+      // ones are kept), and subtract Premium-granted cash from the surviving
+      // portfolios — clamped to ≥0 (can't claw back cash already traded into
+      // holdings). Reducing purchasedCash by the same keeps a later reset honest.
+      const FREE_PASSES = 5;
+      const removeSet = new Set(state.premiumPortfolioIds.filter(id => state.offlinePortfolios.ids.includes(id)));
+
+      // Snapshot the active portfolio into the map so we operate on the full set.
+      const map: Record<string, PortfolioSlice> = {
+        ...state.portfolios,
+        [state.activePortfolioId]: { cash: state.cash, holdings: state.holdings, trades: state.trades },
+      };
+      const premiumCash = { ...state.premiumCash };
+      const purchasedCash = { ...state.purchasedCash };
+
+      // 1. Drop Premium-created portfolios entirely.
+      const names = { ...state.offlinePortfolios.names };
+      for (const id of removeSet) { delete map[id]; delete premiumCash[id]; delete purchasedCash[id]; delete names[id]; }
+      const remainingIds = state.offlinePortfolios.ids.filter(id => !removeSet.has(id));
+
+      // 2. Claw back Premium cash from each surviving portfolio (main + kept offline).
+      for (const pid of ['main', ...remainingIds]) {
+        const owed = premiumCash[pid] ?? 0;
+        if (owed <= 0) continue;
+        const slice = map[pid];
+        if (slice) map[pid] = { ...slice, cash: Math.max(0, slice.cash - owed) };
+        purchasedCash[pid] = Math.max(0, (purchasedCash[pid] ?? 0) - owed);
+        delete premiumCash[pid];
+      }
+
+      // 3. Re-select the active portfolio if it was removed, and re-hydrate top-level.
+      const activeId = removeSet.has(state.activePortfolioId) ? 'main' : state.activePortfolioId;
+      const active = map[activeId] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
+      const holdingsValue = active.holdings.reduce((s, h) => {
+        const c = state.coins.find(x => x.symbol === h.symbol);
+        return s + (c ? c.price * h.units : 0);
+      }, 0);
+
+      return {
+        ...state,
+        passes: { ...state.passes, balance: FREE_PASSES },
+        offlinePortfolios: { ids: remainingIds, names },
+        portfolios: map,
+        activePortfolioId: activeId,
+        cash: active.cash,
+        holdings: active.holdings,
+        trades: active.trades,
+        bankroll: active.cash + holdingsValue,
+        premiumCash,
+        purchasedCash,
+        premiumPortfolioIds: [],
+        premiumGrants: { balanceMonthKey: null, portfolioMonthKey: null, portfoliosThisMonth: 0 },
+      };
+    }
     case 'HYDRATE_IAP': {
       // Restore device-local IAP state (entitlement cache, offline-portfolio
       // slices/names, premium bookkeeping) on launch. Merge the offline slices
@@ -1382,6 +1454,8 @@ function reducer(state: AppState, action: Action): AppState {
         offlinePortfolios: d.offlinePortfolios ?? state.offlinePortfolios,
         premiumGrants: d.premiumGrants ?? state.premiumGrants,
         purchasedCash: d.purchasedCash ?? state.purchasedCash,
+        premiumCash: d.premiumCash ?? state.premiumCash,
+        premiumPortfolioIds: d.premiumPortfolioIds ?? state.premiumPortfolioIds,
         portfolios: mergedPortfolios,
       };
     }
@@ -1557,6 +1631,8 @@ function reducer(state: AppState, action: Action): AppState {
         offlinePortfolios: state.offlinePortfolios,
         premiumGrants: state.premiumGrants,
         purchasedCash: state.purchasedCash,
+        premiumCash: state.premiumCash,
+        premiumPortfolioIds: state.premiumPortfolioIds,
         portfolios: keptOfflinePortfolios,
         // Onboarding is a device-level "has this install seen the intro" flag
         // (persisted in AsyncStorage 'hasOnboarded'), not per-account. Without
@@ -2356,6 +2432,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 : undefined,
               premiumGrants: g.premiumGrants && typeof g.premiumGrants === 'object' ? g.premiumGrants : undefined,
               purchasedCash: g.purchasedCash && typeof g.purchasedCash === 'object' ? g.purchasedCash : undefined,
+              premiumCash: g.premiumCash && typeof g.premiumCash === 'object' ? g.premiumCash : undefined,
+              premiumPortfolioIds: Array.isArray(g.premiumPortfolioIds) ? g.premiumPortfolioIds.filter((x: any) => typeof x === 'string') : undefined,
               portfolios: g.slices && typeof g.slices === 'object' ? g.slices : undefined,
             },
           });
@@ -2392,6 +2470,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       offlinePortfolios: state.offlinePortfolios,
       premiumGrants: state.premiumGrants,
       purchasedCash: state.purchasedCash,
+      premiumCash: state.premiumCash,
+      premiumPortfolioIds: state.premiumPortfolioIds,
       slices,
     })).catch(() => {});
   }, [state.noAds, state.isSubscriber, state.offlinePortfolios, state.premiumGrants, state.purchasedCash, state.activePortfolioId, state.portfolios, state.cash, state.holdings, state.trades]);

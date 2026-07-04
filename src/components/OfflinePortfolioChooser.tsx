@@ -80,7 +80,7 @@ export function OfflinePortfolioChooser({ onClose, amount, source, monthKey, onD
   };
 
   const handleAdd = (portfolioId: string) => {
-    dispatch({ type: 'ADD_OFFLINE_BALANCE', portfolioId, amount });
+    dispatch({ type: 'ADD_OFFLINE_BALANCE', portfolioId, amount, fromPremium: source === 'premium-balance' });
     finishPremium();
     onDone?.();
   };
