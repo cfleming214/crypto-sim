@@ -36,6 +36,25 @@ async function buildPriceMap(tokenTable: string): Promise<Record<string, number>
   return priceMap;
 }
 
+// The owner of the entry with the highest live-revalued portfolio — the contest
+// winner. Recorded permanently on the FinishedCompetition row so lifetime wins
+// survive even after CompetitionEntry rows are cleaned up. null if no entries.
+function winnerOwnerOf(entryItems: any[], priceMap: Record<string, number>): string | null {
+  let best: string | null = null;
+  let bestVal = -Infinity;
+  for (const raw of entryItems) {
+    const e = unmarshall(raw) as { owner?: string; bankroll?: number; cash?: number; holdingsJson?: string };
+    let value = e.bankroll ?? STARTING_BANKROLL;
+    if (e.holdingsJson != null) {
+      let holdings: Holding[] = [];
+      try { holdings = JSON.parse(e.holdingsJson || '[]'); } catch { holdings = []; }
+      value = (e.cash ?? 0) + holdings.reduce((s, h) => s + (h.units || 0) * (priceMap[(h.symbol || '').toUpperCase()] ?? 0), 0);
+    }
+    if (e.owner && value > bestVal) { bestVal = value; best = e.owner; }
+  }
+  return best;
+}
+
 // Amplify owner fields can be stored as "<sub>::<username>" or just "<sub>".
 // Payout rows are keyed by the bare sub, so normalize before use.
 const subFromOwner = (owner: string | undefined): string =>
@@ -228,6 +247,10 @@ export const handler = async (): Promise<void> => {
       FilterExpression: 'competitionId = :cid',
       ExpressionAttributeValues: marshall({ ':cid': comp.id }),
     }));
+    // Durable win record: the winner's owner, stored on the FinishedCompetition
+    // row below so lifetime wins survive entry cleanup (tick-global-leaderboard
+    // tallies these). Recomputed from live-revalued holdings, like settlement.
+    const winnerOwner = winnerOwnerOf(entryItems, priceMap);
     await Promise.all(entryItems.map(rawEntry => {
       const entry = unmarshall(rawEntry) as { id: string };
       return ddb.send(new UpdateItemCommand({
@@ -246,7 +269,7 @@ export const handler = async (): Promise<void> => {
     if (finishedTable) {
       await ddb.send(new PutItemCommand({
         TableName: finishedTable,
-        Item: marshall({ ...fullComp, __typename: 'FinishedCompetition', status: 'finished', finishedAt: nowIso, updatedAt: nowIso }, { removeUndefinedValues: true }),
+        Item: marshall({ ...fullComp, __typename: 'FinishedCompetition', status: 'finished', finishedAt: nowIso, updatedAt: nowIso, ...(winnerOwner ? { winnerOwner } : {}) }, { removeUndefinedValues: true }),
       }));
       await ddb.send(new DeleteItemCommand({
         TableName: compTable,

@@ -162,6 +162,11 @@ tokenTable.grantReadData(globalTickFn);
 globalBoardTable.grantReadWriteData(globalTickFn);
 // Reads finished CompetitionEntry rows to count contests won per user.
 entryTable.grantReadData(globalTickFn);
+// Durable wins: tally winnerOwner from FinishedCompetition (permanent record).
+const finishedTableForBoard = backend.data.resources.tables['FinishedCompetition'];
+finishedTableForBoard.grantReadData(globalTickFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+globalTickFn.addEnvironment('FINISHED_COMPETITION_TABLE_NAME', finishedTableForBoard.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 globalTickFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTableForBoard.tableName);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
@@ -476,3 +481,12 @@ new Rule(Stack.of(withdrawFn), 'ProcessWithdrawalsRule', {
   schedule: Schedule.rate(Duration.days(1)),
   targets: [new LambdaFunction(withdrawFn)],
 });
+
+// ── Point-in-time recovery on every data table ───────────────────────────────
+// Enabled in IaC so it can't be silently dropped by a deploy. This is the guard
+// against accidental table recreation on a schema/index change dropping all rows
+// (the 2026-07-04 CompetitionEntry incident — a secondaryIndex add wiped the
+// table with PITR off). 35-day continuous backup; ~$0.20/GB-month (pennies here).
+for (const table of Object.values(backend.data.resources.cfnResources.amplifyDynamoDbTables)) {
+  table.pointInTimeRecoveryEnabled = true;
+}
