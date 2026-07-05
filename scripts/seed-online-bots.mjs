@@ -226,7 +226,12 @@ const M_UPDATE_PROFILE = `mutation P($input: UpdateUserProfileInput!) { updateUs
 const Q_MY_PUBLIC = `query Q($owner: String!) { listPublicProfiles(filter: { owner: { eq: $owner } }, limit: 1) { items { id } } }`;
 const M_CREATE_PUBLIC = `mutation P($input: CreatePublicProfileInput!) { createPublicProfile(input: $input) { id } }`;
 const M_UPDATE_PUBLIC = `mutation P($input: UpdatePublicProfileInput!) { updatePublicProfile(input: $input) { id } }`;
-const Q_MY_ENTRIES = `query { listCompetitionEntries(limit: 200) { items { id competitionId } } }`;
+// Filter by THIS bot's handle. CompetitionEntry allows authenticated read of ALL
+// rows, so an unfiltered list returns every bot's entries — which made find-or-
+// create "find" someone else's entry, skip creating its own, and then fail to
+// update a row it doesn't own (owner-auth). Filtering by handle scopes it to the
+// bot's own entries. High limit so its own rows aren't hidden past a scan page.
+const Q_MY_ENTRIES = `query($h: String!) { listCompetitionEntries(filter: { handle: { eq: $h } }, limit: 2000) { items { id competitionId } } }`;
 const M_CREATE_ENTRY = `mutation E($input: CreateCompetitionEntryInput!) { createCompetitionEntry(input: $input) { id } }`;
 const M_UPDATE_ENTRY = `mutation E($input: UpdateCompetitionEntryInput!) { updateCompetitionEntry(input: $input) { id } }`;
 const M_CREATE_LIVE_TRADE = `mutation L($input: CreateLiveTradeInput!) { createLiveTrade(input: $input) { id } }`;
@@ -437,7 +442,7 @@ async function main() {
     // run trades into the SAME entries instead of creating duplicates.
     const existingEntries = {};
     try {
-      const er = await gqlRetry(s, Q_MY_ENTRIES, {});
+      const er = await gqlRetry(s, Q_MY_ENTRIES, { h: b.handle });
       for (const it of er?.listCompetitionEntries?.items ?? []) existingEntries[it.competitionId] = it.id;
     } catch { /* no existing entries / first run */ }
     s.joined = [];
@@ -446,7 +451,7 @@ async function main() {
         const id = existingEntries[c.id]
           ?? (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;
         s.joined.push({ ...c, entryId: id });
-      } catch { /* skip a contest that won't accept the entry */ }
+      } catch (e) { console.warn(`  join failed: ${b.handle} → ${c.name}: ${String(e?.message ?? e).slice(0, 120)}`); }
     }
 
     // Trades: in EVERY joined contest the bot churns its OWN random 1–4 positions
