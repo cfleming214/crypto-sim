@@ -17,6 +17,7 @@ import { createRollingContest } from './functions/create-rolling-contest/resourc
 import { resetDemo } from './functions/reset-demo/resource.js';
 import { evaluateCoach } from './functions/evaluate-coach/resource.js';
 import { executeTrade } from './functions/execute-trade/resource.js';
+import { escrow } from './functions/escrow/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
 import { settleRecruiterCup } from './functions/settle-recruiter-cup/resource.js';
@@ -49,6 +50,7 @@ const backend = defineBackend({
   resetDemo,
   evaluateCoach,
   executeTrade,
+  escrow,
   runMirror,
   settleSeason,
   settleRecruiterCup,
@@ -490,3 +492,36 @@ new Rule(Stack.of(withdrawFn), 'ProcessWithdrawalsRule', {
 for (const table of Object.values(backend.data.resources.cfnResources.amplifyDynamoDbTables)) {
   table.pointInTimeRecoveryEnabled = true;
 }
+
+// --- escrow: user-funded contest holds/settlement (gated by CONTEST_CASH_PRIZES) ---
+// Backs escrowCreateHold/escrowSettleContest/escrowCancelContest + a 10-min sweep
+// that settles finished escrow contests (capture holds → Payout to the winner via
+// the existing rail). Stripe secret is wired in its resource.ts.
+const escrowFn = backend.escrow.resources.lambda;
+const escrowHoldTable = backend.data.resources.tables['EscrowHold'];
+competitionTable.grantReadWriteData(escrowFn);      // read contest + mark escrowSettled
+finishedTable.grantReadWriteData(escrowFn);         // settle finished escrow contests
+escrowHoldTable.grantReadWriteData(escrowFn);        // create/capture/refund holds
+payoutTable.grantReadWriteData(escrowFn);            // credit the winner's prize
+annualWinningsTable.grantReadWriteData(escrowFn);    // 1099 rollup
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+escrowFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+escrowFn.addEnvironment('FINISHED_COMPETITION_TABLE_NAME', finishedTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+escrowFn.addEnvironment('ESCROW_HOLD_TABLE_NAME', escrowHoldTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+escrowFn.addEnvironment('PAYOUT_TABLE_NAME', payoutTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+escrowFn.addEnvironment('ANNUAL_WINNINGS_TABLE_NAME', annualWinningsTable.tableName);
+// Server gate for escrow. ON so the sandbox test script can exercise it end-to-end;
+// with a sk_test_ Stripe key this is TEST MONEY only, and the CLIENT feature stays
+// OFF (USER_ESCROW_CONTESTS_ENABLED) so no user can reach it. Set 'false' to hard-
+// disable the backend too. A real charge additionally requires a LIVE Stripe key.
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+escrowFn.addEnvironment('ESCROW_ENABLED', 'true');
+
+new Rule(Stack.of(escrowFn), 'EscrowSettleRule', {
+  schedule: Schedule.rate(Duration.minutes(10)),
+  targets: [new LambdaFunction(escrowFn)],
+});
