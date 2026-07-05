@@ -62,6 +62,18 @@ export const handler = async (): Promise<void> => {
     }
   }
 
+  // 1c. DURABLE wins: tally winnerOwner from FinishedCompetition — the permanent
+  // record close-competition stamps at settlement. Survives CompetitionEntry
+  // cleanup (unlike winsByOwner above), so wins don't reset to 0 when entries go.
+  const winsFromFinished: Record<string, number> = {};
+  const finishedTable = process.env.FINISHED_COMPETITION_TABLE_NAME;
+  if (finishedTable) {
+    for await (const row of scanAll(finishedTable)) {
+      const f = unmarshall(row) as { winnerOwner?: string };
+      if (f.winnerOwner) winsFromFinished[f.winnerOwner] = (winsFromFinished[f.winnerOwner] ?? 0) + 1;
+    }
+  }
+
   // 2. Value every visible profile and read its lifetime XP + contests won.
   type Ranked = {
     owner: string; handle: string; xp: number; weeklyXp: number; contestsWon: number; value: number; pnlPct: number;
@@ -83,7 +95,7 @@ export const handler = async (): Promise<void> => {
     );
     const value = (p.cash ?? 0) + holdingsValue;
     const pnlPct = ((value - STARTING_BANKROLL) / STARTING_BANKROLL) * 100;
-    const contestsWon = Math.max(winsByOwner[p.owner] ?? 0, p.contestsWon ?? 0);
+    const contestsWon = Math.max(winsByOwner[p.owner] ?? 0, winsFromFinished[p.owner] ?? 0, p.contestsWon ?? 0);
     // XP earned this season-week. seasonStartXp is the baseline the settle-season
     // Lambda stamps each week; if it's missing, treat weekly XP as 0.
     const weeklyXp = Math.max(0, (p.xp ?? 0) - (p.seasonStartXp ?? (p.xp ?? 0)));
