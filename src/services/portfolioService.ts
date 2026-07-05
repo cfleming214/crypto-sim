@@ -311,11 +311,31 @@ function pickCanonicalProfile<T extends { id: string; xp?: number | null; holdin
   )[0];
 }
 
+// List the current user's own UserProfile rows, RETRYING on an empty result.
+// Right after sign-in the owner identity can lag, so `list()` returns [] for an
+// existing account — concluding "new" there is what spawns duplicate profiles.
+// We only trust an empty result after several consistent empties; if every
+// attempt throws we re-throw so the caller treats it as 'error' (never 'new').
+async function listOwnProfilesWithRetry(client: any, attempts = 4): Promise<any[]> {
+  let lastErr: unknown = null;
+  let sawSuccess = false;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const { data } = await client.models.UserProfile.list();
+      sawSuccess = true;
+      if (data && data.length) return data;      // found → done
+    } catch (e) { lastErr = e; }
+    if (i < attempts - 1) await new Promise(r => setTimeout(r, 400 * (i + 1)));
+  }
+  if (!sawSuccess && lastErr) throw lastErr;      // all attempts errored → 'error'
+  return [];                                      // consistently empty → genuinely new
+}
+
 export async function loadProfileIfExists(): Promise<ProfileLoadResult> {
   const client = await getClient();
   if (!client) return { status: 'error' };
   try {
-    const { data: profiles } = await client.models.UserProfile.list();
+    const profiles = await listOwnProfilesWithRetry(client);
     if (!profiles.length) return { status: 'new' };
     // Self-heal: if a past race left duplicate rows for this owner, keep the
     // canonical one and delete the extras so the account converges to a single
@@ -372,9 +392,10 @@ export async function createStarterProfile(): Promise<Partial<AppState> | null> 
       avatarColor:  '#6366F1',
     };
     // Guard against a double-bootstrap: if a row already exists (a concurrent
-    // adoptGuestProfile/saveProfile beat us, or this ran twice), adopt it
-    // instead of writing a second profile for this owner.
-    const { data: existing } = await client.models.UserProfile.list();
+    // adoptGuestProfile/saveProfile beat us, this ran twice, or the login-time
+    // list was transiently empty), adopt it instead of writing a second profile.
+    // Retries on empty so a laggy owner identity can't slip a duplicate through.
+    const existing = await listOwnProfilesWithRetry(client);
     if (existing.length) {
       const profile = await profileFromRecord(pickCanonicalProfile(existing));
       return { ...profile, trades: [], joinedTournamentIds: [] };
@@ -438,9 +459,13 @@ export async function saveProfile(state: AppState): Promise<void> {
         passes:           state.passes,
       }),
     };
-    const { data: existing } = await client.models.UserProfile.list();
+    // Retry on empty so a transient (post-login) empty list can't make saveProfile
+    // create a SECOND profile for this owner. Write to the canonical row (highest
+    // xp) so, if duplicates ever coexist briefly, saves converge onto the one the
+    // self-heal keeps — never ping-pong between them.
+    const existing = await listOwnProfilesWithRetry(client);
     if (existing.length) {
-      await client.models.UserProfile.update({ id: existing[0].id, ...payload });
+      await client.models.UserProfile.update({ id: pickCanonicalProfile(existing).id, ...payload });
     } else {
       await client.models.UserProfile.create(payload);
     }
