@@ -162,3 +162,16 @@ review; it likely needs a different corporate/licensing posture than the sweepst
   result-forgery direct theft.
 
 Until all of the above + legal sign-off: **flag stays false**.
+
+**Build status (2026-07-05):** the escrow ENGINE is built + deployed, gated:
+- ✅ Schema: `EscrowHold` model (+competitionId index), Competition `escrow`/`entryAmountCents`/`escrowSettled`.
+- ✅ `escrow` Lambda: `escrowCreateHold` (Stripe manual-capture PI), `escrowSettleContest`
+  (capture holds → winner Payout via the existing rail), `escrowCancelContest` (release holds),
+  + a 10-min sweep settling finished escrow contests. Winner read from `FinishedCompetition.winnerOwner`.
+- ✅ Server gate `ESCROW_ENABLED` (on, for sandbox testing) — independent of the app-wide cash flag;
+  MOCK unless `STRIPE_SECRET_KEY` (sk_test_) is set. Client gate `USER_ESCROW_CONTESTS_ENABLED` = OFF.
+- ✅ `scripts/test-escrow.mjs`: end-to-end Stripe TEST-mode test (hold → capture → winner Payout; + cancel/refund).
+- ✅ `src/services/escrowService.ts`: gated client wrapper.
+- ⏳ REMAINING (needs a NATIVE build): the create-contest/duel `$`-prize UI + `@stripe/stripe-react-native`
+  PaymentSheet to confirm the hold with `clientSecret`. And: rake %, refund-on-underfill policy,
+  webhook to mark holds `held`, and LEGAL sign-off before any LIVE key.

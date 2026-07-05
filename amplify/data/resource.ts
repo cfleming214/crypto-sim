@@ -1,6 +1,7 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { stripeConnect } from '../functions/stripe-connect/resource.js';
 import { executeTrade } from '../functions/execute-trade/resource.js';
+import { escrow } from '../functions/escrow/resource.js';
 
 const schema = a.schema({
   UserProfile: a.model({
@@ -139,10 +140,39 @@ const schema = a.schema({
     // "joinable until only 10% of the duration remains". Null (default/legacy) =
     // joinable until the contest ends. Enforced client-side (see isJoinLocked).
     joinCutoffPct: a.float(),
+    // ── User-funded escrow contests/duels (gated: USER_ESCROW_CONTESTS_ENABLED /
+    // CONTEST_CASH_PRIZES). When `escrow` is true, each entrant is charged
+    // `entryAmountCents` up front, held via a Stripe manual-capture PaymentIntent;
+    // on settlement the pot is captured and the winner receives it through the
+    // existing Payout → claim → withdraw rail. `escrowSettled` guards re-settlement.
+    escrow: a.boolean(),
+    entryAmountCents: a.integer(),
+    escrowSettled: a.boolean(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.owner(),
   ]),
+
+  // Per-entrant escrow hold for a user-funded contest/duel. One row per paid
+  // entry, tracking the Stripe PaymentIntent that authorizes/holds the entry fee
+  // until the contest settles (capture) or is cancelled (release). Written by the
+  // escrow Lambda (direct DynamoDB, like Payout); owner-read so a user can see
+  // their own holds.
+  EscrowHold: a.model({
+    competitionId: a.string().required(),
+    userId: a.string().required(),
+    handle: a.string(),
+    paymentIntentId: a.string(),
+    amountCents: a.integer().required(),
+    // 'pending' (PI created, awaiting confirm) | 'held' (authorized) |
+    // 'captured' (charged at settlement) | 'refunded' (released) | 'failed'.
+    status: a.string().required(),
+    createdAt: a.string(),
+  })
+    .secondaryIndexes((index) => [
+      index('competitionId').queryField('escrowHoldsByCompetition'),
+    ])
+    .authorization(allow => [allow.owner().to(['read'])]),
 
   // Archive of contests that have ended. The closeCompetition Lambda MOVES a
   // finished contest here (copy + delete from Competition) so the live tables
@@ -644,6 +674,29 @@ const schema = a.schema({
     })
     .returns(a.json())
     .handler(a.handler.function(executeTrade))
+    .authorization(allow => [allow.authenticated()]),
+
+  // ── User-funded escrow contest mutations (client -> escrow Lambda) ──────────
+  // All gated server-side by CONTEST_CASH_PRIZES; return { ok, error, ... } json.
+  // escrowCreateHold: authorize/hold the caller's entry fee via a Stripe manual-
+  // capture PaymentIntent. Returns clientSecret for the app to confirm (PaymentSheet).
+  escrowCreateHold: a.mutation()
+    .arguments({ competitionId: a.string().required(), amountCents: a.integer().required() })
+    .returns(a.json())
+    .handler(a.handler.function(escrow))
+    .authorization(allow => [allow.authenticated()]),
+  // Settle a finished escrow contest: capture all holds, credit the winner a
+  // Payout of the pot (minus rake). Admin/settlement — also runs on a schedule.
+  escrowSettleContest: a.mutation()
+    .arguments({ competitionId: a.string().required() })
+    .returns(a.json())
+    .handler(a.handler.function(escrow))
+    .authorization(allow => [allow.authenticated()]),
+  // Cancel an escrow contest: release (cancel) every hold, no one is charged.
+  escrowCancelContest: a.mutation()
+    .arguments({ competitionId: a.string().required() })
+    .returns(a.json())
+    .handler(a.handler.function(escrow))
     .authorization(allow => [allow.authenticated()]),
 
   // Open a pending withdrawal of the user's full available balance.
