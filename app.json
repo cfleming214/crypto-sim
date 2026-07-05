@@ -121,7 +121,6 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.simpledesignllc.cryptocomp",
           "enableGooglePay": false
         }
       ]
