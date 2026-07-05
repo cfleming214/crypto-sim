@@ -28,6 +28,17 @@ export const APPLE_SIGNIN_ENABLED = process.env.EXPO_PUBLIC_APPLE_SIGNIN_ENABLED
 // path end-to-end; production stays XP-only.
 export const CONTEST_CASH_PRIZES = process.env.EXPO_PUBLIC_PAYOUTS_ENABLED === 'true';
 
+// USER_ESCROW_CONTESTS_ENABLED gates a FUTURE feature: letting USERS create a
+// contest or 1v1 duel with a real dollar prize they fund themselves — charged up
+// front and held in Stripe escrow until settlement. HARD OFF (not built): this is
+// a user-funded prize pool, which is materially different from the app's current
+// free-entry, sponsor-funded sweepstakes model and carries real gambling/licensing
+// exposure. Any create-contest/duel UI must NOT expose a dollar-prize input while
+// this is false. Do not flip without the escrow build + legal sign-off — see
+// future-fixes.md ("User-funded escrow contests").
+export const USER_ESCROW_CONTESTS_ENABLED =
+  process.env.EXPO_PUBLIC_USER_ESCROW_CONTESTS === 'true';
+
 // Headline XP a contest awards its winner when cash prizes are off. Used as the
 // fallback when a Competition row has no prizeXp set yet (e.g. before the
 // backend field is redeployed). The podium splits this 100/50/25% (see
