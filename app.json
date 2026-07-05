@@ -118,7 +118,13 @@
           "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
         }
       ],
-      "@stripe/stripe-react-native"
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.simpledesignllc.cryptocomp",
+          "enableGooglePay": false
+        }
+      ]
     ],
     "extra": {
       "eas": {
