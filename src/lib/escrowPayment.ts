@@ -21,7 +21,7 @@ async function ensureInit(): Promise<boolean> {
   if (!key) return false;
   if (initialized) return true;
   try {
-    await m.initStripe({ publishableKey: key, merchantIdentifier: 'merchant.com.simpledesignllc.cryptocomp' });
+    await m.initStripe({ publishableKey: key });
     initialized = true;
     return true;
   } catch { return false; }
