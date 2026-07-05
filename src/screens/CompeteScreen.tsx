@@ -27,7 +27,9 @@ import { createDuel, acceptDuel, isJoinLocked, DUEL_DURATION_OPTIONS, DAY_MS } f
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { fetchLiveTrades, type LiveTradeRow } from '../services/liveTradeService';
-import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
+import { CONTEST_CASH_PRIZES, STARTING_CASH, USER_ESCROW_CONTESTS_ENABLED } from '../constants/featureFlags';
+import { createEscrowHold } from '../services/escrowService';
+import { presentEscrowPayment } from '../lib/escrowPayment';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Clock, Flame, Bell, Trophy, Target, Swords, X, Rewind, ChevronRight, Users } from 'lucide-react-native';
 import type { Competition } from '../store/types';
@@ -103,6 +105,7 @@ export function CompeteScreen() {
   const [duelModalOpen, setDuelModalOpen] = useState(false);
   const [duelCode, setDuelCode] = useState('');
   const [duelBusy, setDuelBusy] = useState(false);
+  const [moneyDuelCents, setMoneyDuelCents] = useState(500); // gated escrow duel entry
 
   // Pending price-prediction status for the mini-game card. Tick once a second
   // while a round is live so the countdown updates.
@@ -340,6 +343,32 @@ export function CompeteScreen() {
       await Share.share({ message: `I challenge you to a ${duelDays}-day crypto trading duel! Open the app → Compete → 1v1, and enter code ${code}.` });
     } catch {}
     nav.navigate('TournamentDetail', { id: res.competition.id });
+  };
+
+  // Create a user-funded ESCROW duel: create the contest, place the creator's
+  // hold, and confirm it with the native PaymentSheet. Gated + sandbox-testable.
+  const handleCreateMoneyDuel = async () => {
+    if (duelBusy) return;
+    setDuelBusy(true);
+    try {
+      const nextNumber = state.duelsCreated + 1;
+      const res = await createDuel(state.user.handle, STARTING_CASH, duelDays * DAY_MS, nextNumber, moneyDuelCents);
+      if (!res) { Alert.alert('Could not create duel', 'Please try again in a moment.'); return; }
+      const hold = await createEscrowHold(res.competition.id, moneyDuelCents);
+      if (!hold.ok || !hold.clientSecret) { Alert.alert('Payment setup failed', hold.error ?? 'Please try again.'); return; }
+      const pay = await presentEscrowPayment(hold.clientSecret);
+      if (!pay.ok) {
+        if (!pay.canceled) Alert.alert('Payment failed', pay.error ?? 'Please try again.');
+        return; // hold unconfirmed → contest left unfunded; the settle sweep skips it
+      }
+      dispatch({ type: 'INCREMENT_DUELS_CREATED' });
+      dispatch({ type: 'JOIN_TOURNAMENT', tournamentId: res.competition.id });
+      const code = res.competition.inviteCode ?? '';
+      try { await Share.share({ message: `I challenge you to a $${(moneyDuelCents / 100).toFixed(0)} crypto duel — winner takes the pot! Open the app → Compete → 1v1, enter code ${code}.` }); } catch {}
+      nav.navigate('TournamentDetail', { id: res.competition.id });
+    } finally {
+      setDuelBusy(false);
+    }
   };
 
   // Duel record from finished 1v1 contests I joined (win = I finished #1).
@@ -1106,6 +1135,37 @@ export function CompeteScreen() {
             Enter a code
           </Button>
         </View>
+
+        {/* Gated user-funded money duel (escrow). Only shows when the flag is on. */}
+        {USER_ESCROW_CONTESTS_ENABLED && (
+          <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.hairline }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Money duel · winner takes the pot
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              {[500, 1000, 2500].map(c => {
+                const active = moneyDuelCents === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    testID={`duel-money-${c}`}
+                    onPress={() => setMoneyDuelCents(c)}
+                    activeOpacity={0.8}
+                    style={{ flex: 1, paddingVertical: 7, borderRadius: 999, alignItems: 'center', borderWidth: 1, borderColor: active ? colors.up : colors.hairline, backgroundColor: active ? colors.up : 'transparent' }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#fff' : colors.ink }}>${c / 100}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Button testID="duel-money-btn" variant="brand" size="sm" style={{ marginTop: 10 }} loading={duelBusy} onPress={handleCreateMoneyDuel}>
+              Create ${(moneyDuelCents / 100).toFixed(0)} duel — pot ${(moneyDuelCents * 2 / 100).toFixed(0)}
+            </Button>
+            <Text style={{ fontSize: 10, color: colors.ink3, marginTop: 6 }}>
+              Sandbox test — use Stripe test card 4242 4242 4242 4242, any future expiry/CVC.
+            </Text>
+          </View>
+        )}
       </Card>
 
       {/* Price-prediction mini-game */}

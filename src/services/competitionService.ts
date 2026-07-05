@@ -269,6 +269,9 @@ export async function createDuel(
   bankroll: number,
   durationMs: number = DEFAULT_DUEL_DURATION_MS,
   duelNumber?: number,
+  // When set, a user-funded ESCROW duel: both players pay this entry (held in
+  // Stripe); the winner takes the pot via the payout rail. Gated feature.
+  escrowEntryCents?: number,
 ): Promise<{ competition: Competition; entry: CompetitionEntry | null } | null> {
   const client = await getClient();
   if (!client) return null;
@@ -277,21 +280,24 @@ export async function createDuel(
     const inviteCode = makeInviteCode();
     const days = Math.max(1, Math.round(durationMs / DAY_MS));
     const label = duelNumber ? `Duel #${duelNumber}` : `Duel · ${handle}`;
+    const isEscrow = !!escrowEntryCents && escrowEntryCents > 0;
+    const dollars = isEscrow ? `$${(escrowEntryCents! / 100).toFixed(0)}` : '';
     const { data: comp } = await client.models.Competition.create({
       name: `${label} · ${days}d`,
       type: '1v1',
       status: 'live',
-      prizePool: 'Bragging rights',
+      prizePool: isEscrow ? `${(escrowEntryCents! * 2 / 100).toFixed(0)} pot` : 'Bragging rights',
       maxPlayers: 2,
-      stake: 'Free',
+      stake: isEscrow ? dollars : 'Free',
       startAt: new Date(now).toISOString(),
       endAt: new Date(now + durationMs).toISOString(),
       entryCount: 1,
-      numberOfPrizes: 0,
+      numberOfPrizes: isEscrow ? 1 : 0,
       prizesJson: '[]',
       prizeXp: DEFAULT_PRIZE_XP,
       inviteCode,
       challengerHandle: handle,
+      ...(isEscrow ? { escrow: true, entryAmountCents: escrowEntryCents, cashPrize: true } : {}),
     });
     const competition = mapCompetition(comp);
     const entry = await joinCompetition(competition.id, handle, bankroll);
