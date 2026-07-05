@@ -36,22 +36,19 @@ export function TournamentDetailScreen() {
   const { emailVerified, refreshAttributes } = useAuth();
   const [verifyOpen, setVerifyOpen] = useState(false);
   // Leaderboard balance popup: the tapped player's portfolio within this contest.
-  const [portfolioView, setPortfolioView] = useState<{ handle: string; isSelf: boolean; bankroll: number; pnlPct: number; data: ContestPortfolio | null; loading: boolean } | null>(null);
+  const [portfolioView, setPortfolioView] = useState<{ handle: string; data: ContestPortfolio | null; loading: boolean } | null>(null);
 
   // Tap a player's name → their public profile (own row → own Profile tab).
   const openProfile = (handle: string) => {
     if (handle === state.user.handle) { nav.navigate('MainTabs', { screen: 'Profile' }); return; }
     nav.navigate('PublicProfile', { handle });
   };
-  // Tap a player's balance → portfolio popup. Only YOUR OWN holdings/cash are
-  // fetched (they're owner-only on the backend now); opponents show bankroll/pnl
-  // only, so contest strategies stay private.
-  const openBalance = async (entry: { handle: string; bankroll: number; pnlPct: number }) => {
-    const isSelf = entry.handle === state.user.handle;
-    setPortfolioView({ handle: entry.handle, isSelf, bankroll: entry.bankroll, pnlPct: entry.pnlPct, data: null, loading: isSelf });
-    if (!isSelf) return;
-    const data = await fetchEntryPortfolio(competitionId, entry.handle);
-    setPortfolioView(prev => (prev?.handle === entry.handle ? { ...prev, data, loading: false } : prev));
+  // Tap a player's balance → their contest holdings (any player — contest
+  // portfolios are readable to all authenticated users, a social/copy feature).
+  const openBalance = async (handle: string) => {
+    setPortfolioView({ handle, data: null, loading: true });
+    const data = await fetchEntryPortfolio(competitionId, handle);
+    setPortfolioView(prev => (prev?.handle === handle ? { handle, data, loading: false } : prev));
   };
 
   const competitionId: string = route.params?.id ?? '';
@@ -553,7 +550,7 @@ export function TournamentDetailScreen() {
                   </Pressable>
                   {/* Balance → contest portfolio popup */}
                   <Pressable
-                    onPress={() => openBalance(e)}
+                    onPress={() => openBalance(e.handle)}
                     hitSlop={6}
                     style={{ alignItems: 'flex-end', paddingHorizontal: 8 }}
                   >
@@ -659,24 +656,9 @@ export function TournamentDetailScreen() {
               <View style={{ paddingVertical: 30, alignItems: 'center' }}>
                 <ActivityIndicator color={colors.brand} />
               </View>
-            ) : portfolioView && !portfolioView.isSelf ? (
-              // Opponent: bankroll + P&L only — their cash/holdings/trades are private.
-              <View style={{ paddingHorizontal: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
-                  <Text style={{ fontSize: 26, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] }}>
-                    ${Math.round(portfolioView.bankroll).toLocaleString()}
-                  </Text>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: portfolioView.pnlPct >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }}>
-                    {portfolioView.pnlPct >= 0 ? '+' : ''}{portfolioView.pnlPct.toFixed(1)}%
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                  Holdings are private — only total value and P&amp;L are shown for other players.
-                </Text>
-              </View>
             ) : !portfolioView?.data ? (
               <Text style={{ paddingHorizontal: 20, fontSize: 13, color: colors.ink3 }}>
-                Couldn't load your contest portfolio.
+                Couldn't load this player's contest portfolio.
               </Text>
             ) : (() => {
               const d = portfolioView.data;

@@ -414,7 +414,7 @@ async function main() {
     .filter((c) => c.status !== 'finished' && c.cashPrize !== true && new Date(c.endAt).getTime() > now)
     .sort((a, b) => new Date(a.endAt).getTime() - new Date(b.endAt).getTime())
     .slice(0, CONTESTS)
-    .map((c) => ({ id: c.id, name: c.name ?? 'Contest', endAt: c.endAt, prizeXp: Number(c.prizeXp) || 0 }));
+    .map((c) => ({ id: c.id, name: c.name ?? 'Contest', endAt: c.endAt, prizeXp: Number(c.prizeXp) || 0, maxPlayers: Number(c.maxPlayers) || 0 }));
   console.log(`Contests to join (${soonest.length}): ${soonest.map((c) => `${c.name} (ends ${c.endAt})`).join(', ') || 'none found'}`);
   if (!soonest.length) console.warn('  No joinable contests found — players will still be created + online.');
 
@@ -428,7 +428,7 @@ async function main() {
   }
 
   console.log('Logging in, creating profiles, joining contests, trading, going online…');
-  const states = (await mapLimit(ready, 8, async (b) => {
+  const states = (await mapLimit(ready, 8, async (b, botIdx) => {
     const idToken = await signIn(b.email);
     const s = { bot: b, idToken };
 
@@ -447,6 +447,10 @@ async function main() {
     } catch { /* no existing entries / first run */ }
     s.joined = [];
     for (const c of soonest) {
+      // Respect the contest's player cap: only the first `maxPlayers` bots (by
+      // cohort index) join a given contest, so bots never overfill it (e.g. 25
+      // bots into a maxPlayers-20 sprint). 0/undefined cap = unlimited.
+      if (c.maxPlayers > 0 && botIdx >= c.maxPlayers) continue;
       try {
         const id = existingEntries[c.id]
           ?? (await gqlRetry(s, M_CREATE_ENTRY, { input: { competitionId: c.id, handle: b.handle, cash: STARTING_CASH, holdingsJson: '[]', tradesJson: '[]', bankroll: STARTING_CASH, pnlPct: 0, rank: 999, isActive: true, joinedAt: new Date().toISOString() } })).createCompetitionEntry.id;

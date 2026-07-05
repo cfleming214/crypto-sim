@@ -130,3 +130,35 @@ Fine for XP; **theft once money is on**. Do ALL of the following before flipping
 - [ ] Legal: sweepstakes registration, 1099/$600 process, `docs/official-contest-rules.html` current,
       `$4,999` prize-pool cap enforced (already in `contestCompliance.ts`).
 - [ ] Load/QA: a modified client cannot inflate a contest result that survives settlement.
+
+---
+
+## Section 3 — User-funded escrow contests (DEFERRED, HARD OFF)
+
+A requested future feature: let a USER create a contest or 1v1 duel with a real
+dollar prize **they fund themselves** — charged up front, held in **Stripe escrow**,
+released to the winner at settlement. Gated OFF behind `USER_ESCROW_CONTESTS_ENABLED`
+(`EXPO_PUBLIC_USER_ESCROW_CONTESTS`, default false). **Not built.** No create UI may
+expose a dollar-prize input while the flag is false.
+
+**⚠️ Compliance is the blocker, not the code.** This is fundamentally different from
+the app's current model. Today: **free entry, sponsor-funded** prizes → a sweepstakes
+(no consideration). A **user-funded prize pool where entrants pay and the winner takes
+the pot is prize-competition / gambling** in most US states — real-money skill-contest
+licensing, state-by-state legality (several states ban paid entry even for skill),
+KYC/AML, tax, and Apple's §5.3 rules all apply. Do NOT ship without dedicated legal
+review; it likely needs a different corporate/licensing posture than the sweepstakes lane.
+
+**If/when approved, the escrow build (behind the flag):**
+- Charge on create: Stripe **PaymentIntent with manual capture** (authorize/hold the
+  entry amount) or a hold on the creator's balance; store the escrow ref on the contest.
+- Opponents joining a paid duel/contest: same authorize-and-hold per entrant.
+- Settlement: **capture** the held funds and **Transfer** the pot (minus rake/fees) to
+  the winner's connected account via the existing `stripe-connect`/`process-withdrawals`
+  rail; **refund/void** all holds if the contest is cancelled or under-fills.
+- Idempotency + reconciliation on every hold/capture/refund; never double-charge or
+  double-pay. Cap prize pools (reuse `assertPrizePoolWithinCap`), enforce the 1099 rollup.
+- Server-authoritative results are a prerequisite (Section 2) — a user-funded pot makes
+  result-forgery direct theft.
+
+Until all of the above + legal sign-off: **flag stays false**.
