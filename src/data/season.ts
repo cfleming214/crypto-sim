@@ -3,7 +3,20 @@
 // unlocks at a cumulative season-XP threshold and grants one reward: XP, bonus
 // cash, or a cosmetic (title / avatar frame). All free — no purchase, no IAP.
 
+import type { LucideIcon } from 'lucide-react-native';
+import { Banknote, Zap, BadgeCheck, Square } from 'lucide-react-native';
+
 export type SeasonRewardKind = 'xp' | 'cash' | 'title' | 'frame';
+
+// Icon per reward type, so a cash / XP / title / frame tier reads at a glance.
+export function rewardIcon(kind: SeasonRewardKind): LucideIcon {
+  switch (kind) {
+    case 'cash':  return Banknote;
+    case 'xp':    return Zap;
+    case 'title': return BadgeCheck;
+    case 'frame': return Square;
+  }
+}
 
 export interface SeasonTier {
   tier: number;            // 1-based

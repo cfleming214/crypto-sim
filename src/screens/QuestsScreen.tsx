@@ -38,6 +38,7 @@ export function QuestsScreen() {
 
   const views = questViews(state, now);
   const allComplete = views.every(v => v.complete);
+  const completedCount = views.filter(v => v.complete).length;
   const chestClaimed = state.quests.chestClaimed;
   const [chestOpen, setChestOpen] = useState(false);
 
@@ -55,16 +56,19 @@ export function QuestsScreen() {
   return (
     <ScreenShell title="Daily Quests" eyebrow="Quests">
       <FadeInUp>
-        <Text style={{ fontSize: 13, color: colors.ink3 }}>
-          Resets in {formatCountdown(nextClaimAt(now) - now)} · complete all {views.length} for a bonus chest.
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <Text style={{ fontSize: 13, color: colors.ink3, flex: 1 }}>
+            Resets in {formatCountdown(nextClaimAt(now) - now)} · complete all {views.length} for a bonus chest.
+          </Text>
+          <Chip variant={completedCount === views.length ? 'up' : 'default'}>{completedCount}/{views.length} done</Chip>
+        </View>
       </FadeInUp>
 
       {views.map((v, i) => {
         const Icon = v.def.icon;
         return (
           <FadeInUp key={v.def.id} index={i + 1}>
-            <Card variant="tinted" style={{ gap: 10 }}>
+            <Card variant="tinted" style={{ gap: 10, ...(v.complete && !v.claimed ? { borderWidth: 1, borderColor: colors.up } : {}) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{
                   width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
@@ -90,14 +94,17 @@ export function QuestsScreen() {
 
       {/* Bonus chest */}
       <FadeInUp index={views.length + 1}>
-        <Card variant={allComplete && !chestClaimed ? 'default' : 'tinted'} style={{ gap: 10 }}>
+        <Card variant={allComplete && !chestClaimed ? 'default' : 'tinted'} style={{ gap: 10, ...(allComplete && !chestClaimed ? { borderWidth: 1, borderColor: colors.warn } : {}) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: `${colors.warn}22` }}>
               <Gift color={colors.warn} size={20} strokeWidth={2} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>Bonus chest</Text>
-              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>+{QUEST_CHEST_XP} XP · +${QUEST_CHEST_CASH}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>Bonus chest</Text>
+                {allComplete && !chestClaimed && <Chip variant="warn">Ready</Chip>}
+              </View>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>+{QUEST_CHEST_XP} XP · +${QUEST_CHEST_CASH} · complete all {views.length} quests</Text>
             </View>
             {chestClaimed
               ? <Chip variant="up">Claimed</Chip>
