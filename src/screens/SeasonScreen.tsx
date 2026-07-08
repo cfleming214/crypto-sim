@@ -11,8 +11,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { gradients, gradientsDark } from '../theme/tokens';
 import { useApp } from '../store/AppContext';
 import { seasonId, seasonEndsAt } from '../services/gamification';
-import { SEASON_TIERS, seasonTierReached, type SeasonTier } from '../data/season';
-import { Sparkles, Lock, Check, Gift } from 'lucide-react-native';
+import { SEASON_TIERS, seasonTierReached, rewardIcon, frameColor, type SeasonTier } from '../data/season';
+import { Sparkles, Lock, Check } from 'lucide-react-native';
 
 function fmtDays(ms: number): string {
   const d = Math.floor(ms / 86_400_000);
@@ -38,6 +38,9 @@ export function SeasonScreen() {
   const tierReached = seasonTierReached(seasonXp);
   const maxTier = SEASON_TIERS[SEASON_TIERS.length - 1].tier;
   const claimed = new Set(state.season.claimedTiers);
+  // Next tier not yet reached + XP remaining to it (null once maxed).
+  const nextTier = SEASON_TIERS.find(t => seasonXp < t.seasonXp) ?? null;
+  const xpToNext = nextTier ? nextTier.seasonXp - seasonXp : 0;
 
   const [reward, setReward] = useState<SeasonTier | null>(null);
   const claim = (t: SeasonTier) => {
@@ -46,7 +49,7 @@ export function SeasonScreen() {
   };
 
   return (
-    <ScreenShell title="Season Pass" eyebrow="Season 1">
+    <ScreenShell title="Season Pass" eyebrow={`Season ${seasonId(now) + 1}`}>
       <FadeInUp>
         <Card gradient={grad} style={{ gap: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -64,7 +67,9 @@ export function SeasonScreen() {
             <View style={{ height: 6, borderRadius: 3, backgroundColor: '#FFFFFF', width: `${Math.round((tierReached / maxTier) * 100)}%` }} />
           </View>
           <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)', lineHeight: 18 }}>
-            Earn XP anywhere in the app to climb the pass. Every tier is free.
+            {nextTier
+              ? `${xpToNext.toLocaleString()} XP to Tier ${nextTier.tier} (${nextTier.label}). Earn XP anywhere — every tier is free.`
+              : 'Top tier reached 🎉 Every tier is free.'}
           </Text>
         </Card>
       </FadeInUp>
@@ -72,16 +77,19 @@ export function SeasonScreen() {
       {SEASON_TIERS.map((t, i) => {
         const unlocked = seasonXp >= t.seasonXp;
         const isClaimed = claimed.has(t.tier);
+        const isNext = nextTier?.tier === t.tier;
+        const RIcon = rewardIcon(t.kind);
+        const rColor = t.kind === 'frame' ? (frameColor(t.value as string) ?? colors.accent) : colors.accent;
         return (
           <FadeInUp key={t.tier} index={Math.min(i + 1, 8)}>
-            <Card variant="tinted" style={{ gap: 10 }}>
+            <Card variant="tinted" style={{ gap: 10, ...(isNext ? { borderWidth: 1, borderColor: colors.accent } : {}) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{
                   width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: isClaimed ? `${colors.up}22` : unlocked ? colors.accentSoft : colors.surface2,
+                  backgroundColor: isClaimed ? `${colors.up}22` : unlocked ? `${rColor}22` : colors.surface2,
                 }}>
                   {isClaimed ? <Check color={colors.up} size={20} strokeWidth={2.5} />
-                    : unlocked ? <Gift color={colors.accent} size={20} strokeWidth={2} />
+                    : unlocked ? <RIcon color={rColor} size={20} strokeWidth={2} />
                     : <Lock color={colors.ink3} size={18} strokeWidth={2} />}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -107,7 +115,7 @@ export function SeasonScreen() {
       <RewardModal
         visible={!!reward}
         onClose={() => setReward(null)}
-        icon={Gift}
+        icon={reward ? rewardIcon(reward.kind) : Sparkles}
         title={`Tier ${reward?.tier ?? ''} unlocked!`}
         rewardLabel={reward?.label ?? ''}
       />

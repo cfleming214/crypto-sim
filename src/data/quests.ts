@@ -3,7 +3,7 @@
 // quests with no server. Progress is derived from existing app state (trades,
 // predictions, lessons, etc.) — see computeQuestMetrics.
 import type { LucideIcon } from 'lucide-react-native';
-import { Repeat, Coins, Brain, GraduationCap, Gift, TrendingUp, Eye } from 'lucide-react-native';
+import { Repeat, Coins, Brain, GraduationCap, Gift, TrendingUp, TrendingDown, Eye, Zap, Layers } from 'lucide-react-native';
 import { todayKey } from '../services/gamification';
 import type { AppState } from '../store/types';
 
@@ -11,6 +11,7 @@ export type QuestMetric =
   | 'tradesToday'
   | 'distinctCoinsToday'
   | 'buysToday'
+  | 'sellsToday'
   | 'predictionsToday'
   | 'lessonsToday'
   | 'watchlistToday'
@@ -29,25 +30,44 @@ export const DAILY_QUEST_COUNT = 3;
 export const QUEST_CHEST_XP = 100;   // bonus for completing all of today's quests
 export const QUEST_CHEST_CASH = 50;
 
+// Pool of 10 possible daily quests; 3 are picked per day (see dailyQuests).
 export const QUEST_CATALOG: QuestDef[] = [
   { id: 'trade-3',     title: 'Make 3 trades',            icon: Repeat,        metric: 'tradesToday',        target: 3, xp: 60 },
+  { id: 'trade-5',     title: 'Make 5 trades',            icon: Zap,           metric: 'tradesToday',        target: 5, xp: 90 },
   { id: 'diversify-2', title: 'Trade 2 different coins',  icon: Coins,         metric: 'distinctCoinsToday', target: 2, xp: 50 },
+  { id: 'diversify-3', title: 'Trade 3 different coins',  icon: Layers,        metric: 'distinctCoinsToday', target: 3, xp: 70 },
   { id: 'predict-1',   title: 'Make a price prediction',  icon: Brain,         metric: 'predictionsToday',   target: 1, xp: 40 },
   { id: 'lesson-1',    title: 'Finish an Academy lesson', icon: GraduationCap, metric: 'lessonsToday',       target: 1, xp: 50 },
   { id: 'claim-daily', title: 'Claim your daily reward',  icon: Gift,          metric: 'dailyClaimed',       target: 1, xp: 30 },
   { id: 'buy-2',       title: 'Open 2 positions',         icon: TrendingUp,    metric: 'buysToday',          target: 2, xp: 40 },
+  { id: 'sell-1',      title: 'Close a position',         icon: TrendingDown,  metric: 'sellsToday',         target: 1, xp: 40 },
   { id: 'watchlist-1', title: 'Add a coin to your watchlist', icon: Eye,       metric: 'watchlistToday',     target: 1, xp: 30 },
 ];
 
-// Deterministic daily pick: hash the UTC day-key, then take a rotating window of
-// the catalog. Same day → same quests for everyone, no backend.
+// Small seeded PRNG (mulberry32) → a repeatable shuffle from a numeric seed.
+function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Deterministic daily pick: seed a PRNG from the UTC day-key, shuffle the 10-quest
+// pool (Fisher–Yates), and take the first DAILY_QUEST_COUNT. Same day → same quests
+// for everyone (no backend); genuinely varied across days; all 10 surface over time.
 export function dailyQuests(dayKey: string): QuestDef[] {
   let h = 0;
   for (let i = 0; i < dayKey.length; i++) h = (h * 31 + dayKey.charCodeAt(i)) >>> 0;
-  const start = h % QUEST_CATALOG.length;
-  const out: QuestDef[] = [];
-  for (let i = 0; i < DAILY_QUEST_COUNT; i++) out.push(QUEST_CATALOG[(start + i) % QUEST_CATALOG.length]);
-  return out;
+  const rng = mulberry32(h);
+  const pool = [...QUEST_CATALOG];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, DAILY_QUEST_COUNT);
 }
 
 // Start of the current UTC day (ms epoch) — the boundary for "today's" trades.
@@ -67,6 +87,7 @@ export function computeQuestMetrics(state: AppState, now: number): Record<QuestM
     tradesToday: today.length,
     distinctCoinsToday: new Set(today.map(t => t.symbol)).size,
     buysToday: today.filter(t => t.side === 'buy').length,
+    sellsToday: today.filter(t => t.side === 'sell').length,
     // "Make a price prediction" must complete the moment one is STARTED. The
     // win/loss counters only move when a round RESOLVES — and only if the resolver
     // fires — which previously left the quest (and the bonus chest) stuck after the
