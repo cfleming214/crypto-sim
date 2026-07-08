@@ -22,7 +22,7 @@ import { useCoachmarkSettings } from '../components/coachmarks/CoachmarkProvider
 import { Lightbulb } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uploadAvatarPhoto, fetchActiveMirrorCount, loadFinishedContestResults } from '../services/portfolioService';
+import { uploadAvatarPhoto, fetchActiveMirrorCount, loadFinishedContestResults, fetchMyContestStats } from '../services/portfolioService';
 import { registerDevice, deactivateDevices } from '../services/pushDeviceService';
 import { isAmplifyConfigured } from '../lib/amplify';
 import { LEGAL_URLS } from '../constants/legal';
@@ -374,11 +374,15 @@ export function ProfileScreen() {
   }, [premium, noAds, purchasesReady]);
   const showOwnerDiag = purchasesReady && !!entOwner;
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
+  // LIFETIME contest stats (total tournaments ever entered + best finish), from
+  // ALL the user's entries — so these don't reset to 0 once contests end.
+  const [contestStats, setContestStats] = useState<{ played: number; bestRank: number | null }>({ played: 0, bestRank: null });
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
   // Mirror is owner-scoped so list() already returns only this user's rows.
   useEffect(() => {
     fetchActiveMirrorCount().then(setActiveMirrorCount);
+    fetchMyContestStats().then(setContestStats).catch(() => {});
   }, [state.joinedTournamentIds.length]); // re-fetch on join/leave as a cheap heuristic
 
   // "Win bracket" — any finished joined competition where the user ranked #1
@@ -581,11 +585,13 @@ export function ProfileScreen() {
 
   const stats = [
     ['All-time P&L', `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(0)}`, pnl >= 0 ? 'up' : 'down'],
-    ['Tournaments', String(state.joinedTournamentIds.length), null],
+    // Lifetime: total tournaments ever entered + best-ever finish (from all
+    // entries), never less than what's currently active.
+    ['Tournaments', String(Math.max(contestStats.played, state.joinedTournamentIds.length)), null],
     ['Win rate',    sellTrades.length > 0 ? `${winRate}%` : '—', sellTrades.length > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
     ['Trades',      String(state.trades.length), null],
     ['XP',          state.user.xp.toLocaleString(), null],
-    ['Best rank',   bestRank, null],
+    ['Best rank',   contestStats.bestRank != null ? `#${contestStats.bestRank}` : bestRank, null],
   ];
 
   // Guests can use the demo portfolio AND reach settings/restore-purchases
