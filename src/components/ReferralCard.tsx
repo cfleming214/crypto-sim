@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Share, TextInput, Alert } from 'react-native';
+import { View, Share, TextInput, Alert, Modal, TouchableOpacity, Pressable } from 'react-native';
 import { Text } from './ui/Text';
 import { Card, CardSection } from './ui/Card';
 import { Button } from './ui/Button';
-import { Check, Lock } from 'lucide-react-native';
+import { Check, Lock, ChevronRight, X } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { countMyActivatedReferrals, referralTier, recordReferral, REFERRAL_TIERS } from '../services/referralService';
@@ -21,6 +21,7 @@ export function ReferralCard() {
   const [activated, setActivated] = useState(0);
   const [entry, setEntry] = useState('');
   const [claiming, setClaiming] = useState(false);
+  const [levelsOpen, setLevelsOpen] = useState(false);
 
   useEffect(() => { countMyActivatedReferrals().then(setActivated).catch(() => {}); }, [code]);
 
@@ -76,35 +77,20 @@ export function ReferralCard() {
         </View>
       </CardSection>
 
-      {/* Reward levels — every tier, its threshold + perk, and what you've unlocked. */}
-      <CardSection last={!!state.referral.referredByCode}>
-        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink, marginBottom: 8 }}>Reward levels</Text>
-        <View style={{ gap: 10 }}>
-          {REFERRAL_TIERS.map(t => {
-            const unlocked = activated >= t.min;
-            const isNext = !unlocked && tier.next === t.name;
-            return (
-              <View key={t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: unlocked ? `${colors.up}22` : colors.surface2 }}>
-                  {unlocked
-                    ? <Check color={colors.up} size={13} strokeWidth={2.5} />
-                    : <Lock color={colors.ink3} size={11} strokeWidth={2} />}
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: unlocked ? colors.ink : colors.ink2 }}>
-                    {t.name}
-                    <Text style={{ fontSize: 11, fontWeight: '500', color: colors.ink3 }}>{`  ·  ${t.min} ${t.min === 1 ? 'referral' : 'referrals'}`}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }}>{t.perk}</Text>
-                </View>
-                {isNext && (
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand, textTransform: 'uppercase', letterSpacing: 0.5 }}>Next</Text>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      </CardSection>
+      {/* Reward levels — tap to open the full tier list in a modal. */}
+      <TouchableOpacity testID="referral-reward-levels" onPress={() => setLevelsOpen(true)} activeOpacity={0.7}>
+        <CardSection last={!!state.referral.referredByCode}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink }}>Reward levels</Text>
+              <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 2 }}>
+                {tier.current ? `${tier.current} unlocked` : 'See all tiers & perks'}{tier.next ? ` · ${tier.toNext} to ${tier.next}` : ''}
+              </Text>
+            </View>
+            <ChevronRight color={colors.ink3} size={18} />
+          </View>
+        </CardSection>
+      </TouchableOpacity>
 
       {/* Manual code entry — only when the user hasn't been attributed yet. */}
       {!state.referral.referredByCode && (
@@ -126,6 +112,45 @@ export function ReferralCard() {
           </View>
         </CardSection>
       )}
+
+      {/* Reward-levels modal — the full tier ladder with unlocked state. */}
+      <Modal visible={levelsOpen} transparent animationType="fade" onRequestClose={() => setLevelsOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }} onPress={() => setLevelsOpen(false)}>
+          <Pressable style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingBottom: 28 }} onPress={() => {}}>
+            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.hairline, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 14 }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: colors.ink }}>Reward levels</Text>
+              <TouchableOpacity onPress={() => setLevelsOpen(false)} hitSlop={8}><X color={colors.ink3} size={20} /></TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: 20, gap: 14 }}>
+              {REFERRAL_TIERS.map(t => {
+                const unlocked = activated >= t.min;
+                const isNext = !unlocked && tier.next === t.name;
+                return (
+                  <View key={t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: unlocked ? `${colors.up}22` : colors.surface2 }}>
+                      {unlocked ? <Check color={colors.up} size={15} strokeWidth={2.5} /> : <Lock color={colors.ink3} size={12} strokeWidth={2} />}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: unlocked ? colors.ink : colors.ink2 }}>
+                        {t.name}
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: colors.ink3 }}>{`  ·  ${t.min} ${t.min === 1 ? 'referral' : 'referrals'}`}</Text>
+                      </Text>
+                      <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 1 }}>{t.perk}</Text>
+                    </View>
+                    {isNext && (
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand, textTransform: 'uppercase', letterSpacing: 0.5 }}>Next</Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={{ paddingHorizontal: 20, marginTop: 16, fontSize: 12, color: colors.ink3 }}>
+              {activated} referral{activated === 1 ? '' : 's'} activated{tier.current ? ` · you're a ${tier.current}` : ''}.
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Card>
   );
 }
