@@ -1,11 +1,9 @@
-// Cognito PreSignUp trigger. Auto-confirms new sign-ups (and marks email as
-// verified) so users can sign in immediately without entering an email code —
-// the pool signs in by email but the app defers real email verification to
-// contest entry (handleStartEmailVerification). Typed loosely to avoid a
-// dependency on @types/aws-lambda.
+// Cognito PreSignUp trigger. Intentionally a NO-OP: new sign-ups must verify their
+// email with a confirmation code (confirmSignUp) before the account becomes usable
+// — we no longer auto-confirm. Kept wired (rather than removed) so the auth stack
+// wiring is unchanged; returning the event unmodified leaves Cognito's default
+// "require confirmation" behaviour in place. Typed loosely to avoid a dependency on
+// @types/aws-lambda.
 export const handler = async (event: any) => {
-  event.response = event.response ?? {};
-  event.response.autoConfirmUser = true;
-  event.response.autoVerifyEmail = true;
   return event;
 };

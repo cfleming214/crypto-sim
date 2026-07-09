@@ -19,7 +19,7 @@ type AuthMode = 'signin' | 'signup';
 
 export function AuthScreen() {
   const { colors } = useTheme();
-  const { signIn, signUp, signInWithApple } = useAuth();
+  const { signIn, signUp, confirmSignUp, resendSignUpCode, signInWithApple } = useAuth();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const [mode, setMode] = useState<AuthMode>(route.params?.mode ?? 'signin');
@@ -28,6 +28,10 @@ export function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [confirmedAge, setConfirmedAge] = useState(false);
+  // Sign-up email-verification step: once Cognito emails a code we show the
+  // code-entry card; the account isn't usable until the code is confirmed.
+  const [pendingConfirm, setPendingConfirm] = useState(false);
+  const [code, setCode] = useState('');
 
   // Sign-up requires both the 18+ age confirmation and the Terms/Privacy consent.
   const signupGateOk = acceptedTerms && confirmedAge;
@@ -86,19 +90,70 @@ export function AuthScreen() {
       if (mode === 'signin') {
         await signIn(u, password);
       } else {
-        await signUp(u, password);
+        const res = await signUp(u, password);
         // Record the age confirmation locally (timestamped) for our own records.
         try { await AsyncStorage.setItem('ageConfirmed.v1', new Date().toISOString()); } catch { /* non-fatal */ }
+        if (res.needsConfirmation) {
+          // Cognito emailed a code — show the verify step; don't close or sign in.
+          setPendingConfirm(true);
+          return;
+        }
       }
       // Auth flipped to authenticated — dismiss the modal so the gated
       // screen underneath re-renders with real content. goBack is a no-op
       // if this screen was somehow the root.
       if (nav.canGoBack()) nav.goBack();
     } catch (e: any) {
+      // A prior unconfirmed sign-up for this email → jump to the code step and
+      // resend, rather than dead-ending on "user already exists".
+      if (mode === 'signup' && e?.name === 'UsernameExistsException') {
+        try {
+          await resendSignUpCode(username.trim());
+          setPendingConfirm(true);
+          return;
+        } catch {
+          Alert.alert('Account already exists', 'That email is already registered. Try signing in instead.');
+          return;
+        }
+      }
       Alert.alert('Error', e?.message ?? 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Verify the emailed code — this is when the account actually becomes usable.
+  const handleConfirmCode = async () => {
+    if (loading) return;
+    if (code.trim().length < 4) { Alert.alert('Enter the code', 'Please enter the verification code we emailed you.'); return; }
+    setLoading(true);
+    try {
+      await confirmSignUp(username.trim(), code, password);
+      if (nav.canGoBack()) nav.goBack();
+    } catch (e: any) {
+      Alert.alert('Verification failed', e?.message ?? 'That code was incorrect or expired. Try again or resend.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await resendSignUpCode(username.trim());
+      Alert.alert('Code sent', `We emailed a new verification code to ${username.trim()}.`);
+    } catch (e: any) {
+      Alert.alert('Could not resend', e?.message ?? 'Please try again in a moment.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // "Wrong email?" — go back to the form so they can fix it, then re-submit.
+  const handleBackToForm = () => {
+    setPendingConfirm(false);
+    setCode('');
   };
 
   const handleApple = async () => {
@@ -114,8 +169,11 @@ export function AuthScreen() {
     }
   };
 
-  const headline = mode === 'signin' ? 'Welcome back' : 'Create account';
-  const subtitle = 'Trade crypto. Win prizes. Risk nothing.';
+  const confirming = mode === 'signup' && pendingConfirm;
+  const headline = confirming ? 'Verify your email' : mode === 'signin' ? 'Welcome back' : 'Create account';
+  const subtitle = confirming
+    ? `Enter the code we sent to ${username.trim()}`
+    : 'Trade crypto. Win prizes. Risk nothing.';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.brand }}>
@@ -141,6 +199,33 @@ export function AuthScreen() {
             </Text>
           </View>
 
+          {confirming ? (
+          <Card style={{ gap: 14 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Verification code</Text>
+            <TextInput
+              testID="auth-code-input"
+              style={inputStyle}
+              value={code}
+              onChangeText={setCode}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              placeholder="123456"
+              placeholderTextColor={colors.ink4}
+              maxLength={10}
+            />
+            <Button testID="auth-verify-btn" variant="brand" onPress={handleConfirmCode} disabled={loading} style={{ marginTop: 4 }}>
+              {loading ? 'Please wait…' : 'Verify & create account'}
+            </Button>
+            <Button testID="auth-resend-btn" variant="surface" onPress={handleResendCode} disabled={loading}>
+              Resend code
+            </Button>
+            <TouchableOpacity testID="auth-change-email-btn" onPress={handleBackToForm} disabled={loading} style={{ paddingVertical: 6 }}>
+              <Text style={{ textAlign: 'center', fontSize: 14, color: colors.ink2 }}>← Wrong email? Change it</Text>
+            </TouchableOpacity>
+          </Card>
+          ) : (<>
           {/* Auto-scrolling hero — what you get when you sign up / sign in */}
           <FeatureHero colors={colors} />
 
@@ -224,6 +309,7 @@ export function AuthScreen() {
               </Text>
             </Text>
           </TouchableOpacity>
+          </>)}
 
           {/* Explicit guest path — the demo portfolio + markets work without an
               account, so let people in rather than dead-ending at the wall. */}

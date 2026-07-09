@@ -11,7 +11,15 @@ interface AuthContextValue {
   email: string | null;
   emailVerified: boolean;
   signIn: (username: string, password: string) => Promise<void>;
-  signUp: (username: string, password: string) => Promise<void>;
+  /** Register a new account. Returns `{ needsConfirmation: true }` when Cognito
+   *  emailed a verification code — the caller must then call confirmSignUp with
+   *  the code to finish. `false` means the account was signed in directly (e.g. a
+   *  pool still configured to auto-confirm). No sign-in happens until confirmed. */
+  signUp: (username: string, password: string) => Promise<{ needsConfirmation: boolean }>;
+  /** Confirm a pending sign-up with the emailed code, then sign in. */
+  confirmSignUp: (username: string, code: string, password: string) => Promise<void>;
+  /** Re-send the sign-up verification code to a pending (unconfirmed) account. */
+  resendSignUpCode: (username: string) => Promise<void>;
   /** Federated Sign in with Apple via Cognito hosted UI. Requires the Cognito
    *  Apple provider + OAuth config; gated behind APPLE_SIGNIN_ENABLED in the UI. */
   signInWithApple: () => Promise<void>;
@@ -35,7 +43,9 @@ const AuthContext = createContext<AuthContextValue>({
   email: null,
   emailVerified: false,
   signIn: async () => {},
-  signUp: async () => {},
+  signUp: async () => ({ needsConfirmation: false }),
+  confirmSignUp: async () => {},
+  resendSignUpCode: async () => {},
   signInWithApple: async () => {},
   signOut: async () => {},
   deleteAccount: async () => {},
@@ -134,23 +144,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithRedirect({ provider: 'Apple' });
   };
 
-  const handleSignUp = async (usernameInput: string, password: string) => {
+  const handleSignUp = async (usernameInput: string, password: string): Promise<{ needsConfirmation: boolean }> => {
     const { signUp } = await import('aws-amplify/auth');
     // The deployed pool signs in by email (usernameAttributes = ['email']) and
     // requires the email attribute, so the input IS the email — pass it as both
-    // the username and the email attribute. The preSignUp Lambda trigger
-    // auto-confirms the user (autoConfirmUser + autoVerifyEmail), so there's no
-    // code-entry step and we can sign them straight in. (Real email verification
-    // is gated later on contest entry — see handleStartEmailVerification.)
+    // the username and the email attribute. The preSignUp trigger no longer
+    // auto-confirms, so Cognito emails a verification code and the account stays
+    // unconfirmed (unusable) until confirmSignUp succeeds — see handleConfirmSignUp.
     const email = usernameInput.trim().toLowerCase();
-    await signUp({
+    const { nextStep } = await signUp({
       username: email,
       password,
       options: { userAttributes: { email } },
     });
+    if (nextStep.signUpStep === 'CONFIRM_SIGN_UP') {
+      // Do NOT sign in — wait for the code. The account isn't active yet.
+      return { needsConfirmation: true };
+    }
+    // A pool still set to auto-confirm returns COMPLETE → sign straight in.
     await doSignIn(email, password);
     await checkSession();
     track('signup', { method: 'email' });
+    return { needsConfirmation: false };
+  };
+
+  const handleConfirmSignUp = async (usernameInput: string, code: string, password: string) => {
+    const { confirmSignUp } = await import('aws-amplify/auth');
+    const email = usernameInput.trim().toLowerCase();
+    await confirmSignUp({ username: email, confirmationCode: code.trim() });
+    // Only now — after the code is authenticated — is the account real; sign in.
+    await doSignIn(email, password);
+    await checkSession();
+    track('signup', { method: 'email' });
+  };
+
+  const handleResendSignUpCode = async (usernameInput: string) => {
+    const { resendSignUpCode } = await import('aws-amplify/auth');
+    await resendSignUpCode({ username: usernameInput.trim().toLowerCase() });
   };
 
   const handleSignOut = async () => {
@@ -207,6 +237,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       emailVerified,
       signIn: handleSignIn,
       signUp: handleSignUp,
+      confirmSignUp: handleConfirmSignUp,
+      resendSignUpCode: handleResendSignUpCode,
       signInWithApple: handleSignInWithApple,
       signOut: handleSignOut,
       deleteAccount: handleDeleteAccount,
