@@ -10,6 +10,7 @@ import { PressableScale } from '../components/ui/PressableScale';
 import { FadeInUp } from '../components/ui/FadeInUp';
 import { NativeAdCard } from '../components/NativeAdCard';
 import { CoinGlyph } from '../components/ui/Avatar';
+import { DeltaText } from '../components/ui/DeltaText';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
@@ -287,7 +288,7 @@ export function MarketsScreen() {
       {/* Search */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 8,
-        backgroundColor: colors.surface2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
+        backgroundColor: colors.surface2, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11,
       }}>
         <Search color={colors.ink3} size={16} strokeWidth={1.75} />
         <TextInput
@@ -322,35 +323,29 @@ export function MarketsScreen() {
       {/* Top movers — hidden when searching */}
       {!query && cat === 'All' && (
         <>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>Top movers</Text>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Top movers</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
-            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20 }}>
               {movers.map(a => (
                 <TouchableOpacity key={a.symbol} onPress={() => handleCoinTap(a.symbol)} activeOpacity={0.75}>
-                  <Card variant="compact" style={{ width: 170, height: 152, justifyContent: 'space-between' }}>
-                    <View style={{ gap: 3 }}>
-                      {/* Title line: coin on the left, price on the right */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-                          <CoinGlyph symbol={a.symbol} size={22} />
-                          <Text style={{ fontWeight: '600', color: colors.ink }} numberOfLines={1}>{a.symbol}</Text>
-                        </View>
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
-                          ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Text>
-                      </View>
-                      {/* $ + % change, lined up to the right beneath the price */}
-                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
-                          {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)}
-                        </Text>
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
-                          {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                        </Text>
+                  <Card variant="compact" style={{ width: 168, height: 170, justifyContent: 'space-between', padding: 14 }}>
+                    {/* Name over ticker (Robinhood layout) */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <CoinGlyph symbol={a.symbol} size={26} />
+                      <View style={{ flexShrink: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{a.name}</Text>
+                        <Text style={{ fontSize: 11, color: colors.ink3 }} numberOfLines={1}>{a.symbol}</Text>
                       </View>
                     </View>
-                    {/* Graph takes ~60% of the card height */}
-                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={146} height={90} />
+                    {/* Sparkline in the middle */}
+                    <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={140} height={48} />
+                    {/* Price + ▲/▼ change at the bottom */}
+                    <View style={{ gap: 3 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                        ${a.price < 0.01 ? a.price.toFixed(6) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                      <DeltaText pct={a.change24h} size={12} weight="600" />
+                    </View>
                   </Card>
                 </TouchableOpacity>
               ))}
@@ -361,7 +356,7 @@ export function MarketsScreen() {
 
       {/* All assets */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>
           {cat === 'All' ? 'All assets' : cat}
           {` (${sorted.length})`}
         </Text>
@@ -409,9 +404,9 @@ export function MarketsScreen() {
                   <Text style={{ fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                     ${a.price < 0.01 ? a.price.toFixed(8) : a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
-                  <Text style={{ fontSize: 11, color: a.change24h >= 0 ? colors.up : colors.down, fontVariant: ['tabular-nums'], marginTop: 2 }} numberOfLines={1}>
-                    {a.change24h >= 0 ? '+' : '−'}${fmtMoneyDelta(a.price, a.change24h)} · {a.change24h >= 0 ? '+' : ''}{a.change24h.toFixed(1)}%
-                  </Text>
+                  <View style={{ marginTop: 2 }}>
+                    <DeltaText pct={a.change24h} dollars={fmtMoneyDelta(a.price, a.change24h)} size={11} weight="500" />
+                  </View>
                 </View>
                 <View style={{ gap: 4, alignItems: 'flex-end' }}>
                   <Sparkline data={a.history.length ? [...a.history, a.price] : undefined} seed={a.symbol} down={a.change24h < 0} width={44} height={22} />
