@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ScrollView, Linking } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,6 +32,14 @@ export function AuthScreen() {
   // code-entry card; the account isn't usable until the code is confirmed.
   const [pendingConfirm, setPendingConfirm] = useState(false);
   const [code, setCode] = useState('');
+  // Rate-limit "Resend code": a 60s cooldown that starts when a code is sent.
+  const [resendIn, setResendIn] = useState(0);
+  const RESEND_COOLDOWN = 60;
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn(resendIn - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   // Sign-up requires both the 18+ age confirmation and the Terms/Privacy consent.
   const signupGateOk = acceptedTerms && confirmedAge;
@@ -96,6 +104,7 @@ export function AuthScreen() {
         if (res.needsConfirmation) {
           // Cognito emailed a code — show the verify step; don't close or sign in.
           setPendingConfirm(true);
+          setResendIn(RESEND_COOLDOWN); // a code was just sent — start the cooldown
           return;
         }
       }
@@ -110,6 +119,7 @@ export function AuthScreen() {
         try {
           await resendSignUpCode(username.trim());
           setPendingConfirm(true);
+          setResendIn(RESEND_COOLDOWN);
           return;
         } catch {
           Alert.alert('Account already exists', 'That email is already registered. Try signing in instead.');
@@ -138,10 +148,11 @@ export function AuthScreen() {
   };
 
   const handleResendCode = async () => {
-    if (loading) return;
+    if (loading || resendIn > 0) return; // rate-limited by the 60s cooldown
     setLoading(true);
     try {
       await resendSignUpCode(username.trim());
+      setResendIn(RESEND_COOLDOWN);
       Alert.alert('Code sent', `We emailed a new verification code to ${username.trim()}.`);
     } catch (e: any) {
       Alert.alert('Could not resend', e?.message ?? 'Please try again in a moment.');
@@ -218,8 +229,8 @@ export function AuthScreen() {
             <Button testID="auth-verify-btn" variant="brand" onPress={handleConfirmCode} disabled={loading} style={{ marginTop: 4 }}>
               {loading ? 'Please wait…' : 'Verify & create account'}
             </Button>
-            <Button testID="auth-resend-btn" variant="surface" onPress={handleResendCode} disabled={loading}>
-              Resend code
+            <Button testID="auth-resend-btn" variant="surface" onPress={handleResendCode} disabled={loading || resendIn > 0}>
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
             </Button>
             <TouchableOpacity testID="auth-change-email-btn" onPress={handleBackToForm} disabled={loading} style={{ paddingVertical: 6 }}>
               <Text style={{ textAlign: 'center', fontSize: 14, color: colors.ink2 }}>← Wrong email? Change it</Text>
