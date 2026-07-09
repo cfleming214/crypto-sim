@@ -93,14 +93,16 @@ export function SeasonScreen() {
                     : <Lock color={colors.ink3} size={18} strokeWidth={2} />}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>Tier {t.tier}</Text>
-                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>{t.label}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>Tier {t.tier} · {t.label}</Text>
+                  <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                    {isClaimed ? `Reached ${t.seasonXp.toLocaleString()} season XP` : `Unlock at ${t.seasonXp.toLocaleString()} season XP`}
+                  </Text>
                 </View>
                 {isClaimed
                   ? <Chip variant="up">Claimed</Chip>
                   : unlocked
                     ? <Button variant="accent" size="sm" onPress={() => claim(t)}>Claim</Button>
-                    : <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>{t.seasonXp.toLocaleString()} XP</Text>}
+                    : <Text style={{ fontSize: 11, color: colors.ink3, fontVariant: ['tabular-nums'] }}>{Math.max(0, t.seasonXp - seasonXp).toLocaleString()} to go</Text>}
               </View>
               {!unlocked && (
                 <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.surface2, overflow: 'hidden' }}>
