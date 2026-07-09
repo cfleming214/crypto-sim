@@ -692,6 +692,16 @@ export function CompeteScreen() {
       {/* Live tournaments — one at a time; swipe left/right to cycle (wraps). */}
       {currentLive && (
         <View {...livePan.panHandlers}>
+          <View style={{ position: 'relative', marginBottom: liveComps.length > 1 ? 20 : 0 }}>
+          {/* Stacked deck — the next contests peek out below/behind the top card. */}
+          {liveComps.length > 1 && (
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+              {liveComps.length > 2 && (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline, transform: [{ translateY: 18 }, { scaleX: 0.86 }], opacity: 0.5 }} />
+              )}
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline, transform: [{ translateY: 9 }, { scaleX: 0.93 }], opacity: 0.85 }} />
+            </View>
+          )}
           <View style={{ overflow: 'hidden' }}>
           <Animated.View style={{ transform: [{ translateX: slideX }] }}>
           <TouchableOpacity
@@ -750,20 +760,29 @@ export function CompeteScreen() {
           </TouchableOpacity>
           </Animated.View>
           </View>
+          </View>
 
-          {/* Page dots — only when there's more than one live contest. */}
+          {/* Page dots (few) or an "n / total" counter (many), like a card deck. */}
           {liveComps.length > 1 && (
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}>
-              {liveComps.map((c, i) => (
-                <View
-                  key={c.id}
-                  style={{
-                    width: i === safeLiveIdx ? 18 : 6, height: 6, borderRadius: 3,
-                    backgroundColor: i === safeLiveIdx ? colors.brand : colors.hairline,
-                  }}
-                />
-              ))}
-            </View>
+            liveComps.length <= 6 ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                {liveComps.map((c, i) => (
+                  <View
+                    key={c.id}
+                    style={{
+                      width: i === safeLiveIdx ? 18 : 6, height: 6, borderRadius: 3,
+                      backgroundColor: i === safeLiveIdx ? colors.brand : colors.hairline,
+                    }}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', marginTop: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                  {safeLiveIdx + 1} / {liveComps.length}
+                </Text>
+              </View>
+            )
           )}
         </View>
       )}
