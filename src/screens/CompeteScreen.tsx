@@ -166,65 +166,40 @@ export function CompeteScreen() {
   const myBoardIdx = board.findIndex(r => !!userId && (r.owner ? r.owner.split('::')[0] : '') === userId);
   const myBoardRow = myBoardIdx >= 0 ? board[myBoardIdx] : null;
 
-  // Live-tournament carousel: one card at a time, swipe left/right to cycle with
-  // wraparound, with a sliding transition. The card tracks the finger (slideX),
-  // then on release either snaps back or slides fully out while the next card
-  // slides in from the opposite edge. liveLenRef holds the current count so the
-  // once-created PanResponder always wraps against the latest length. animatingRef
-  // blocks a new swipe mid-transition.
+  // Live-tournament carousel rendered as an animated card DECK: the next contests
+  // peek out behind the top card; a left/up swipe cycles the front card back into
+  // the deck while the next one rises to the front. `cycle` (0→1) drives one
+  // rotation, then liveIdx advances and it resets to 0 — seamless. liveLenRef holds
+  // the count so the once-created PanResponder always wraps against the latest
+  // length; animatingRef blocks a new swipe mid-rotation; `swiping` hard-disables
+  // the page's vertical scroll so a swipe can't also scroll up/down.
   const [liveIdx, setLiveIdx] = useState(0);
-  // True while a horizontal carousel swipe is in progress. Used to hard-disable
-  // the screen's vertical scroll for the duration, so an in-flight left/right
-  // swipe can't also scroll the page up/down.
   const [swiping, setSwiping] = useState(false);
   const liveLenRef = useRef(0);
-  const slideX = useRef(new Animated.Value(0)).current;
+  const cycle = useRef(new Animated.Value(0)).current;
   const animatingRef = useRef(false);
   const livePan = useRef(
     PanResponder.create({
-      // Only grab the gesture once it's a deliberate, clearly-horizontal swipe —
-      // a larger dx threshold plus a strong horizontal-over-vertical ratio (and a
-      // hard cap on vertical travel) keeps the outer vertical ScrollView in charge
-      // of any up/down motion, so scrolling no longer snags the live cards.
+      // Grab a deliberate left OR up swipe (either advances the deck); leave any
+      // downward / rightward motion to the outer vertical ScrollView.
       onMoveShouldSetPanResponder: (_, g) =>
         !animatingRef.current &&
-        Math.abs(g.dx) > 24 &&
-        Math.abs(g.dx) > Math.abs(g.dy) * 2.5 &&
-        Math.abs(g.dy) < 18,
-      // Once we've grabbed a horizontal swipe, lock it: don't hand the gesture
-      // back to the vertical ScrollView (which is also disabled via `swiping`),
-      // so you can't start scrolling up/down mid-swipe.
+        ((Math.abs(g.dx) > 24 && Math.abs(g.dx) > Math.abs(g.dy) * 2.5 && Math.abs(g.dy) < 18) ||
+         (g.dy < -22 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5)),
       onPanResponderGrant: () => setSwiping(true),
       onPanResponderTerminationRequest: () => false,
-      onPanResponderMove: (_, g) => {
-        if (!animatingRef.current) slideX.setValue(g.dx);
-      },
-      onPanResponderTerminate: () => {
-        setSwiping(false);
-        if (!animatingRef.current) Animated.spring(slideX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-      },
+      onPanResponderTerminate: () => setSwiping(false),
       onPanResponderRelease: (_, g) => {
         setSwiping(false);
         const n = liveLenRef.current;
-        // Commit on distance OR a quick flick (velocity), so a fast short swipe
-        // still pages — a deliberate slow drag needs the 40px travel. vx is in
-        // px/ms, same units as the web velocity threshold.
-        const dir = (g.dx <= -40 || g.vx < -0.3) ? 1 : (g.dx >= 40 || g.vx > 0.3) ? -1 : 0;   // +1 = next, -1 = prev
-        if (n < 2 || dir === 0) {
-          Animated.spring(slideX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-          return;
-        }
+        // Commit on a left/up drag past 40px or a quick left/up flick.
+        const commit = g.dx <= -40 || g.vx < -0.3 || g.dy <= -40 || g.vy < -0.3;
+        if (n < 2 || !commit || animatingRef.current) return;
         animatingRef.current = true;
-        // Slide the current card off in the swipe direction… strong ease-out
-        // (cubic-bezier(0.23,1,0.32,1)) so the motion reads as responsive.
-        Animated.timing(slideX, { toValue: -dir * SCREEN_W, duration: 160, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true }).start(() => {
-          // …swap to the neighbour, drop the incoming card just off the opposite
-          // edge, then slide it into place.
-          setLiveIdx(i => (i + dir + n) % n);
-          slideX.setValue(dir * SCREEN_W);
-          Animated.timing(slideX, { toValue: 0, duration: 200, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true }).start(() => {
-            animatingRef.current = false;
-          });
+        Animated.timing(cycle, { toValue: 1, duration: 340, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true }).start(() => {
+          setLiveIdx(i => (i + 1) % n);
+          cycle.setValue(0);
+          animatingRef.current = false;
         });
       },
     }),
@@ -690,56 +665,57 @@ export function CompeteScreen() {
       </TouchableOpacity>
 
       {/* Live tournaments — one at a time; swipe left/right to cycle (wraps). */}
-      {currentLive && (
-        <View {...livePan.panHandlers}>
-          <View style={{ position: 'relative', marginBottom: liveComps.length > 1 ? 20 : 0 }}>
-          {/* Stacked deck — the next contests peek out below/behind the top card. */}
-          {liveComps.length > 1 && (
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-              {liveComps.length > 2 && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline, transform: [{ translateY: 18 }, { scaleX: 0.86 }], opacity: 0.5 }} />
-              )}
-              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline, transform: [{ translateY: 9 }, { scaleX: 0.93 }], opacity: 0.85 }} />
-            </View>
-          )}
-          <View style={{ overflow: 'hidden' }}>
-          <Animated.View style={{ transform: [{ translateX: slideX }] }}>
+      {currentLive && (() => {
+        const n = liveComps.length;
+        const at = (k: number) => liveComps[(safeLiveIdx + k) % n];
+        // Deck poses (front → back) + the off-pose the front card recedes into.
+        const P0 = { s: 1, ty: 0, o: 1 };
+        const P1 = { s: 0.94, ty: 12, o: 0.85 };
+        const P2 = { s: 0.88, ty: 22, o: 0.55 };
+        const GONE = { s: 0.85, ty: 30, o: 0 };
+        const restLayers = Math.min(3, n);           // cards visible at rest
+        const deepPose = restLayers >= 3 ? P2 : P1;  // deepest visible slot
+        type Pose = { s: number; ty: number; o: number };
+        const layerStyle = (start: Pose, end: Pose) => ({
+          opacity: cycle.interpolate({ inputRange: [0, 1], outputRange: [start.o, end.o] }),
+          transform: [
+            { translateY: cycle.interpolate({ inputRange: [0, 1], outputRange: [start.ty, end.ty] }) },
+            { scale: cycle.interpolate({ inputRange: [0, 1], outputRange: [start.s, end.s] }) },
+          ],
+        });
+        const renderLiveCard = (comp: typeof currentLive, interactive: boolean) => (
           <TouchableOpacity
-            key={currentLive.id}
-            testID={`compete-live-${currentLive.id}`}
-            onPress={() => nav.navigate('TournamentDetail', { id: currentLive.id })}
+            testID={interactive ? `compete-live-${comp.id}` : undefined}
+            onPress={() => nav.navigate('TournamentDetail', { id: comp.id })}
             activeOpacity={0.85}
+            disabled={!interactive}
           >
             <Card variant="noPad">
-              <CardSection>
+              <CardSection last>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.down }} />
                     <Text style={{ fontSize: 11, fontWeight: '600', color: colors.down, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      Live · {timeRemaining(currentLive)}
+                      Live · {timeRemaining(comp)}
                     </Text>
                   </View>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onPress={() => nav.navigate('TournamentDetail', { id: currentLive.id })}
-                  >
-                    {isJoined(currentLive.id) ? 'Live Details' : 'View'}
+                  <Button variant="ghost" size="sm" onPress={() => nav.navigate('TournamentDetail', { id: comp.id })}>
+                    {isJoined(comp.id) ? 'Live Details' : 'View'}
                   </Button>
                 </View>
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{currentLive.name}</Text>
-                    {isJoined(currentLive.id) && contestBalance(currentLive.id) != null ? (
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink }} numberOfLines={1}>{comp.name}</Text>
+                    {isJoined(comp.id) && contestBalance(comp.id) != null ? (
                       <Text style={{ fontSize: 12, color: colors.ink2, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                        Your balance: ${fmtBalance(contestBalance(currentLive.id)!)}
+                        Your balance: ${fmtBalance(contestBalance(comp.id)!)}
                       </Text>
                     ) : (
                       <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>${(STARTING_CASH / 1000).toFixed(0)}K bankroll · No leverage</Text>
                     )}
                   </View>
-                  {isJoined(currentLive.id) && state.activeTournament && (
+                  {isJoined(comp.id) && state.activeTournament && (
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your rank</Text>
                       <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>#{state.activeTournament.userRank}</Text>
@@ -749,43 +725,68 @@ export function CompeteScreen() {
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                   <Text style={{ fontSize: 12, color: colors.ink3 }}>
-                    {currentLive.entryCount === 0
+                    {comp.entryCount === 0
                       ? 'Be the first to join'
-                      : `${currentLive.entryCount.toLocaleString()} ${currentLive.entryCount === 1 ? 'player' : 'players'}`}
+                      : `${comp.entryCount.toLocaleString()} ${comp.entryCount === 1 ? 'player' : 'players'}`}
                   </Text>
-                  <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(currentLive)}</Text>
+                  <Text style={{ fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>{prizeLabel(comp)}</Text>
                 </View>
               </CardSection>
             </Card>
           </TouchableOpacity>
-          </Animated.View>
-          </View>
-          </View>
+        );
+        return (
+          <View {...livePan.panHandlers}>
+            <View style={{ marginBottom: n > 1 ? 30 : 0 }}>
+              {/* incoming (deepest) — fades in from hidden as the front recycles back */}
+              {n > 1 && (
+                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0 }, layerStyle(GONE, deepPose)]}>
+                  {renderLiveCard(at(restLayers), false)}
+                </Animated.View>
+              )}
+              {/* back P2 → P1 (only when 3+ contests deep) */}
+              {restLayers >= 3 && (
+                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0 }, layerStyle(P2, P1)]}>
+                  {renderLiveCard(at(2), false)}
+                </Animated.View>
+              )}
+              {/* mid P1 → P0 */}
+              {n > 1 && (
+                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0 }, layerStyle(P1, P0)]}>
+                  {renderLiveCard(at(1), false)}
+                </Animated.View>
+              )}
+              {/* front P0 → GONE (in-flow — defines the deck height; the tappable card) */}
+              <Animated.View style={layerStyle(P0, GONE)}>
+                {renderLiveCard(at(0), true)}
+              </Animated.View>
+            </View>
 
-          {/* Page dots (few) or an "n / total" counter (many), like a card deck. */}
-          {liveComps.length > 1 && (
-            liveComps.length <= 6 ? (
-              <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                {liveComps.map((c, i) => (
-                  <View
-                    key={c.id}
-                    style={{
-                      width: i === safeLiveIdx ? 18 : 6, height: 6, borderRadius: 3,
-                      backgroundColor: i === safeLiveIdx ? colors.brand : colors.hairline,
-                    }}
-                  />
-                ))}
-              </View>
-            ) : (
-              <View style={{ alignItems: 'center', marginTop: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, fontVariant: ['tabular-nums'] }}>
-                  {safeLiveIdx + 1} / {liveComps.length}
-                </Text>
-              </View>
-            )
-          )}
-        </View>
-      )}
+            {/* Page dots (few) or an "n / total" counter (many), like a card deck. */}
+            {n > 1 && (
+              n <= 6 ? (
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                  {liveComps.map((c, i) => (
+                    <View
+                      key={c.id}
+                      style={{
+                        width: i === safeLiveIdx ? 18 : 6, height: 6, borderRadius: 3,
+                        backgroundColor: i === safeLiveIdx ? colors.brand : colors.hairline,
+                      }}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', marginTop: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, fontVariant: ['tabular-nums'] }}>
+                    {safeLiveIdx + 1} / {liveComps.length}
+                  </Text>
+                </View>
+              )
+            )}
+          </View>
+        );
+      })()}
 
       {/* Contests — pill-tab filtered list */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
