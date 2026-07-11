@@ -166,46 +166,50 @@ export function CompeteScreen() {
   const myBoardIdx = board.findIndex(r => !!userId && (r.owner ? r.owner.split('::')[0] : '') === userId);
   const myBoardRow = myBoardIdx >= 0 ? board[myBoardIdx] : null;
 
-  // Live-tournament carousel rendered as an animated card DECK: the next contests
-  // peek out behind the top card. A horizontal swipe throws the front card OFF the
-  // side you swiped (left or right) and tucks it UNDER the stack, while the next
-  // card rises to the front. `cycle` (0→1) drives one rotation and `swipeDir`
-  // (−1 left / +1 right) sets which way it flies; then liveIdx advances and it
-  // resets — seamless. liveLenRef holds the count so the once-created PanResponder
-  // wraps against the latest length; animatingRef blocks a new swipe mid-rotation;
-  // `swiping` hard-disables the page's vertical scroll during a swipe.
+  // Live-tournament carousel rendered as a real card DECK: the next contests sit
+  // DIRECTLY BEHIND the top card (same footprint, fully covered at rest), so the
+  // one underneath is only seen where the top card isn't covering it. The top card
+  // tracks your finger (dragX); release past a threshold flings it off-screen and
+  // recycles it to the bottom (revealing the card beneath as the new top), else it
+  // springs back. liveLenRef holds the count so the once-created PanResponder wraps
+  // against the latest length; animatingRef blocks input during the fling; `swiping`
+  // hard-disables the page's vertical scroll during a horizontal drag.
   const [liveIdx, setLiveIdx] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const liveLenRef = useRef(0);
-  const cycle = useRef(new Animated.Value(0)).current;
-  // Swipe direction as an Animated.Value (−1 left / +1 right) set synchronously
-  // before each animation, so the native driver always uses the fresh direction
-  // (React state would lag a frame and could fly the wrong way).
-  const dirValue = useRef(new Animated.Value(1)).current;
+  const dragX = useRef(new Animated.Value(0)).current;
   const animatingRef = useRef(false);
   const livePan = useRef(
     PanResponder.create({
-      // Grab a deliberate horizontal swipe (either direction); leave up/down motion
-      // to the outer vertical ScrollView.
+      // Grab an early, clearly-horizontal drag so the card tracks the finger; leave
+      // up/down motion to the outer vertical ScrollView.
       onMoveShouldSetPanResponder: (_, g) =>
         !animatingRef.current &&
-        Math.abs(g.dx) > 24 &&
-        Math.abs(g.dx) > Math.abs(g.dy) * 2.5 &&
-        Math.abs(g.dy) < 18,
+        Math.abs(g.dx) > 10 &&
+        Math.abs(g.dx) > Math.abs(g.dy) * 1.8 &&
+        Math.abs(g.dy) < 22,
       onPanResponderGrant: () => setSwiping(true),
       onPanResponderTerminationRequest: () => false,
-      onPanResponderTerminate: () => setSwiping(false),
+      onPanResponderMove: (_, g) => {
+        if (!animatingRef.current) dragX.setValue(g.dx); // follow the finger
+      },
+      onPanResponderTerminate: () => {
+        setSwiping(false);
+        Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
+      },
       onPanResponderRelease: (_, g) => {
         setSwiping(false);
         const n = liveLenRef.current;
-        const commit = Math.abs(g.dx) >= 40 || Math.abs(g.vx) > 0.3;
-        if (n < 2 || !commit || animatingRef.current) return;
-        const dir: 1 | -1 = (g.dx < 0 || g.vx < 0) ? -1 : 1; // fly off the swiped side
-        dirValue.setValue(dir); // synchronous → native picks up the fresh direction
+        const commit = Math.abs(g.dx) >= 80 || Math.abs(g.vx) > 0.4;
+        if (n < 2 || !commit || animatingRef.current) {
+          Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
+          return;
+        }
+        const dir = (g.dx < 0 || g.vx < 0) ? -1 : 1; // continue off the swiped side
         animatingRef.current = true;
-        Animated.timing(cycle, { toValue: 1, duration: 300, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }).start(() => {
+        Animated.timing(dragX, { toValue: dir * SCREEN_W * 1.25, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
           setLiveIdx(i => (i + 1) % n);
-          cycle.setValue(0);
+          dragX.setValue(0); // the revealed card is already centred → becomes the new top
           animatingRef.current = false;
         });
       },
@@ -671,51 +675,12 @@ export function CompeteScreen() {
         </Card>
       </TouchableOpacity>
 
-      {/* Live tournaments — one at a time; swipe left/right to cycle (wraps). */}
+      {/* Live tournaments — a card deck; drag the top card off to reveal the next. */}
       {currentLive && (() => {
         const n = liveComps.length;
         const at = (k: number) => liveComps[(safeLiveIdx + k) % n];
-        // Deck poses (front → back) at rest.
-        const P0 = { s: 1, ty: 0, o: 1 };
-        const P1 = { s: 0.94, ty: 12, o: 0.85 };
-        const P2 = { s: 0.88, ty: 22, o: 0.55 };
-        const restLayers = Math.min(3, n);           // cards visible at rest
-        const deepPose = restLayers >= 3 ? P2 : P1;  // deepest visible slot
-        type Pose = { s: number; ty: number; o: number };
-        const layerStyle = (start: Pose, end: Pose) => ({
-          opacity: cycle.interpolate({ inputRange: [0, 1], outputRange: [start.o, end.o] }),
-          transform: [
-            { translateY: cycle.interpolate({ inputRange: [0, 1], outputRange: [start.ty, end.ty] }) },
-            { scale: cycle.interpolate({ inputRange: [0, 1], outputRange: [start.s, end.s] }) },
-          ],
-        });
-        // signedCycle runs 0 → ±1 (sign = swipe direction), so translateX / rotate
-        // resolve the correct side without a React re-render.
-        const flyOff = SCREEN_W * 1.15;
-        const signedCycle = Animated.multiply(cycle, dirValue);
-        // Front card: throw OFF the swiped side, tilt + dip a touch, fade only at the
-        // very end so it reads as flying away.
-        const frontStyle = {
-          zIndex: 4,
-          opacity: cycle.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }),
-          transform: [
-            { translateX: signedCycle.interpolate({ inputRange: [-1, 0, 1], outputRange: [-flyOff, 0, flyOff] }) },
-            { translateY: cycle.interpolate({ inputRange: [0, 1], outputRange: [0, 26] }) },
-            { rotate: signedCycle.interpolate({ inputRange: [-1, 0, 1], outputRange: ['-8deg', '0deg', '8deg'] }) },
-            { scale: cycle.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] }) },
-          ],
-        };
-        // Incoming card: slides in from the SAME side and settles UNDER the stack at
-        // the deepest slot — the thrown card reappearing at the bottom of the deck.
-        const incomingStyle = {
-          zIndex: 0,
-          opacity: cycle.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0, 0.15, deepPose.o] }),
-          transform: [
-            { translateX: Animated.multiply(cycle.interpolate({ inputRange: [0, 1], outputRange: [flyOff, 0] }), dirValue) },
-            { translateY: cycle.interpolate({ inputRange: [0, 1], outputRange: [deepPose.ty + 6, deepPose.ty] }) },
-            { scale: cycle.interpolate({ inputRange: [0, 1], outputRange: [0.82, deepPose.s] }) },
-          ],
-        };
+        // Slight tilt as the top card tracks the finger, for a natural throw feel.
+        const topRotate = dragX.interpolate({ inputRange: [-SCREEN_W, 0, SCREEN_W], outputRange: ['-7deg', '0deg', '7deg'] });
         const renderLiveCard = (comp: typeof currentLive, interactive: boolean) => (
           <TouchableOpacity
             testID={interactive ? `compete-live-${comp.id}` : undefined}
@@ -770,27 +735,17 @@ export function CompeteScreen() {
         );
         return (
           <View {...livePan.panHandlers}>
-            <View style={{ marginBottom: n > 1 ? 30 : 0 }}>
-              {/* incoming — slides in from the swiped side to tuck UNDER the stack */}
+            <View>
+              {/* Card directly BEHIND the top (same footprint) — only seen where the
+                  top card isn't covering it, i.e. revealed as you swipe the top off. */}
               {n > 1 && (
-                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0 }, incomingStyle]}>
-                  {renderLiveCard(at(restLayers), false)}
-                </Animated.View>
-              )}
-              {/* back P2 → P1 (only when 3+ contests deep) */}
-              {restLayers >= 3 && (
-                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 }, layerStyle(P2, P1)]}>
-                  {renderLiveCard(at(2), false)}
-                </Animated.View>
-              )}
-              {/* mid P1 → P0 (rises to the front as the top card flies off) */}
-              {n > 1 && (
-                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 3 }, layerStyle(P1, P0)]}>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 }}>
                   {renderLiveCard(at(1), false)}
-                </Animated.View>
+                </View>
               )}
-              {/* front — in-flow (defines the deck height; tappable); flies off on swipe */}
-              <Animated.View style={frontStyle}>
+              {/* Top card — tracks the finger (dragX) with a slight tilt; in-flow so it
+                  sets the deck height; the tappable one. */}
+              <Animated.View style={{ zIndex: 2, transform: [{ translateX: dragX }, { rotate: topRotate }] }}>
                 {renderLiveCard(at(0), true)}
               </Animated.View>
             </View>
