@@ -681,6 +681,15 @@ export function CompeteScreen() {
         const at = (k: number) => liveComps[(safeLiveIdx + k) % n];
         // Slight tilt as the top card tracks the finger, for a natural throw feel.
         const topRotate = dragX.interpolate({ inputRange: [-SCREEN_W, 0, SCREEN_W], outputRange: ['-7deg', '0deg', '7deg'] });
+        // The cards behind sit at a scaled/offset peek at REST (the stack look) and
+        // PROMOTE toward full as the top is dragged away (either direction) — so by the
+        // time the top is fully off, the next card already matches the top pose and the
+        // recycle is seamless. All derived from dragX → gesture-smooth, no fades.
+        const RANGE = { inputRange: [-SCREEN_W, 0, SCREEN_W], extrapolate: 'clamp' as const };
+        const secondScale = dragX.interpolate({ ...RANGE, outputRange: [1, 0.95, 1] });
+        const secondTY = dragX.interpolate({ ...RANGE, outputRange: [0, 11, 0] });
+        const thirdScale = dragX.interpolate({ ...RANGE, outputRange: [0.95, 0.9, 0.95] });
+        const thirdTY = dragX.interpolate({ ...RANGE, outputRange: [11, 22, 11] });
         const renderLiveCard = (comp: typeof currentLive, interactive: boolean) => (
           <TouchableOpacity
             testID={interactive ? `compete-live-${comp.id}` : undefined}
@@ -735,13 +744,19 @@ export function CompeteScreen() {
         );
         return (
           <View {...livePan.panHandlers}>
-            <View>
-              {/* Card directly BEHIND the top (same footprint) — only seen where the
-                  top card isn't covering it, i.e. revealed as you swipe the top off. */}
+            <View style={{ marginBottom: n > 1 ? 22 : 0 }}>
+              {/* Third card — deepest peek; promotes to the second slot as you drag. */}
+              {n > 2 && (
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 0, transform: [{ translateY: thirdTY }, { scale: thirdScale }] }}>
+                  {renderLiveCard(at(2), false)}
+                </Animated.View>
+              )}
+              {/* Second card — peeks behind the top at rest; revealed where the top
+                  isn't covering it, and grows to full as the top is dragged away. */}
               {n > 1 && (
-                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 }}>
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1, transform: [{ translateY: secondTY }, { scale: secondScale }] }}>
                   {renderLiveCard(at(1), false)}
-                </View>
+                </Animated.View>
               )}
               {/* Top card — tracks the finger (dragX) with a slight tilt; in-flow so it
                   sets the deck height; the tappable one. */}
