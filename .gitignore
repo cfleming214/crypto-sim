@@ -66,3 +66,6 @@ AWSCLIV2.pkg
 
 # Seeded online-bot roster records (local only)
 online-bots-*.json
+
+# Generated ASO screenshots (regenerable via aso-screenshots/generate.mjs)
+aso-screenshots/out/
