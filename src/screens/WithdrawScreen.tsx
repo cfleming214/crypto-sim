@@ -6,6 +6,7 @@ import { ScreenShell } from '../components/ui/ScreenShell';
 import { Card, CardSection } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
+import { PageSkeleton } from '../components/skeletons';
 import { AuthWall } from '../components/AuthWall';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../store/AuthContext';
@@ -141,9 +142,7 @@ export function WithdrawScreen() {
   return (
     <ScreenShell title="Withdraw">
       {loading && !account ? (
-        <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
+        <PageSkeleton cards={3} />
       ) : (
         <>
           {/* Balance + request */}

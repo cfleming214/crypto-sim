@@ -1,9 +1,11 @@
 import { defineFunction } from '@aws-amplify/backend';
 
-// Auto-creates a rolling 6-hour XP contest on a 6-hour EventBridge schedule (see
-// backend.ts). Each run ensures the current window's contest (live) and the next
-// window's (scheduled) both exist, so there's always one running and one queued.
-// 20-player cap, 5000 XP prize, free entry (Lane A).
+// Auto-creates rolling XP contests on 2h/3h/6h cadences, on an EventBridge
+// schedule (see backend.ts). Each run ensures the current window's contest (live)
+// and the next window's (scheduled) both exist, so there's always one running and
+// one queued — and opens an overflow room for any window whose latest room has
+// filled, so a full contest never leaves players with nothing to join.
+// 20-player cap per room, 5000 XP prize, free entry (Lane A).
 export const createRollingContest = defineFunction({
   name: 'create-rolling-contest',
   entry: './handler.ts',

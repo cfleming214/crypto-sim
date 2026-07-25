@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -8,6 +8,7 @@ import { Chip } from '../components/ui/Chip';
 import { Segmented } from '../components/ui/Segmented';
 import { LeagueBadge } from '../components/ui/LeagueBadge';
 import { Avatar } from '../components/ui/Avatar';
+import { LeaderboardSkeleton } from '../components/skeletons';
 import { MoreHorizontal } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../store/AuthContext';
@@ -85,11 +86,7 @@ export function TopTradersScreen() {
         </Card>
       )}
 
-      {loading && rows.length === 0 && (
-        <View style={{ paddingTop: 40, alignItems: 'center' }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
-      )}
+      {loading && rows.length === 0 && <LeaderboardSkeleton />}
 
       {!loading && visible.length === 0 && isAmplifyConfigured && (
         <Card variant="tinted">
