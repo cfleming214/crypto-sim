@@ -968,10 +968,13 @@ export function TradeScreen() {
             );
           })()}
 
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 'auto' }}>
             <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
+            {/* Buy sits in a coachmark wrapper, so it's laid out in a column, not
+                the row. `flex: 1` there would zero its vertical basis and leave it
+                a different height than Sell — stretch across the wrapper instead. */}
             <View ref={buyCoachRef} style={{ flex: 1 }} collapsable={false}>
-              <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
+              <Button testID="trade-buy-btn" variant="up" fullWidth onPress={() => setModalSide('buy')}>Buy</Button>
             </View>
           </View>
         </View>
