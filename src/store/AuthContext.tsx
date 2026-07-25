@@ -20,6 +20,14 @@ interface AuthContextValue {
   confirmSignUp: (username: string, code: string, password: string) => Promise<void>;
   /** Re-send the sign-up verification code to a pending (unconfirmed) account. */
   resendSignUpCode: (username: string) => Promise<void>;
+  /** Begin a forgotten-password reset: Cognito emails a confirmation code.
+   *  Resolves `{ unconfirmed: true }` when the account was never verified — the
+   *  caller should route to the sign-up confirmation step instead, since Cognito
+   *  can't reset a password on an unconfirmed account. Never rejects for an
+   *  unknown email: that would let a caller enumerate registered addresses. */
+  resetPassword: (username: string) => Promise<{ unconfirmed: boolean }>;
+  /** Finish a reset with the emailed code + a new password, then sign in. */
+  confirmResetPassword: (username: string, code: string, newPassword: string) => Promise<void>;
   /** Federated Sign in with Apple via Cognito hosted UI. Requires the Cognito
    *  Apple provider + OAuth config; gated behind APPLE_SIGNIN_ENABLED in the UI. */
   signInWithApple: () => Promise<void>;
@@ -46,6 +54,8 @@ const AuthContext = createContext<AuthContextValue>({
   signUp: async () => ({ needsConfirmation: false }),
   confirmSignUp: async () => {},
   resendSignUpCode: async () => {},
+  resetPassword: async () => ({ unconfirmed: false }),
+  confirmResetPassword: async () => {},
   signInWithApple: async () => {},
   signOut: async () => {},
   deleteAccount: async () => {},
@@ -183,6 +193,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await resendSignUpCode({ username: usernameInput.trim().toLowerCase() });
   };
 
+  const handleResetPassword = async (usernameInput: string): Promise<{ unconfirmed: boolean }> => {
+    const { resetPassword } = await import('aws-amplify/auth');
+    const email = usernameInput.trim().toLowerCase();
+    try {
+      await resetPassword({ username: email });
+      return { unconfirmed: false };
+    } catch (e: any) {
+      // An account that never verified its sign-up can't reset — Cognito has no
+      // confirmed channel to send to. Surface that distinctly so the UI can send
+      // them through sign-up confirmation rather than dead-ending on an error.
+      if (e?.name === 'InvalidParameterException' || e?.name === 'UserNotConfirmedException') {
+        return { unconfirmed: true };
+      }
+      // Swallow "no such user" and resolve as if a code was sent. Reporting it
+      // would turn this endpoint into an oracle for which emails have accounts.
+      // The UI's copy is deliberately conditional ("if that email is registered")
+      // so this stays truthful.
+      if (e?.name === 'UserNotFoundException') return { unconfirmed: false };
+      throw e;
+    }
+  };
+
+  const handleConfirmResetPassword = async (usernameInput: string, code: string, newPassword: string) => {
+    const { confirmResetPassword } = await import('aws-amplify/auth');
+    const email = usernameInput.trim().toLowerCase();
+    await confirmResetPassword({ username: email, confirmationCode: code.trim(), newPassword });
+    // The password is changed but no session exists yet — sign in with the new
+    // one so the user lands back in the app rather than at the login form.
+    await doSignIn(email, newPassword);
+    await checkSession();
+  };
+
   const handleSignOut = async () => {
     const { signOut } = await import('aws-amplify/auth');
     await signOut();
@@ -239,6 +281,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp: handleSignUp,
       confirmSignUp: handleConfirmSignUp,
       resendSignUpCode: handleResendSignUpCode,
+      resetPassword: handleResetPassword,
+      confirmResetPassword: handleConfirmResetPassword,
       signInWithApple: handleSignInWithApple,
       signOut: handleSignOut,
       deleteAccount: handleDeleteAccount,
