@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, FlatList, Image, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, FlatList, Image, TouchableOpacity, RefreshControl } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -8,6 +8,7 @@ import { Newspaper } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { fetchCryptoNews, timeAgo, type NewsArticle } from '../services/newsService';
 import { NativeAdCard } from '../components/NativeAdCard';
+import { NewsListSkeleton } from '../components/skeletons';
 import { AD_UNITS } from '../constants/adUnits';
 
 // A native ad slot is interleaved into the feed after every Nth article.
@@ -119,9 +120,7 @@ export function NewsScreen() {
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
+        <NewsListSkeleton />
       ) : (
         <FlatList
           data={feed}

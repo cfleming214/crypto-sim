@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Alert } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -7,6 +7,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Segmented } from '../components/ui/Segmented';
 import { Chip } from '../components/ui/Chip';
 import { CoinGlyph } from '../components/ui/Avatar';
+import { PayoutsSkeleton } from '../components/skeletons';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { fetchPayoutHistory, claimPrize, type PayoutHistoryRow } from '../services/walletService';
@@ -257,9 +258,7 @@ export function ActivityScreen() {
             </Text>
           </View>
         ) : payoutsLoading && payouts.length === 0 ? (
-          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-            <ActivityIndicator color={colors.brand} />
-          </View>
+          <PayoutsSkeleton />
         ) : payouts.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
             <Text style={{ fontSize: 16, color: colors.ink3 }}>No earnings yet</Text>

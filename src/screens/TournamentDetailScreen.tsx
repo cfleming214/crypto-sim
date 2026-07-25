@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, TouchableOpacity, Alert, ScrollView, Pressable, Modal, ActivityIndicator, Linking } from 'react-native';
+import { View, TouchableOpacity, Alert, ScrollView, Pressable, Modal, Linking } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -7,6 +7,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Avatar, CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
+import { ContestPortfolioSkeleton } from '../components/skeletons';
 import { EmailVerificationModal } from '../components/EmailVerificationModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
@@ -653,9 +654,7 @@ export function TournamentDetailScreen() {
               </TouchableOpacity>
             </View>
             {portfolioView?.loading ? (
-              <View style={{ paddingVertical: 30, alignItems: 'center' }}>
-                <ActivityIndicator color={colors.brand} />
-              </View>
+              <ContestPortfolioSkeleton />
             ) : !portfolioView?.data ? (
               <Text style={{ paddingHorizontal: 20, fontSize: 13, color: colors.ink3 }}>
                 Couldn't load this player's contest portfolio.

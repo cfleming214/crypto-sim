@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, ActivityIndicator, Alert } from 'react-native';
+import { View, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Text } from '../components/ui/Text';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -9,6 +9,7 @@ import { AuthWall } from '../components/AuthWall';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../store/AuthContext';
 import { StripeOnboarding } from '../components/StripeOnboarding';
+import { PageSkeleton } from '../components/skeletons';
 import { refreshStatus, startOnboarding, type PayoutAccount } from '../services/stripeService';
 import { Banknote, CheckCircle2, AlertCircle } from 'lucide-react-native';
 
@@ -63,9 +64,7 @@ export function PayoutSetupScreen() {
       {onboardUrl ? (
         <StripeOnboarding url={onboardUrl} onExit={handleExit} />
       ) : loading ? (
-        <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
+        <PageSkeleton cards={2} />
       ) : (
         <>
           <Card variant="noPad">
