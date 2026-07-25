@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { View, TouchableOpacity, Alert, Modal, ScrollView, Pressable } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
+import { ChartSkeleton } from '../components/skeletons';
 import { RiskMeter } from '../components/ui/RiskMeter';
 import { CoinGlyph, Avatar } from '../components/ui/Avatar';
 import { PressableScale } from '../components/ui/PressableScale';
@@ -721,8 +722,8 @@ export function PortfolioScreen() {
       <View style={{ marginHorizontal: -20 }}>
         <AreaChart height={170} data={chartData} timestamps={chartTimestamps} markers={chartMarkers} down={!pnlPositive} axes onMarkerGroupPress={setMarkerTrades} />
         {historyLoading && history.length === 0 && (
-          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator color={colors.ink3} />
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+            <ChartSkeleton height={170} />
           </View>
         )}
       </View>
