@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { Newspaper } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { fetchCryptoNews, timeAgo, type NewsArticle } from '../services/newsService';
+import { fetchCryptoNews, newsStats, timeAgo, timeAgoShort, type NewsArticle } from '../services/newsService';
 import { NativeAdCard } from '../components/NativeAdCard';
 import { NewsListSkeleton } from '../components/skeletons';
 import { AD_UNITS } from '../constants/adUnits';
@@ -61,6 +61,45 @@ function NewsCard({ article, onPress }: { article: NewsArticle; onPress: () => v
         )}
       </View>
     </TouchableOpacity>
+  );
+}
+
+// Stats strip above the feed. Values are derived from the articles already on
+// screen, so the strip can never disagree with the list beneath it.
+function NewsStats({ articles }: { articles: NewsArticle[] }) {
+  const { colors } = useTheme();
+  const stats = useMemo(() => newsStats(articles), [articles]);
+
+  const tiles: { value: string; label: string }[] = [
+    { value: String(stats.last24h), label: 'new in 24h' },
+    { value: String(stats.sources), label: stats.sources === 1 ? 'source' : 'sources' },
+    { value: stats.latestAt !== null ? timeAgoShort(stats.latestAt) : '—', label: 'since latest' },
+  ];
+
+  return (
+    <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingBottom: 12 }}>
+      {tiles.map(t => (
+        <View
+          key={t.label}
+          style={{
+            flex: 1,
+            backgroundColor: colors.surface,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.hairline,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: -0.5 }}>
+            {t.value}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.ink3, marginTop: 1 }} numberOfLines={1}>
+            {t.label}
+          </Text>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -122,29 +161,34 @@ export function NewsScreen() {
       {loading ? (
         <NewsListSkeleton />
       ) : (
-        <FlatList
-          data={feed}
-          keyExtractor={item => (item.kind === 'ad' ? item.id : item.article.id)}
-          renderItem={({ item }) => (
-            item.kind === 'ad'
-              ? <NativeAdCard unitId={AD_UNITS.nativeNews} />
-              : <NewsCard article={item.article} onPress={() => nav.navigate('NewsDetail', { article: item.article })} />
-          )}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 12 }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} colors={[colors.brand]} />
-          }
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingTop: 80, gap: 8 }}>
-              <Newspaper color={colors.ink4} size={36} strokeWidth={1.5} />
-              <Text style={{ color: colors.ink3, fontSize: 14, textAlign: 'center' }}>
-                {error ? "Couldn't load news right now." : 'No articles yet.'}
-              </Text>
-              <Text style={{ color: colors.ink4, fontSize: 12 }}>Pull down to refresh.</Text>
-            </View>
-          }
-        />
+        <>
+          {/* Hidden on an empty/failed feed: "0 new in 24h · 0 sources" reads as
+              a slow news day rather than the fetch problem it actually is. */}
+          {articles.length > 0 && <NewsStats articles={articles} />}
+          <FlatList
+            data={feed}
+            keyExtractor={item => (item.kind === 'ad' ? item.id : item.article.id)}
+            renderItem={({ item }) => (
+              item.kind === 'ad'
+                ? <NativeAdCard unitId={AD_UNITS.nativeNews} />
+                : <NewsCard article={item.article} onPress={() => nav.navigate('NewsDetail', { article: item.article })} />
+            )}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 12 }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} colors={[colors.brand]} />
+            }
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', paddingTop: 80, gap: 8 }}>
+                <Newspaper color={colors.ink4} size={36} strokeWidth={1.5} />
+                <Text style={{ color: colors.ink3, fontSize: 14, textAlign: 'center' }}>
+                  {error ? "Couldn't load news right now." : 'No articles yet.'}
+                </Text>
+                <Text style={{ color: colors.ink4, fontSize: 12 }}>Pull down to refresh.</Text>
+              </View>
+            }
+          />
+        </>
       )}
     </SafeAreaView>
   );
