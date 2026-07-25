@@ -796,7 +796,12 @@ export function TradeScreen() {
           </>
         }
       >
-        <View style={{ flex: 1, gap: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 8 }}>
+        {/* No paddingHorizontal here: ScreenShell already insets its children by
+            20. Setting it again nested this content at 40pt while the chart —
+            which escaped one level with marginHorizontal:-20 — sat at 20pt, so
+            the graph read wider than everything under it. Gap and the bottom
+            safe-area inset still belong to this wrapper. */}
+        <View style={{ flex: 1, gap: 14, paddingBottom: insets.bottom + 8 }}>
           {/* Coin selector. flexGrow:0 stops the horizontal ScrollView from
               stretching to fill the flex:1 column (which left a big gap between
               the chips and the price); it now hugs the chips' height. Hidden in a
@@ -838,7 +843,11 @@ export function TradeScreen() {
             </View>
           </View>
 
-          <View style={{ marginHorizontal: -20 }}>
+          {/* The -20 escape hatch is gone with the duplicate padding above: the
+              chart now sits at the same 20pt inset as every card, which is what
+              it effectively rendered at before (40 − 20). Same width, now shared
+              by the whole column. */}
+          <View>
             <CandleChart
               height={220}
               data={chartCandles}
