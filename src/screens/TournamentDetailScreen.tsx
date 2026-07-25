@@ -13,7 +13,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { fetchEntryPortfolio, isJoinLocked, type ContestPortfolio } from '../services/competitionService';
+import { fetchEntryPortfolio, isJoinLocked, isFull, type ContestPortfolio } from '../services/competitionService';
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { CONTEST_CASH_PRIZES, STARTING_CASH } from '../constants/featureFlags';
 import { contestXpForRank } from '../services/gamification';
@@ -249,6 +249,8 @@ export function TournamentDetailScreen() {
       );
     } else if (competition.status === 'finished' || Date.now() >= competition.endAt) {
       Alert.alert('Contest ended', 'This contest is over — you can no longer join it.');
+    } else if (isFull(competition)) {
+      Alert.alert('Contest full', 'This room hit its player cap. A new room opens automatically for this window — check back in a moment.');
     } else if (isJoinLocked(competition)) {
       Alert.alert('Joining closed', 'This contest is no longer accepting new players.');
     } else {
