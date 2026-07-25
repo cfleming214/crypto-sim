@@ -1021,16 +1021,19 @@ export function TradeScreen() {
             );
           })()}
 
-          {/* Both buttons are pinned to an explicit 25% of the row and the pair is
-              centred. Flex was the problem, not the solution: Sell is a direct row
-              child while Buy sits inside the coachmark wrapper, so the two resolved
-              their `flex: 1` against different containers and landed 192pt vs 154pt
-              — visibly mismatched. An explicit width takes flex resolution out of it
-              entirely, so the two are identical by construction. */}
+          {/* Explicit equal percentages rather than flex. Flex was the original
+              problem: Sell is a direct row child while Buy sits inside the
+              coachmark wrapper, so the two resolved their `flex: 1` against
+              different containers and landed 192pt vs 154pt — visibly mismatched
+              (CRYP-2). Percentages of the same parent are equal by construction.
+
+              48% each spans the row: 2 × 48% + the 10pt gap leaves only ~4-6pt of
+              slack, so the pair reads full-width while staying identical. 49%
+              would overflow the row and force a shrink. */}
           <View style={{ flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 10, marginTop: 'auto' }}>
-            <Button testID="trade-sell-btn" variant="down" style={{ width: '25%' }} onPress={() => setModalSide('sell')}>Sell</Button>
-            <View ref={buyCoachRef} style={{ width: '25%' }} collapsable={false}>
-              {/* fullWidth = alignSelf stretch, so Buy fills the wrapper's 25%. */}
+            <Button testID="trade-sell-btn" variant="down" style={{ width: '48%' }} onPress={() => setModalSide('sell')}>Sell</Button>
+            <View ref={buyCoachRef} style={{ width: '48%' }} collapsable={false}>
+              {/* fullWidth = alignSelf stretch, so Buy fills the wrapper's 48%. */}
               <Button testID="trade-buy-btn" variant="up" fullWidth onPress={() => setModalSide('buy')}>Buy</Button>
             </View>
           </View>
