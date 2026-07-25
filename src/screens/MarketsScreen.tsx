@@ -206,7 +206,12 @@ export function MarketsScreen() {
     return 0;
   });
 
-  const movers = [...allCoins].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 5);
+  // Built from `filtered`, not `allCoins` — otherwise the Filter sheet's
+  // gainers/losers and market-cap choices changed the list below while Top
+  // movers carried on showing coins the user had just filtered out.
+  // The strip only renders on the "All" category with no search query, so at
+  // that point `filtered` is the full list narrowed by exactly those filters.
+  const movers = [...filtered].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 5);
 
   const handleCoinTap = (symbol: string) => {
     dispatch({ type: 'SET_TRADE_SYMBOL', symbol });
@@ -320,8 +325,9 @@ export function MarketsScreen() {
         </View>
       </ScrollView>
 
-      {/* Top movers — hidden when searching */}
-      {!query && cat === 'All' && (
+      {/* Top movers — hidden when searching, and when the active filters leave
+          nothing to show (a bare heading over an empty strip reads as broken). */}
+      {!query && cat === 'All' && movers.length > 0 && (
         <>
           <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>Top movers</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}>
