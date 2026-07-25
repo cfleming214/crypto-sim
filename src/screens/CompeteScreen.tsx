@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { View, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder, Animated, Dimensions, Easing } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { ConfettiBurst } from '../components/ui/ConfettiBurst';
@@ -179,6 +179,30 @@ export function CompeteScreen() {
   const liveLenRef = useRef(0);
   const dragX = useRef(new Animated.Value(0)).current;
   const animatingRef = useRef(false);
+
+  // The card currently under the finger, lifted into its own overlay layer for
+  // the duration of the gesture. This is what fixes the post-swipe flash.
+  //
+  // Previously the in-flow top card was itself bound to dragX, and the recycle
+  // did `setLiveIdx(i + 1)` followed by `dragX.setValue(0)`. Those land on
+  // different threads: setValue goes straight to native and applies at once,
+  // while setLiveIdx only takes effect on React's next commit. So for the frames
+  // in between, the card that had just been thrown off-screen snapped back to
+  // dead centre — and the cards behind it un-promoted — before the new top card
+  // rendered. That in-between state is the "flashes back and forth".
+  //
+  // Now the in-flow top card never carries dragX, so resetting dragX can't move
+  // it. The overlay unmounts in the SAME commit that advances the index, and
+  // dragX is only zeroed afterwards, once nothing visible is bound to it.
+  const [held, setHeld] = useState<Competition | null>(null);
+  const topCompRef = useRef<Competition | null>(null);
+
+  useLayoutEffect(() => {
+    if (held) return;
+    dragX.setValue(0);
+    animatingRef.current = false;
+  }, [held, dragX]);
+
   const livePan = useRef(
     PanResponder.create({
       // Grab an early, clearly-horizontal drag so the card tracks the finger; leave
@@ -188,29 +212,37 @@ export function CompeteScreen() {
         Math.abs(g.dx) > 10 &&
         Math.abs(g.dx) > Math.abs(g.dy) * 1.8 &&
         Math.abs(g.dy) < 22,
-      onPanResponderGrant: () => setSwiping(true),
+      onPanResponderGrant: () => {
+        setSwiping(true);
+        // dragX is already 0 here, so the overlay mounts exactly over the in-flow
+        // card it stands in for — the lift is invisible.
+        setHeld(topCompRef.current);
+      },
       onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, g) => {
         if (!animatingRef.current) dragX.setValue(g.dx); // follow the finger
       },
       onPanResponderTerminate: () => {
         setSwiping(false);
-        Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
+        Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 })
+          .start(() => setHeld(null));
       },
       onPanResponderRelease: (_, g) => {
         setSwiping(false);
         const n = liveLenRef.current;
         const commit = Math.abs(g.dx) >= 80 || Math.abs(g.vx) > 0.4;
         if (n < 2 || !commit || animatingRef.current) {
-          Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
+          Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 })
+            .start(() => setHeld(null));
           return;
         }
         const dir = (g.dx < 0 || g.vx < 0) ? -1 : 1; // continue off the swiped side
         animatingRef.current = true;
         Animated.timing(dragX, { toValue: dir * SCREEN_W * 1.25, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
+          // One commit: the overlay unmounts and the deck advances together, so
+          // there's no frame showing the thrown card back at centre.
           setLiveIdx(i => (i + 1) % n);
-          dragX.setValue(0); // the revealed card is already centred → becomes the new top
-          animatingRef.current = false;
+          setHeld(null);
         });
       },
     }),
@@ -399,6 +431,9 @@ export function CompeteScreen() {
   liveLenRef.current = liveComps.length;
   const safeLiveIdx = liveComps.length ? liveIdx % liveComps.length : 0;
   const currentLive = liveComps[safeLiveIdx];
+  // The PanResponder is created once, so it reads the current top card off a ref
+  // (same reason liveLenRef exists just above).
+  topCompRef.current = currentLive ?? null;
 
   // Re-render once a second while a contest is in its final minute so the
   // "Ns left" countdown actually ticks down on screen.
@@ -764,11 +799,29 @@ export function CompeteScreen() {
                   {renderLiveCard(at(1), false)}
                 </Animated.View>
               )}
-              {/* Top card — tracks the finger (dragX) with a slight tilt; in-flow so it
-                  sets the deck height; the tappable one. */}
-              <Animated.View style={{ zIndex: 2, transform: [{ translateX: dragX }, { rotate: topRotate }] }}>
+              {/* Top card — in-flow, so it sets the deck height; the tappable one.
+                  Deliberately NOT bound to dragX: while a drag is in flight the
+                  overlay below stands in for it and this copy is just holding the
+                  space. Keeping it static is what stops a dragX reset from ever
+                  yanking a stale card back into view. */}
+              <View style={{ zIndex: 2, opacity: held ? 0 : 1 }}>
                 {renderLiveCard(at(0), true)}
-              </Animated.View>
+              </View>
+
+              {/* The lifted card: the one actually under the finger. Mounted only
+                  for the length of the gesture, and unmounted in the same commit
+                  that advances the deck. */}
+              {held && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 3,
+                    transform: [{ translateX: dragX }, { rotate: topRotate }],
+                  }}
+                >
+                  {renderLiveCard(held, false)}
+                </Animated.View>
+              )}
             </View>
 
             {/* Page dots (few) or an "n / total" counter (many), like a card deck. */}
