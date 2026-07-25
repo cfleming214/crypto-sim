@@ -12,7 +12,8 @@ Stable across copy edits, locale changes, and visual refactors — that's the wh
 
 | Surface | testIDs |
 | --- | --- |
-| Auth | `auth-username-input`, `auth-password-input`, `auth-submit-btn`, `auth-toggle-mode`, `auth-close-btn` |
+| Auth | `auth-username-input`, `auth-password-input`, `auth-submit-btn`, `auth-toggle-mode`, `auth-close-btn`, `auth-code-input`, `auth-verify-btn`, `auth-resend-btn`, `auth-change-email-btn` |
+| Password reset | `auth-forgot-link`, `auth-reset-email-input`, `auth-reset-send-btn`, `auth-reset-code-input`, `auth-reset-newpw-input`, `auth-reset-confirm-btn`, `auth-reset-resend-btn`, `auth-reset-cancel-btn` |
 | AuthWall | `authwall-signin-btn`, `authwall-signup-btn` |
 | Email verify | `email-verify-email-input`, `email-verify-send-btn`, `email-verify-code-input`, `email-verify-confirm-btn`, `email-verify-resend`, `email-verify-change-email`, `email-verify-close` |
 | Trade | `trade-buy-btn`, `trade-sell-btn`, `trade-amount-input`, `trade-quick-amount-50`, `trade-limit-toggle`, `trade-place-order-btn`, `trade-more-btn`, `trade-watchlist-star`, `trade-indicators-toggle` |
