@@ -35,7 +35,7 @@ type AuthMode = 'signin' | 'signup';
 
 export function AuthScreen() {
   const { colors } = useTheme();
-  const { signIn, signUp, confirmSignUp, resendSignUpCode, signInWithApple } = useAuth();
+  const { signIn, signUp, confirmSignUp, resendSignUpCode, resetPassword, confirmResetPassword, signInWithApple } = useAuth();
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const [mode, setMode] = useState<AuthMode>(route.params?.mode ?? 'signin');
@@ -48,6 +48,10 @@ export function AuthScreen() {
   // code-entry card; the account isn't usable until the code is confirmed.
   const [pendingConfirm, setPendingConfirm] = useState(false);
   const [code, setCode] = useState('');
+  // Forgot-password flow. 'email' collects the address and sends a code; 'code'
+  // takes the code plus the new password. null means we're not in the flow.
+  const [resetStep, setResetStep] = useState<null | 'email' | 'code'>(null);
+  const [newPassword, setNewPassword] = useState('');
   // Rate-limit "Resend code": a 60s cooldown that starts when a code is sent.
   const [resendIn, setResendIn] = useState(0);
   const RESEND_COOLDOWN = 60;
@@ -194,6 +198,67 @@ export function AuthScreen() {
     setCode('');
   };
 
+  // --- Forgot password -------------------------------------------------------
+
+  const handleSendResetCode = async () => {
+    if (loading || resendIn > 0) return;
+    const email = username.trim();
+    if (!email.includes('@')) { Alert.alert('Enter your email', 'Enter the email address on your account.'); return; }
+    setLoading(true);
+    try {
+      const { unconfirmed } = await resetPassword(email);
+      if (unconfirmed) {
+        // Never verified their sign-up, so there's nothing to reset yet. Send
+        // them through the existing confirmation step instead of dead-ending.
+        await resendSignUpCode(email);
+        setResetStep(null);
+        setMode('signup');
+        setPendingConfirm(true);
+        setResendIn(RESEND_COOLDOWN);
+        Alert.alert('Verify your email first', 'This account was never verified. We\'ve emailed you a verification code — confirm it to finish setting up your account.');
+        return;
+      }
+      setResetStep('code');
+      setResendIn(RESEND_COOLDOWN);
+      // Deliberately conditional: resetPassword resolves the same way for an
+      // unknown address, so this must not imply the account exists.
+      Alert.alert('Check your email', `If ${email} is registered, we've sent a reset code to it.`);
+    } catch (e: any) {
+      Alert.alert('Could not send code', e?.message ?? 'Please try again in a moment.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    if (loading) return;
+    if (code.trim().length < 4) { Alert.alert('Enter the code', 'Please enter the reset code we emailed you.'); return; }
+    const missing = passwordPolicyGaps(newPassword);
+    if (missing.length) {
+      Alert.alert('Choose a stronger password', `Your new password needs:\n\n• ${missing.join('\n• ')}`);
+      return;
+    }
+    setLoading(true);
+    try {
+      await confirmResetPassword(username.trim(), code, newPassword);
+      // Signed in on success — close out of the auth modal.
+      if (nav.canGoBack()) nav.goBack();
+    } catch (e: any) {
+      const msg = e?.name === 'CodeMismatchException' ? 'That code was incorrect. Check it and try again.'
+        : e?.name === 'ExpiredCodeException' ? 'That code has expired. Request a new one.'
+        : e?.message ?? 'Could not reset your password. Please try again.';
+      Alert.alert('Reset failed', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exitReset = () => {
+    setResetStep(null);
+    setCode('');
+    setNewPassword('');
+  };
+
   const handleApple = async () => {
     if (loading) return;
     setLoading(true);
@@ -208,9 +273,14 @@ export function AuthScreen() {
   };
 
   const confirming = mode === 'signup' && pendingConfirm;
-  const headline = confirming ? 'Verify your email' : mode === 'signin' ? 'Welcome back' : 'Create account';
-  const subtitle = confirming
-    ? `Enter the code we sent to ${username.trim()}`
+  const headline =
+    resetStep ? 'Reset your password'
+    : confirming ? 'Verify your email'
+    : mode === 'signin' ? 'Welcome back' : 'Create account';
+  const subtitle =
+    resetStep === 'email' ? 'We\'ll email you a code to set a new password'
+    : resetStep === 'code' ? `Enter the code we sent to ${username.trim()}, then choose a new password`
+    : confirming ? `Enter the code we sent to ${username.trim()}`
     : 'Trade crypto. Win prizes. Risk nothing.';
 
   return (
@@ -237,7 +307,71 @@ export function AuthScreen() {
             </Text>
           </View>
 
-          {confirming ? (
+          {resetStep === 'email' ? (
+          /* Step 1 — which account. */
+          <Card style={{ gap: 14 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Email</Text>
+            <TextInput
+              testID="auth-reset-email-input"
+              style={inputStyle}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              keyboardType="email-address"
+              placeholder="you@email.com"
+              placeholderTextColor={colors.ink4}
+            />
+            <Button testID="auth-reset-send-btn" variant="brand" onPress={handleSendResetCode} disabled={loading || resendIn > 0} style={{ marginTop: 4 }}>
+              {loading ? 'Please wait…' : resendIn > 0 ? `Resend code in ${resendIn}s` : 'Email me a reset code'}
+            </Button>
+            <TouchableOpacity testID="auth-reset-cancel-btn" onPress={exitReset} disabled={loading} style={{ paddingVertical: 6 }}>
+              <Text style={{ textAlign: 'center', fontSize: 14, color: colors.ink2 }}>← Back to sign in</Text>
+            </TouchableOpacity>
+          </Card>
+          ) : resetStep === 'code' ? (
+          /* Step 2 — code + the new password. */
+          <Card style={{ gap: 14 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Reset code</Text>
+            <TextInput
+              testID="auth-reset-code-input"
+              style={inputStyle}
+              value={code}
+              onChangeText={setCode}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              placeholder="123456"
+              placeholderTextColor={colors.ink4}
+              maxLength={10}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>New password</Text>
+            <TextInput
+              testID="auth-reset-newpw-input"
+              style={inputStyle}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoComplete="new-password"
+              placeholder="••••••••"
+              placeholderTextColor={colors.ink4}
+            />
+            <Text style={{ fontSize: 11, color: colors.ink3, lineHeight: 16 }}>
+              At least 8 characters, with an uppercase and lowercase letter, a number and a symbol.
+            </Text>
+            <Button testID="auth-reset-confirm-btn" variant="brand" onPress={handleConfirmReset} disabled={loading} style={{ marginTop: 4 }}>
+              {loading ? 'Please wait…' : 'Set new password & sign in'}
+            </Button>
+            <Button testID="auth-reset-resend-btn" variant="surface" onPress={handleSendResetCode} disabled={loading || resendIn > 0}>
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+            </Button>
+            <TouchableOpacity testID="auth-reset-cancel-btn" onPress={exitReset} disabled={loading} style={{ paddingVertical: 6 }}>
+              <Text style={{ textAlign: 'center', fontSize: 14, color: colors.ink2 }}>← Back to sign in</Text>
+            </TouchableOpacity>
+          </Card>
+          ) : confirming ? (
           <Card style={{ gap: 14 }}>
             <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Verification code</Text>
             <TextInput
@@ -323,6 +457,19 @@ export function AuthScreen() {
             >
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
+
+            {/* Sign-in only. Sign-up has nothing to reset yet, and an Apple
+                account has no password for this flow to change. */}
+            {mode === 'signin' && (
+              <TouchableOpacity
+                testID="auth-forgot-link"
+                onPress={() => { setResetStep('email'); setCode(''); setNewPassword(''); }}
+                disabled={loading}
+                style={{ paddingVertical: 8 }}
+              >
+                <Text style={{ textAlign: 'center', fontSize: 14, color: colors.ink2 }}>Forgot your password?</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Sign in with Apple — gated behind APPLE_SIGNIN_ENABLED so it only
                 appears once the Cognito Apple provider + OAuth are configured. */}
