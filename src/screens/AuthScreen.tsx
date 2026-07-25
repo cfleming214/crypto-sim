@@ -15,6 +15,22 @@ import { APPLE_SIGNIN_ENABLED } from '../constants/featureFlags';
 import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 
+// Mirrors the deployed Cognito password policy (min 8, upper + lower + digit +
+// symbol — see amplify_outputs.json `auth.password_policy`). Cognito remains the
+// enforcement point; this exists so a weak password comes back as a readable
+// checklist up front instead of a raw InvalidPasswordException from the server.
+// Keep in sync if the pool policy ever changes.
+function passwordPolicyGaps(pw: string): string[] {
+  const gaps: string[] = [];
+  if (pw.length < 8)     gaps.push('at least 8 characters');
+  if (!/[a-z]/.test(pw)) gaps.push('a lowercase letter');
+  if (!/[A-Z]/.test(pw)) gaps.push('an uppercase letter');
+  if (!/[0-9]/.test(pw)) gaps.push('a number');
+  // Cognito's accepted symbol set.
+  if (!/[\^$*.[\]{}()?"!@#%&/\\,><':;|_~`+=-]/.test(pw)) gaps.push('a symbol (e.g. ! @ # $)');
+  return gaps;
+}
+
 type AuthMode = 'signin' | 'signup';
 
 export function AuthScreen() {
@@ -91,6 +107,17 @@ export function AuthScreen() {
         'You must confirm you are 18 or older and accept the Terms of Use and Privacy Policy to create an account.',
       );
       return;
+    }
+    // Check the password against the pool's policy BEFORE calling Cognito.
+    // Cognito enforces this server-side regardless — this is so a weak password
+    // fails with a readable list of what's missing rather than a raw
+    // InvalidPasswordException, and doesn't burn a sign-up attempt.
+    if (mode === 'signup') {
+      const missing = passwordPolicyGaps(password);
+      if (missing.length) {
+        Alert.alert('Choose a stronger password', `Your password needs:\n\n• ${missing.join('\n• ')}`);
+        return;
+      }
     }
     setLoading(true);
     try {
