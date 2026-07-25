@@ -2104,16 +2104,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const lastT = existing[existing.length - 1]?.t;
       // backfillGap no-ops under 5 minutes; check here too so a quick app-switch
       // doesn't hit the network at all.
-      if (lastT && now - lastT >= EQUITY_GAP_MIN_MS) {
+      const filled = !!lastT && now - lastT >= EQUITY_GAP_MIN_MS;
+      if (filled) {
         await backfillGap(
           pid,
           { cash: s.cash, holdings: s.holdings },
-          lastT,
+          lastT!,
           now,
           new Map(s.coins.map(c => [c.symbol, c.price])),
         );
       }
-      await appendSnapshot(pid, { t: Date.now(), v: s.bankroll });
+      // Only stamp the current balance when we did NOT just reconstruct a gap.
+      //
+      // The 10s price poll is suspended alongside the capture interval, so on
+      // foreground `s.bankroll` is still priced at whatever the market was doing
+      // before the app went away. After a long absence that's badly stale — and
+      // writing it at `now`, right after a backfill that ran up to `now` on real
+      // historical prices, would end the reconstructed curve with a step back to
+      // an hours-old balance.
+      //
+      // Nothing is lost by skipping it: the capture interval resumes immediately
+      // and records a properly-priced point within CAPTURE_MS. The stamp still
+      // happens for short absences, which is what it was there for — brief
+      // sessions that never let the capture interval fire, and where the prices
+      // are fresh enough to be worth recording.
+      if (!filled) await appendSnapshot(pid, { t: Date.now(), v: s.bankroll });
     } catch (e) {
       // Never let history reconstruction break the foreground path.
       console.warn('equity gap backfill failed (ignored):', e);
