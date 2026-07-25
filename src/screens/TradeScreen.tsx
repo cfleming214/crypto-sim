@@ -25,6 +25,15 @@ import { track } from '../lib/analytics';
 // A buy of this size or larger gets a confetti celebration (a notable position).
 const BIG_BUY_USD = 1000;
 
+// Label shown next to the price-change chip, per selected chart timeframe.
+const TF_CHANGE_LABEL: Record<string, string> = {
+  '24H': '24h',
+  '7D': '7d',
+  '30D': '30d',
+  '90D': '90d',
+  '1Y': '1y',
+};
+
 const QUICK_AMOUNTS = [50, 100, 250, 500];
 const QUICK_PERCENTS = [25, 50, 75, 100];
 
@@ -537,9 +546,12 @@ export function TradeScreen() {
   const watchlisted = state.watchlist.includes(symbol);
   const coin = getCoin(symbol);
 
-  // Drop the previous coin's fetched bars the instant we switch coins so the
-  // chart never renders one coin's history under another's price axis.
-  useEffect(() => { setFetchedCandles([]); }, [symbol]);
+  // Drop the previously fetched bars the instant the coin OR the timeframe
+  // changes, so nothing renders one window's history under another's label —
+  // the chart axis, and the change chip derived from it, would both be wrong
+  // for the frames between the switch and the new fetch resolving. Responses
+  // are cached for 5 minutes, so flipping back is effectively instant.
+  useEffect(() => { setFetchedCandles([]); }, [symbol, tf]);
 
   // The 24H chart reuses the live in-state 24h series (state.coins[].history),
   // which the price poll keeps fresh every 10s — so opening a coin needs NO
@@ -584,6 +596,25 @@ export function TradeScreen() {
     return { chartCandles: undefined, chartTimestamps: undefined };
   }, [tf, coin?.history, coin?.price, fetchedCandles]);
 
+  // Price move over the SELECTED timeframe — not a fixed 24h window.
+  //   24H  -> the API's canonical change24h, which the price poll keeps fresh.
+  //   else -> derived from the first close of the very series the chart is
+  //           drawing, measured against the live price so the chip always
+  //           agrees with the big price readout directly above it.
+  // Returns null while a longer timeframe's OHLC is still in flight; the chip
+  // renders a placeholder rather than showing a stale 24h number.
+  const tfChange = useMemo<{ pct: number; abs: number } | null>(() => {
+    const p = coin?.price ?? 0;
+    if (tf === '24H') {
+      const pct = coin?.change24h ?? 0;
+      const denom = 1 + pct / 100;   // guard −100% (÷0 → Infinity)
+      return { pct, abs: denom > 0 ? Math.abs(p - p / denom) : p };
+    }
+    const first = chartCandles?.[0]?.close;
+    if (!first || first <= 0 || !coin) return null;
+    return { pct: ((p - first) / first) * 100, abs: Math.abs(p - first) };
+  }, [tf, coin?.change24h, coin?.price, chartCandles]);
+
   // Your buy/sell trades for this coin, pinned on the chart as up/down triangles.
   // Reward grants (kind === 'reward') aren't trades, so they're excluded.
   const chartMarkers = useMemo<ChartMarker[]>(() =>
@@ -605,17 +636,15 @@ export function TradeScreen() {
   if (!coin) return null;
 
   const price = coin.price;
-  const change24h = coin.change24h;
-  const isUp = change24h >= 0;
-  // Absolute 24h move in dollars (prev = price / (1 + pct/100)), compactly
-  // formatted; the sign/color is applied where it's rendered.
-  const chgDenom = 1 + change24h / 100;   // guard −100% (÷0 → Infinity)
-  const abs24hChange = chgDenom > 0 ? Math.abs(price - price / chgDenom) : price;
-  const change24hStr =
-    abs24hChange >= 1000 ? abs24hChange.toLocaleString('en-US', { maximumFractionDigits: 0 })
-    : abs24hChange >= 1   ? abs24hChange.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : abs24hChange >= 0.01 ? abs24hChange.toFixed(2)
-    : abs24hChange.toFixed(6);
+  const isUp = (tfChange?.pct ?? 0) >= 0;
+  // Absolute move in dollars over the selected window, compactly formatted;
+  // the sign/color is applied where it's rendered.
+  const absChange = tfChange?.abs ?? 0;
+  const changeStr =
+    absChange >= 1000 ? absChange.toLocaleString('en-US', { maximumFractionDigits: 0 })
+    : absChange >= 1   ? absChange.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : absChange >= 0.01 ? absChange.toFixed(2)
+    : absChange.toFixed(6);
 
   const handleConfirm = (amount: number, limitPrice?: number) => {
     if (!modalSide) return;
@@ -725,7 +754,18 @@ export function TradeScreen() {
           )}
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
+            {/* Goes to Markets, not back to this coin's trade screen. The point of
+                "buy more" after a fill is to pick something else to trade — just
+                dismissing the receipt dropped you back on the coin you'd already
+                bought, with nothing to do but buy it again. */}
+            <Button
+              testID="order-filled-trade-more-btn"
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Markets' }); }}
+            >
+              {lastTrade.side === 'buy' ? 'Buy more' : 'Trade more'}
+            </Button>
             <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Home' }); }}>View portfolio</Button>
           </View>
         </ScrollView>
@@ -787,10 +827,14 @@ export function TradeScreen() {
               ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: price < 0.01 ? 8 : 2 })}
             </ShakeText>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <Chip variant={isUp ? 'up' : 'down'}>
-                {isUp ? '↑' : '↓'} {isUp ? '+' : '−'}${change24hStr} · {isUp ? '+' : ''}{change24h.toFixed(2)}%
-              </Chip>
-              <Text style={{ fontSize: 12, color: colors.ink3 }}>24h</Text>
+              {tfChange ? (
+                <Chip variant={isUp ? 'up' : 'down'}>
+                  {isUp ? '↑' : '↓'} {isUp ? '+' : '−'}${changeStr} · {isUp ? '+' : ''}{tfChange.pct.toFixed(2)}%
+                </Chip>
+              ) : (
+                <Chip variant="default">—</Chip>
+              )}
+              <Text style={{ fontSize: 12, color: colors.ink3 }}>{TF_CHANGE_LABEL[tf] ?? tf}</Text>
             </View>
           </View>
 
@@ -968,10 +1012,13 @@ export function TradeScreen() {
             );
           })()}
 
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 'auto' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 'auto' }}>
             <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
+            {/* Buy sits in a coachmark wrapper, so it's laid out in a column, not
+                the row. `flex: 1` there would zero its vertical basis and leave it
+                a different height than Sell — stretch across the wrapper instead. */}
             <View ref={buyCoachRef} style={{ flex: 1 }} collapsable={false}>
-              <Button testID="trade-buy-btn" variant="up" style={{ flex: 1 }} onPress={() => setModalSide('buy')}>Buy</Button>
+              <Button testID="trade-buy-btn" variant="up" fullWidth onPress={() => setModalSide('buy')}>Buy</Button>
             </View>
           </View>
         </View>

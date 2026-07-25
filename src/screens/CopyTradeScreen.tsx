@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, TouchableOpacity, Alert, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { Card, CardSection } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
+import { TraderProfileSkeleton } from '../components/skeletons';
 import { CoinGlyph } from '../components/ui/Avatar';
 import { AreaChart } from '../components/charts/AreaChart';
 import { useTheme } from '../theme/ThemeContext';
@@ -160,9 +161,7 @@ export function CopyTradeScreen() {
   if (loading) {
     return (
       <ScreenShell title="Loading…">
-        <View style={{ paddingTop: 60, alignItems: 'center' }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
+        <TraderProfileSkeleton />
       </ScreenShell>
     );
   }

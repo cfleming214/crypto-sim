@@ -245,15 +245,22 @@ new Rule(Stack.of(weeklyFn), 'CreateWeeklyContestRule', {
 
 // --- createRollingContest: rolling XP contests on multiple cadences (2h/3h/6h) ---
 // Each run ensures the current + next window of EVERY cadence exists, so each has
-// one running and one queued. Runs hourly — more frequent than the smallest (2h)
-// window — so the next window is always pre-created before the current ends.
+// one running and one queued, and opens an overflow room (`-r2`, `-r3`, …) for any
+// window whose latest room has hit the 20-player cap.
+// Reads CompetitionEntry to count entries per room; writes Competition.
 // 20-player cap, 5000 XP, free entry. (Idempotent conditional puts → no dupes.)
 const rollingFn = backend.createRollingContest.resources.lambda;
 competitionTable.grantWriteData(rollingFn);
+entryTable.grantReadData(rollingFn);
 // @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
 rollingFn.addEnvironment('COMPETITION_TABLE_NAME', competitionTable.tableName);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+rollingFn.addEnvironment('COMPETITION_ENTRY_TABLE_NAME', entryTable.tableName);
+// Every 5 minutes, not hourly: a full room has to become joinable again quickly
+// or a 2-hour sprint spends most of its window locked out. Still far cheaper than
+// the smallest window, so the next window stays pre-created well in advance.
 new Rule(Stack.of(rollingFn), 'CreateRollingContestRule', {
-  schedule: Schedule.rate(Duration.hours(1)),
+  schedule: Schedule.rate(Duration.minutes(5)),
   targets: [new LambdaFunction(rollingFn)],
 });
 
