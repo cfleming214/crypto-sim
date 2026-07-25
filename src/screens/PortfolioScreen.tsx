@@ -369,7 +369,7 @@ export function PortfolioScreen() {
     return () => clearInterval(id);
   }, [state.activePortfolioId]);
 
-  const { chartData, chartTimestamps } = React.useMemo(() => {
+  const { chartData, chartTimestamps, windowBaseline } = React.useMemo(() => {
     const windowMs = TF_WINDOW_MS[tf] ?? 0;
     const now = Date.now();
     const cutoff = tf === 'MAX' ? 0 : now - windowMs;
@@ -378,6 +378,24 @@ export function PortfolioScreen() {
     const clean = despikeSeries(history);
     const windowed = clean.filter(p => p.t >= cutoff);
 
+    // What the portfolio was worth when this window OPENED.
+    //
+    // Prefer the last reading at or before the cutoff and carry it forward:
+    // snapshots are only captured while the app is foregrounded, so a short
+    // window (Live is 15 min, 1H is 60) frequently contains no reading of its
+    // own — but the balance simply hasn't been re-recorded since the previous
+    // one, which is still the correct opening value.
+    //
+    // This used to fall back to STARTING_CASH, and that was the bug: a constant
+    // baseline meant every window without its own readings reported the same
+    // all-time P&L, so the amount and percentage never moved with the selector.
+    let prior: number | undefined;
+    for (const p of clean) {
+      if (p.t <= cutoff) prior = p.v;   // clean is ascending, so this ends on the latest
+      else break;
+    }
+    const baseline = prior ?? windowed[0]?.v ?? clean[0]?.v ?? startEquity;
+
     // Every timeframe (Live/1H included) renders the ACTUAL recorded snapshots in
     // the window — no synthetic resample grid. The old resample flat-filled the
     // window before the first reading and interpolated onto a fake grid, so
@@ -385,18 +403,20 @@ export function PortfolioScreen() {
     if (windowed.length >= 2) {
       const vals = windowed.map(p => p.v);
       vals[vals.length - 1] = totalEquity; // live right edge — matches the header $
-      return { chartData: vals, chartTimestamps: windowed.map(p => p.t) };
+      return { chartData: vals, chartTimestamps: windowed.map(p => p.t), windowBaseline: baseline };
     }
+    // Too few readings to draw: bridge the window with the derived baseline so
+    // the chart and the P&L chip still agree with each other.
     return {
-      chartData:       [startEquity, totalEquity],
+      chartData:       [baseline, totalEquity],
       chartTimestamps: [now - (windowMs || 0), now],
+      windowBaseline:  baseline,
     };
   }, [history, totalEquity, tf]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Timeframe P&L: current equity (the live right-edge value) minus the EARLIEST
-  // point in the charted window. Recomputes whenever the timeframe — and thus the
-  // window's first point — changes, so the chip matches what the graph shows.
-  const windowBaseline = chartData.length > 0 ? chartData[0] : startEquity;
+  // Timeframe P&L: current equity (the live right-edge value) minus the value at
+  // the start of the selected window, so the chip tracks the selector and matches
+  // what the graph shows.
   const pnl = totalEquity - windowBaseline;
   const pnlPct = windowBaseline !== 0 ? (pnl / windowBaseline) * 100 : 0;
   const pnlPositive = pnl >= 0;
