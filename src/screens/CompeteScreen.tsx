@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { View, TouchableOpacity, Alert, Modal, TextInput, Share, ScrollView, PanResponder, Animated, Dimensions, Easing } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { ConfettiBurst } from '../components/ui/ConfettiBurst';
@@ -194,14 +194,12 @@ export function CompeteScreen() {
   // Now the in-flow top card never carries dragX, so resetting dragX can't move
   // it. The overlay unmounts in the SAME commit that advances the index, and
   // dragX is only zeroed afterwards, once nothing visible is bound to it.
-  const [held, setHeld] = useState<Competition | null>(null);
-  const topCompRef = useRef<Competition | null>(null);
-
-  useLayoutEffect(() => {
-    if (held) return;
-    dragX.setValue(0);
+  // Spring the top card back to centre and release the input lock. Used by every
+  // non-committing exit from a drag.
+  const settleBack = React.useCallback(() => {
+    Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
     animatingRef.current = false;
-  }, [held, dragX]);
+  }, [dragX]);
 
   const livePan = useRef(
     PanResponder.create({
@@ -212,41 +210,48 @@ export function CompeteScreen() {
         Math.abs(g.dx) > 10 &&
         Math.abs(g.dx) > Math.abs(g.dy) * 1.8 &&
         Math.abs(g.dy) < 22,
-      onPanResponderGrant: () => {
-        setSwiping(true);
-        // dragX is already 0 here, so the overlay mounts exactly over the in-flow
-        // card it stands in for — the lift is invisible.
-        setHeld(topCompRef.current);
-      },
+      onPanResponderGrant: () => setSwiping(true),
       onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, g) => {
         if (!animatingRef.current) dragX.setValue(g.dx); // follow the finger
       },
-      onPanResponderTerminate: () => {
-        setSwiping(false);
-        Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 })
-          .start(() => setHeld(null));
-      },
+      onPanResponderTerminate: () => { setSwiping(false); settleBack(); },
       onPanResponderRelease: (_, g) => {
         setSwiping(false);
         const n = liveLenRef.current;
         const commit = Math.abs(g.dx) >= 80 || Math.abs(g.vx) > 0.4;
-        if (n < 2 || !commit || animatingRef.current) {
-          Animated.spring(dragX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 6 })
-            .start(() => setHeld(null));
-          return;
-        }
+        if (n < 2 || !commit || animatingRef.current) { settleBack(); return; }
         const dir = (g.dx < 0 || g.vx < 0) ? -1 : 1; // continue off the swiped side
         animatingRef.current = true;
         Animated.timing(dragX, { toValue: dir * SCREEN_W * 1.25, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
-          // One commit: the overlay unmounts and the deck advances together, so
-          // there's no frame showing the thrown card back at centre.
           setLiveIdx(i => (i + 1) % n);
-          setHeld(null);
+          // Reset on the NEXT frame, not inline. Inline, dragX.setValue reaches
+          // the native view before React commits the new index, so the card just
+          // thrown off-screen snaps back to centre for a frame — the CRYP-7 flash.
+          //
+          // rAF rather than the previous overlay approach because rAF always
+          // fires. That version parked the release of `held` and animatingRef
+          // inside animation callbacks, so an interrupted animation (the outer
+          // ScrollView stealing the responder mid-fling) left animatingRef stuck
+          // true — and since onMoveShouldSetPanResponder gates on it, the deck
+          // froze for good, with the real card still hidden behind the overlay.
+          requestAnimationFrame(() => {
+            dragX.setValue(0);
+            animatingRef.current = false;
+          });
         });
       },
     }),
   ).current;
+
+  // Belt and braces: leaving the screen mid-gesture must never strand the deck in
+  // a locked state, since animatingRef gates all future swipes.
+  useFocusEffect(
+    React.useCallback(() => () => {
+      dragX.setValue(0);
+      animatingRef.current = false;
+    }, [dragX]),
+  );
 
   // Prize label for a contest card — cash pool text, or the XP prize when cash
   // prizes are off.
@@ -431,9 +436,6 @@ export function CompeteScreen() {
   liveLenRef.current = liveComps.length;
   const safeLiveIdx = liveComps.length ? liveIdx % liveComps.length : 0;
   const currentLive = liveComps[safeLiveIdx];
-  // The PanResponder is created once, so it reads the current top card off a ref
-  // (same reason liveLenRef exists just above).
-  topCompRef.current = currentLive ?? null;
 
   // Re-render once a second while a contest is in its final minute so the
   // "Ns left" countdown actually ticks down on screen.
@@ -799,29 +801,13 @@ export function CompeteScreen() {
                   {renderLiveCard(at(1), false)}
                 </Animated.View>
               )}
-              {/* Top card — in-flow, so it sets the deck height; the tappable one.
-                  Deliberately NOT bound to dragX: while a drag is in flight the
-                  overlay below stands in for it and this copy is just holding the
-                  space. Keeping it static is what stops a dragX reset from ever
-                  yanking a stale card back into view. */}
-              <View style={{ zIndex: 2, opacity: held ? 0 : 1 }}>
+              {/* Top card — in-flow (so it sets the deck height), tappable, and
+                  tracking the finger with a slight tilt. No stand-in overlay and
+                  no opacity toggle: the card you drag is the real one, so there's
+                  no hidden state that can strand it invisible. */}
+              <Animated.View style={{ zIndex: 2, transform: [{ translateX: dragX }, { rotate: topRotate }] }}>
                 {renderLiveCard(at(0), true)}
-              </View>
-
-              {/* The lifted card: the one actually under the finger. Mounted only
-                  for the length of the gesture, and unmounted in the same commit
-                  that advances the deck. */}
-              {held && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 3,
-                    transform: [{ translateX: dragX }, { rotate: topRotate }],
-                  }}
-                >
-                  {renderLiveCard(held, false)}
-                </Animated.View>
-              )}
+              </Animated.View>
             </View>
 
             {/* Page dots (few) or an "n / total" counter (many), like a card deck. */}
