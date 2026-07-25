@@ -168,7 +168,23 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   // SVG coords are computed against the inset plot region (plotH tall, starting
   // at leftGutter px from the left).
   const axesOn = axes && !!data && chartData.length >= 2;
-  const leftGutter = axesOn ? 40 : 0;
+  // Size the Y gutter to the widest label it actually has to hold rather than a
+  // fixed 40. The old 36pt text box (40 − 4) couldn't fit "$100.0k" — the value
+  // every account starts at — and with no numberOfLines the label wrapped onto a
+  // second line instead of shrinking. AXIS_CHAR_W is the advance of one glyph at
+  // fontSize 9 with tabular numerals, which makes every digit the same width.
+  const AXIS_CHAR_W = 5.4;
+  const yTickValues = React.useMemo(() => {
+    if (!axesOn) return [] as number[];
+    const lo = Math.min(...chartData);
+    const hi = Math.max(...chartData);
+    return [hi, (hi + lo) / 2, lo];
+  }, [axesOn, chartData]);
+  const yLabelChars = yTickValues.length
+    ? Math.max(...yTickValues.map(v => formatAxisMoney(v).length))
+    : 0;
+  // +14 leaves a little air on the left and an 8pt gap before the plot starts.
+  const leftGutter = axesOn ? Math.max(40, Math.ceil(yLabelChars * AXIS_CHAR_W) + 14) : 0;
   const bottomGutter = axesOn ? 16 : 0;
   const plotH = height - bottomGutter;
   const plotWidthPx = Math.max(1, layoutWidth - leftGutter);
@@ -281,7 +297,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       onLayout={e => setLayoutWidth(e.nativeEvent.layout.width)}
     >
       {/* Y-axis $ labels in the left gutter */}
-      {showAxisLabels && [max, (max + min) / 2, min].map((v, i) => {
+      {showAxisLabels && yTickValues.map((v, i) => {
         const y = Math.max(0, Math.min(plotH - 12, yForValue(v) - 6));
         // Skip the midpoint when the series is essentially flat (avoids three
         // identical labels stacked on top of each other).
@@ -289,8 +305,12 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
         return (
           <Text
             key={i}
+            numberOfLines={1}
             style={{
-              position: 'absolute', left: 0, top: y, width: leftGutter - 4,
+              // Right-aligned in a box that ends 8pt short of the plot, so the
+              // label reads against the axis without touching either the
+              // container edge or the curve.
+              position: 'absolute', left: 0, top: y, width: leftGutter - 8,
               textAlign: 'right', fontSize: 9, color: colors.ink4, fontVariant: ['tabular-nums'],
             }}
           >

@@ -158,6 +158,11 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
   // has no meaningful timestamps to label.
   const axesOn = axes && !!data && closes.length >= 2;
   const bottomGutter = axesOn && timestamps && timestamps.length >= 2 ? 16 : 0;
+  // Reserved strip on the right for the price labels. They used to be absolutely
+  // positioned at right:2 over a full-width plot, so they were painted directly
+  // on top of the price line — and a long value ($0.000123 for a sub-cent coin)
+  // ran to the container edge. Sized to the widest label, like AreaChart's.
+  const AXIS_CHAR_W = 5.4;   // glyph advance at fontSize 9, tabular numerals
 
   const W = 300;
   // Total vertical budget for the main price region (incl. its X-axis gutter).
@@ -172,6 +177,17 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
   const max = Math.max(...closes);
   const range = max - min || 1;
   const toY = (v: number) => plotH - ((v - min) / range) * plotH * 0.85 - plotH * 0.075;
+
+  // Y-axis gridline values (top / middle / bottom of the visible price range).
+  const yTicks = axesOn ? [max, (max + min) / 2, min] : [];
+  // Width the labels actually need, so the plot can be inset by exactly that much.
+  const rightGutter = axesOn
+    ? Math.ceil(Math.max(...yTicks.map(v => fmtAxisPrice(v).length)) * AXIS_CHAR_W) + 10
+    : 0;
+  // The crosshair overlay and the trade markers live INSIDE the inset plot view,
+  // so every index→x mapping must be against the plot's width, not the outer
+  // container's — otherwise they drift right by the width of the gutter.
+  const plotWidth = Math.max(1, containerWidth - rightGutter);
 
   const points = useMemo(() => closes.map((v, i) => ({
     x: (i / (closes.length - 1)) * W,
@@ -214,16 +230,16 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder:  () => true,
     onPanResponderGrant: (e) => {
-      const idx = Math.round((e.nativeEvent.locationX / containerWidth) * (closes.length - 1));
+      const idx = Math.round((e.nativeEvent.locationX / plotWidth) * (closes.length - 1));
       setCrosshairIdx(Math.max(0, Math.min(idx, closes.length - 1)));
     },
     onPanResponderMove: (e) => {
-      const idx = Math.round((e.nativeEvent.locationX / containerWidth) * (closes.length - 1));
+      const idx = Math.round((e.nativeEvent.locationX / plotWidth) * (closes.length - 1));
       setCrosshairIdx(Math.max(0, Math.min(idx, closes.length - 1)));
     },
     onPanResponderRelease:   () => setCrosshairIdx(null),
     onPanResponderTerminate: () => setCrosshairIdx(null),
-  }), [containerWidth, closes.length]);
+  }), [plotWidth, closes.length]);
 
   const last = points[points.length - 1];
 
@@ -234,7 +250,7 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
 
   // Tooltip stays in-bounds
   const tooltipLeft = crosshairIdx !== null
-    ? Math.max(4, Math.min(containerWidth - 80, (crosshairIdx / (closes.length - 1)) * containerWidth - 36))
+    ? Math.max(4, Math.min(plotWidth - 80, (crosshairIdx / (closes.length - 1)) * plotWidth - 36))
     : 0;
 
   // RSI helpers
@@ -242,8 +258,6 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
   const rsiNow = rsi.length ? rsi[rsi.length - 1] : null;
   const rsiColor = rsiNow !== null && rsiNow > 70 ? colors.down : rsiNow !== null && rsiNow < 30 ? colors.up : colors.ink2 ?? colors.ink3;
 
-  // Y-axis gridline values (top / middle / bottom of the visible price range).
-  const yTicks = axesOn ? [max, (max + min) / 2, min] : [];
   const xSpan = timestamps && timestamps.length >= 2 ? timestamps[timestamps.length - 1] - timestamps[0] : 0;
 
   const upTri = (c: string): ViewStyle => ({
@@ -277,8 +291,10 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
         </View>
       )}
 
-      {/* Main price region (price line + axes overlays + markers) */}
-      <View style={{ height: plotH, position: 'relative' }}>
+      {/* Main price region (price line + axes overlays + markers). Inset on the
+          right by rightGutter so the price line stops short of the labels rather
+          than running underneath them. */}
+      <View style={{ height: plotH, position: 'relative', marginRight: rightGutter }}>
         <Svg width="100%" height={plotH} viewBox={`0 0 ${W} ${plotH}`} preserveAspectRatio="none">
           {/* Horizontal Y gridlines */}
           {axesOn && yTicks.map((v, i) => (
@@ -308,8 +324,13 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
           return (
             <Text
               key={`yl${i}`}
+              numberOfLines={1}
               style={{
-                position: 'absolute', right: 2, top: y, zIndex: 2,
+                // Sits in the reserved strip beside the plot (the parent is inset
+                // by rightGutter), left-aligned off the plot edge with a small
+                // gap — not overlaid on the price line as it was before.
+                position: 'absolute', left: '100%', marginLeft: 6, width: rightGutter,
+                top: y, zIndex: 2,
                 fontSize: 9, color: colors.ink4, fontVariant: ['tabular-nums'],
               }}
             >
@@ -326,7 +347,7 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
 
         {/* Buy/sell triangle markers */}
         {markerData.map((m, i) => {
-          const xPx = (m.idx / (closes.length - 1)) * containerWidth;
+          const xPx = (m.idx / (closes.length - 1)) * plotWidth;
           const yPx = Math.max(7, Math.min(plotH - 7, toY(m.price)));
           const buy = m.side === 'buy';
           const col = buy ? colors.up : colors.down;
@@ -350,9 +371,9 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
         {/* Marker detail tooltip */}
         {selMarker !== null && markerData[selMarker] && (() => {
           const m = markerData[selMarker];
-          const xPx = (m.idx / (closes.length - 1)) * containerWidth;
+          const xPx = (m.idx / (closes.length - 1)) * plotWidth;
           const tipW = 150;
-          const left = Math.max(4, Math.min(containerWidth - tipW - 4, xPx - tipW / 2));
+          const left = Math.max(4, Math.min(plotWidth - tipW - 4, xPx - tipW / 2));
           const buy = m.side === 'buy';
           return (
             <View
@@ -381,6 +402,9 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
         <View style={{
           height: bottomGutter, flexDirection: 'row', justifyContent: 'space-between',
           alignItems: 'center', paddingHorizontal: 2,
+          // Match the plot's inset so "Now" still lines up with the right edge of
+          // the price line rather than the container.
+          marginRight: rightGutter,
         }}>
           <Text style={{ fontSize: 9, color: colors.ink4 }}>{fmtAxisTime(timestamps[0], xSpan)}</Text>
           <Text style={{ fontSize: 9, color: colors.ink4 }}>
@@ -394,7 +418,8 @@ export function CandleChart({ height = 220, data, timeframe, basePrice, indicato
       {showRSI && (
         <>
           <View style={{ height: 1, backgroundColor: colors.hairline, marginVertical: 4 }} />
-          <View style={{ position: 'relative', height: rsiH }}>
+          {/* Same inset as the price plot so the two share an x-axis. */}
+          <View style={{ position: 'relative', height: rsiH, marginRight: rightGutter }}>
             <Text style={{
               position: 'absolute', top: 0, left: 2, zIndex: 1,
               fontSize: 9, fontWeight: '700', color: colors.ink3, letterSpacing: 0.3,
