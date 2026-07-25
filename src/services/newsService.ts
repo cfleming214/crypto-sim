@@ -137,6 +137,51 @@ export async function fetchCryptoNews(force = false): Promise<NewsArticle[]> {
   return merged;
 }
 
+export interface NewsFeedStats {
+  /** Articles published within the last 24 hours. */
+  last24h: number;
+  /** Distinct outlets represented in the current feed. */
+  sources: number;
+  /** Publish time of the newest article, or null for an empty feed. */
+  latestAt: number | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Headline numbers for the News tab's stats strip, derived from the feed the
+ * screen already has — no extra fetch, and they can't disagree with the list
+ * rendered underneath them.
+ *
+ * A publish time slightly in the future (some feeds post-date articles) still
+ * counts toward the last 24h; it's the freshest news there is, so excluding it
+ * would be the surprising behaviour.
+ */
+export function newsStats(articles: NewsArticle[], now = Date.now()): NewsFeedStats {
+  const sources = new Set<string>();
+  let last24h = 0;
+  let latestAt: number | null = null;
+  for (const a of articles) {
+    if (now - a.publishedAt < DAY_MS) last24h += 1;
+    if (latestAt === null || a.publishedAt > latestAt) latestAt = a.publishedAt;
+    if (a.source) sources.add(a.source);
+  }
+  return { last24h, sources: sources.size, latestAt };
+}
+
+/** Relative time with no "ago" suffix, for stat tiles: "12m" / "3h" / "2d". */
+export function timeAgoShort(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.floor((now - ms) / 1000));
+  if (s < 60) return 'now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return `${Math.floor(d / 7)}w`;
+}
+
 /** Compact relative time, e.g. "3h ago" / "2d ago". */
 export function timeAgo(ms: number, now = Date.now()): string {
   const s = Math.max(0, Math.floor((now - ms) / 1000));
