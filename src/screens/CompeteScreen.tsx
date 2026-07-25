@@ -23,7 +23,7 @@ import { levelForXp } from '../services/gamification';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
 import { useCompetitions } from '../hooks/useCompetitions';
-import { createDuel, acceptDuel, isJoinLocked, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
+import { createDuel, acceptDuel, isJoinLocked, isFull, DUEL_DURATION_OPTIONS, DAY_MS } from '../services/competitionService';
 import { fetchGlobalLeaderboard, subscribeToGlobalLeaderboard, type LeaderboardRow } from '../services/leaderboardService';
 import { fetchUnclaimed, claimPrize, type UnclaimedPrize } from '../services/walletService';
 import { fetchLiveTrades, type LiveTradeRow } from '../services/liveTradeService';
@@ -580,6 +580,12 @@ export function CompeteScreen() {
       Alert.alert(`${comp.name} has ended`, 'This contest is over — you can no longer join it.');
       return;
     }
+    // A full room stops taking entries — the rolling-contest engine opens a new
+    // room for the same window, so point the player at that rather than a dead end.
+    if (isFull(comp)) {
+      Alert.alert(`${comp.name} is full`, 'This room hit its player cap. A new room opens automatically for this window — check back in a moment.');
+      return;
+    }
     // Joining closes once the contest locks at start or passes its join cutoff
     // (e.g. only 10% of the duration left). Contests can otherwise be joined live
     // or pre-joined before they open.
@@ -966,6 +972,7 @@ export function CompeteScreen() {
                   <Text style={{ fontSize: 11, color: colors.ink3 }}>
                     {comp.startAt > Date.now() ? `Starts ${startsInLabel(comp.startAt)}` : timeRemaining(comp)}
                     {comp.startAt > Date.now() && comp.lockAfterStart ? ' · 🔒 locks at start'
+                      : isFull(comp) ? ' · 🔒 full'
                       : isJoinLocked(comp) ? ' · 🔒 joining closed' : ''}
                   </Text>
                 </View>

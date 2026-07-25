@@ -87,11 +87,19 @@ function mapCompetition(d: any): Competition {
   };
 }
 
-// Whether NEW entries are currently blocked for a contest. True when either the
-// contest locks at start and has started, OR enough of the duration has elapsed
-// to pass its join cutoff (joinCutoffPct, e.g. 0.9 = "until 10% remains").
+// A capped contest that has reached its cap. Rolling contests answer this by
+// opening a fresh room for the same window (see the create-rolling-contest
+// Lambda), so a full room turns players away instead of growing past maxPlayers.
+export function isFull(c: Competition): boolean {
+  return c.maxPlayers > 0 && c.entryCount >= c.maxPlayers;
+}
+
+// Whether NEW entries are currently blocked for a contest. True when the contest
+// is full, OR it locks at start and has started, OR enough of the duration has
+// elapsed to pass its join cutoff (joinCutoffPct, e.g. 0.9 = "until 10% remains").
 // Centralizes the gate used by the Join CTAs on Compete + the contest detail.
 export function isJoinLocked(c: Competition, now: number = Date.now()): boolean {
+  if (isFull(c)) return true;
   if (c.lockAfterStart && now >= c.startAt) return true;
   if (typeof c.joinCutoffPct === 'number' && c.endAt > c.startAt) {
     const elapsed = (now - c.startAt) / (c.endAt - c.startAt);
