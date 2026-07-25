@@ -180,11 +180,23 @@ export async function fetchFinishedCompetitions(): Promise<Competition[]> {
   }
 }
 
+// Joins arrive in bursts (a popular contest, bot seeding, your own join echoing
+// back), and each re-layer costs one Query per contest. Coalesce a burst into a
+// single recount; short enough that your own join still feels immediate.
+const ENTRY_RECOUNT_DEBOUNCE_MS = 600;
+
 /**
  * Subscribe to every Competition row change. Fires when a new contest is
  * created, status flips (open → live → finished), or any field is updated by
  * the closeCompetition / createCompetition Lambdas. Layers in live entry
  * counts on every event so the UI's "N players" stays current.
+ *
+ * ALSO watches CompetitionEntry creates/deletes. Joining a contest writes an
+ * entry row and never touches the Competition row, so the observeQuery below
+ * doesn't fire — which is why a card's entry count sat stale until the whole
+ * page was refetched. Leaving deletes the row, so create+delete covers both
+ * directions. (Deliberately not onUpdate: tickLeaderboard rewrites rank/pnl on
+ * every active entry every 5 minutes, and none of that changes a count.)
  */
 export async function subscribeToCompetitions(
   onUpdate: (comps: Competition[]) => void,
@@ -192,15 +204,42 @@ export async function subscribeToCompetitions(
   const client = await getClient();
   if (!client) return () => {};
   try {
+    // Last-known Competition rows, so an entry-only change can be recounted
+    // without refetching the contest list.
+    let latest: Competition[] | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+
+    const emit = async () => {
+      if (closed || !latest) return;
+      const layered = await layerEntryCounts(client, latest);
+      if (!closed) onUpdate(visibleHere(withSeeds(layered)));
+    };
+
     const sub = client.models.Competition.observeQuery(CASH_QUERY).subscribe({
       next: async ({ items }: { items: any[] }) => {
-        const comps = (items ?? []).map(mapCompetition);
-        const layered = await layerEntryCounts(client, comps);
-        onUpdate(visibleHere(withSeeds(layered)));
+        latest = (items ?? []).map(mapCompetition);
+        await emit();
       },
       error: (err: unknown) => console.warn('Competition subscription error:', err),
     });
-    return () => sub.unsubscribe();
+
+    const recount = () => {
+      if (closed || timer) return;            // already scheduled → coalesce
+      timer = setTimeout(() => { timer = null; void emit(); }, ENTRY_RECOUNT_DEBOUNCE_MS);
+    };
+    const onEntryErr = (err: unknown) => console.warn('CompetitionEntry subscription error:', err);
+    const entrySubs = [
+      client.models.CompetitionEntry.onCreate().subscribe({ next: recount, error: onEntryErr }),
+      client.models.CompetitionEntry.onDelete().subscribe({ next: recount, error: onEntryErr }),
+    ];
+
+    return () => {
+      closed = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      sub.unsubscribe();
+      for (const s of entrySubs) s.unsubscribe();
+    };
   } catch (e) {
     console.warn('subscribeToCompetitions failed:', e);
     return () => {};
