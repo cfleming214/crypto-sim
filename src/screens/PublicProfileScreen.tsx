@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity } from 'react-native';
 import { Text } from '../components/ui/Text';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenShell } from '../components/ui/ScreenShell';
@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Avatar, CoinGlyph } from '../components/ui/Avatar';
 import { LeagueBadge } from '../components/ui/LeagueBadge';
 import { AreaChart } from '../components/charts/AreaChart';
+import { TraderProfileSkeleton } from '../components/skeletons';
 import { useTheme } from '../theme/ThemeContext';
 import { fetchTraderByHandle, subscribeToTrader, type PublicTrader } from '../services/portfolioService';
 import { presenceStatus } from '../services/presence';
@@ -53,9 +54,7 @@ export function PublicProfileScreen() {
   if (loading) {
     return (
       <ScreenShell title="Loading…">
-        <View style={{ paddingTop: 60, alignItems: 'center' }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
+        <TraderProfileSkeleton />
       </ScreenShell>
     );
   }
