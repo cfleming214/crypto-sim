@@ -1012,12 +1012,16 @@ export function TradeScreen() {
             );
           })()}
 
-          <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 'auto' }}>
-            <Button testID="trade-sell-btn" variant="down" style={{ flex: 1 }} onPress={() => setModalSide('sell')}>Sell</Button>
-            {/* Buy sits in a coachmark wrapper, so it's laid out in a column, not
-                the row. `flex: 1` there would zero its vertical basis and leave it
-                a different height than Sell — stretch across the wrapper instead. */}
-            <View ref={buyCoachRef} style={{ flex: 1 }} collapsable={false}>
+          {/* Both buttons are pinned to an explicit 25% of the row and the pair is
+              centred. Flex was the problem, not the solution: Sell is a direct row
+              child while Buy sits inside the coachmark wrapper, so the two resolved
+              their `flex: 1` against different containers and landed 192pt vs 154pt
+              — visibly mismatched. An explicit width takes flex resolution out of it
+              entirely, so the two are identical by construction. */}
+          <View style={{ flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 10, marginTop: 'auto' }}>
+            <Button testID="trade-sell-btn" variant="down" style={{ width: '25%' }} onPress={() => setModalSide('sell')}>Sell</Button>
+            <View ref={buyCoachRef} style={{ width: '25%' }} collapsable={false}>
+              {/* fullWidth = alignSelf stretch, so Buy fills the wrapper's 25%. */}
               <Button testID="trade-buy-btn" variant="up" fullWidth onPress={() => setModalSide('buy')}>Buy</Button>
             </View>
           </View>
