@@ -1,7 +1,11 @@
 import { defineAuth, defineFunction } from '@aws-amplify/backend';
 
-// Auto-confirms new sign-ups so users can sign in immediately (the pool signs in
-// by email but the app verifies email later, on contest entry). See the handler.
+// PreSignUp trigger, deliberately a NO-OP: new sign-ups must confirm their email
+// with a code before the account is usable. (This comment used to claim the
+// opposite — that sign-ups were auto-confirmed — which stopped being true when
+// the handler was emptied. Corrected during the CRYP-19 security review, since a
+// stale claim here misrepresents the auth posture.) Kept wired rather than
+// removed so the auth stack wiring is unchanged; see the handler.
 const preSignUp = defineFunction({
   name: 'pre-sign-up',
   entry: './pre-sign-up-handler.ts',
