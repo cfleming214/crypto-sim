@@ -754,7 +754,18 @@ export function TradeScreen() {
           )}
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button variant="ghost" style={{ flex: 1 }} onPress={() => setShowSuccess(false)}>Trade more</Button>
+            {/* Goes to Markets, not back to this coin's trade screen. The point of
+                "buy more" after a fill is to pick something else to trade — just
+                dismissing the receipt dropped you back on the coin you'd already
+                bought, with nothing to do but buy it again. */}
+            <Button
+              testID="order-filled-trade-more-btn"
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Markets' }); }}
+            >
+              {lastTrade.side === 'buy' ? 'Buy more' : 'Trade more'}
+            </Button>
             <Button variant="brand" style={{ flex: 1 }} onPress={() => { setShowSuccess(false); nav.navigate('MainTabs', { screen: 'Home' }); }}>View portfolio</Button>
           </View>
         </ScrollView>
