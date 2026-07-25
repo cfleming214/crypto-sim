@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Coin, Holding, Trade, Competition, CompetitionEntry, PendingOrder, PriceAlert, CoachNudge, PortfolioSlice, BlockedUser, ReplayMeta, ReplayContestSummary } from './types';
@@ -12,7 +12,7 @@ import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } fr
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
-import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots } from '../services/equitySnapshots';
+import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, backfillGap } from '../services/equitySnapshots';
 import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
 import { useAuth } from './AuthContext';
 
@@ -24,6 +24,10 @@ const GAMIFICATION_KEY = 'gamification.v1';
 // Cold-start fallback only. The full tradeable list comes from the Token
 // catalog (DynamoDB, populated by the crypto-dashboard admin) via
 // fetchTokenCatalog() on auth and is merged into state.coins via SET_COINS.
+// A background absence at least this long is treated as a gap worth
+// reconstructing on return. Matches backfillGap's own internal minimum.
+const EQUITY_GAP_MIN_MS = 5 * 60_000;
+
 // USDC stays here as the stability anchor — the tick simulator and risk math
 // assume USDC is always present in state.coins.
 // USDC stays at index 0 (SET_COINS + the tick simulator reference it as the
@@ -2074,6 +2078,66 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [state.resetAt]);
 
+  // Coming back from the background is a data GAP, not just a fresh sample.
+  //
+  // The 4s capture interval is suspended while the app is backgrounded, so a
+  // session that goes away for hours records nothing across that window. The
+  // foreground handler used to append a single point at the current balance,
+  // which left the chart drawing one straight line over the whole absence —
+  // every bit of price movement while the user was away simply erased.
+  //
+  // Worse, that point made the gap permanently unfillable: backfillGap measures
+  // from the LAST recorded point, so stamping "now" first collapsed the span to
+  // ~0 and the 5-minute guard then skipped the fill for good.
+  //
+  // So: reconstruct the gap FIRST (valuing the — necessarily unchanged — basket
+  // at historical prices), and only then stamp the current point.
+  const resumingEquityRef = useRef(false);
+  const resumeEquity = useCallback(async (s: AppState) => {
+    // Overlapping foreground events would double-fetch the same OHLC windows.
+    if (resumingEquityRef.current) return;
+    resumingEquityRef.current = true;
+    try {
+      const pid = s.activePortfolioId;
+      const now = Date.now();
+      const existing = await loadSnapshots(pid);
+      const lastT = existing[existing.length - 1]?.t;
+      // backfillGap no-ops under 5 minutes; check here too so a quick app-switch
+      // doesn't hit the network at all.
+      const filled = !!lastT && now - lastT >= EQUITY_GAP_MIN_MS;
+      if (filled) {
+        await backfillGap(
+          pid,
+          { cash: s.cash, holdings: s.holdings },
+          lastT!,
+          now,
+          new Map(s.coins.map(c => [c.symbol, c.price])),
+        );
+      }
+      // Only stamp the current balance when we did NOT just reconstruct a gap.
+      //
+      // The 10s price poll is suspended alongside the capture interval, so on
+      // foreground `s.bankroll` is still priced at whatever the market was doing
+      // before the app went away. After a long absence that's badly stale — and
+      // writing it at `now`, right after a backfill that ran up to `now` on real
+      // historical prices, would end the reconstructed curve with a step back to
+      // an hours-old balance.
+      //
+      // Nothing is lost by skipping it: the capture interval resumes immediately
+      // and records a properly-priced point within CAPTURE_MS. The stamp still
+      // happens for short absences, which is what it was there for — brief
+      // sessions that never let the capture interval fire, and where the prices
+      // are fresh enough to be worth recording.
+      if (!filled) await appendSnapshot(pid, { t: Date.now(), v: s.bankroll });
+    } catch (e) {
+      // Never let history reconstruction break the foreground path.
+      console.warn('equity gap backfill failed (ignored):', e);
+      try { await appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll }); } catch {}
+    } finally {
+      resumingEquityRef.current = false;
+    }
+  }, []);
+
   // Flush the equity backup when the app backgrounds, so the latest local
   // points survive even if the throttle window hasn't elapsed. This is the main
   // cloud write for light sessions (open → glance → background).
@@ -2083,7 +2147,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // the 60s capture interval fire) still contribute Live/1H data.
       if (next === 'active') {
         const s = stateRef.current;
-        if (s.bankroll > 0) appendSnapshot(s.activePortfolioId, { t: Date.now(), v: s.bankroll });
+        if (s.bankroll > 0) void resumeEquity(s);
         // Mark the user online again the moment they return to the app.
         if (authRef.current === 'authenticated') touchPresence();
         return;
@@ -2094,7 +2158,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loadSnapshots('main').then(series => { if (series.length) flushEquityToCloud(series); });
     });
     return () => sub.remove();
-  }, []);
+  }, [resumeEquity]);   // stable (useCallback with no deps) — the listener is registered once
 
   // Wipe all per-user state when auth flips to unauthenticated. Otherwise a
   // sign-out followed by a different user's sign-in (no app reload) would
