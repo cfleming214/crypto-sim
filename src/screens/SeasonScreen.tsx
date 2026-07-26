@@ -12,7 +12,7 @@ import { gradients, gradientsDark } from '../theme/tokens';
 import { useApp } from '../store/AppContext';
 import { seasonId, seasonEndsAt } from '../services/gamification';
 import { SEASON_TIERS, seasonTierReached, rewardIcon, frameColor, type SeasonTier } from '../data/season';
-import { Sparkles, Lock, Check } from 'lucide-react-native';
+import { Sparkles, Lock, Check, Trophy } from 'lucide-react-native';
 
 function fmtDays(ms: number): string {
   const d = Math.floor(ms / 86_400_000);
@@ -38,6 +38,7 @@ export function SeasonScreen() {
   const tierReached = seasonTierReached(seasonXp);
   const maxTier = SEASON_TIERS[SEASON_TIERS.length - 1].tier;
   const claimed = new Set(state.season.claimedTiers);
+  const closed = state.season.lastClosed;
   // Next tier not yet reached + XP remaining to it (null once maxed).
   const nextTier = SEASON_TIERS.find(t => seasonXp < t.seasonXp) ?? null;
   const xpToNext = nextTier ? nextTier.seasonXp - seasonXp : 0;
@@ -50,6 +51,34 @@ export function SeasonScreen() {
 
   return (
     <ScreenShell title="Season Pass" eyebrow={`Season ${seasonId(now) + 1}`}>
+      {closed && (
+        <FadeInUp>
+          <Card variant="tinted" style={{ gap: 10, borderWidth: 1, borderColor: colors.accent }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: `${colors.accent}22` }}>
+                <Trophy color={colors.accent} size={20} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>
+                  Season {closed.seasonId + 1} finished
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                  Tier {closed.tierReached} of {maxTier} · {closed.seasonXp.toLocaleString()} season XP
+                </Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 12, color: colors.ink2, lineHeight: 18 }}>
+              {closed.settled.length > 0
+                ? `You had ${closed.settled.length} unclaimed ${closed.settled.length === 1 ? 'reward' : 'rewards'} when it ended — ${closed.settled.map(t => t.label).join(', ')}. ${closed.settled.length === 1 ? "It's" : "They're"} yours, already added to your account.`
+                : 'Everything you earned was claimed. A fresh set of tiers starts now.'}
+            </Text>
+            <Button testID="season-closeout-ack-btn" variant="ghost" onPress={() => dispatch({ type: 'ACK_SEASON_CLOSED' })}>
+              Start Season {seasonId(now) + 1}
+            </Button>
+          </Card>
+        </FadeInUp>
+      )}
+
       <FadeInUp>
         <Card gradient={grad} style={{ gap: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

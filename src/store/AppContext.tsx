@@ -14,6 +14,7 @@ import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, backfillGap } from '../services/equitySnapshots';
 import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
+import { SEASON_TIERS, seasonTierReached, type SeasonRewardKind } from '../data/season';
 import { useAuth } from './AuthContext';
 
 // AsyncStorage key for local gamification state (daily-claim streak). Persisted
@@ -271,7 +272,7 @@ const INITIAL_STATE: AppState = {
   claimedContestIds: [],
   duelsCreated: 0,
   quests: { dayKey: null, baseline: { predictionsTotal: 0, lessonsTotal: 0, watchlistCount: 0 }, claimedIds: [], chestClaimed: false },
-  season: { id: null, baselineXp: 0, claimedTiers: [] },
+  season: { id: null, baselineXp: 0, claimedTiers: [], lastClosed: null },
   passes: { balance: 0, lastWeeklyGrantKey: null },
   referral: { code: null, referredByCode: null, rewardClaimed: false, referrerRewardedCount: 0 },
   isSubscriber: false,
@@ -351,6 +352,7 @@ type Action =
   | { type: 'CLAIM_QUEST'; questId: string; xp: number }
   | { type: 'CLAIM_QUEST_CHEST'; xp: number; cash: number }
   | { type: 'ROLL_SEASON'; id: number; baselineXp: number }
+  | { type: 'ACK_SEASON_CLOSED' }
   | { type: 'GRANT_WEEKLY_PASSES'; weekKey: string; amount: number }
   | { type: 'ADD_PASS'; amount: number }
   | { type: 'SPEND_PASS' }
@@ -415,6 +417,50 @@ function activeCoins(state: AppState): Coin[] {
   if (!meta) return state.coins;
   const px = state.replayPrices[id] ?? meta.prices[0] ?? 0;
   return state.coins.map(c => (c.symbol === meta.coin ? { ...c, price: px } : c));
+}
+
+// Apply one Season Pass tier's reward to the state. Shared by CLAIM_SEASON_TIER
+// (the user tapped claim) and by the season close-out in ROLL_SEASON (the season
+// ended with the tier earned but unclaimed), so the two can never drift apart in
+// what a tier is actually worth. Does NOT touch season.claimedTiers — callers own
+// that, because the close-out is discarding that list anyway.
+function applySeasonTierReward(
+  state: AppState,
+  kind: SeasonRewardKind,
+  value: number | string,
+  now: number,
+): AppState {
+  if (kind === 'xp') {
+    return { ...state, user: { ...state.user, xp: state.user.xp + Number(value) } };
+  }
+  if (kind === 'cash') {
+    const cash = Number(value);
+    const tierTrade: Trade = {
+      id: `SSN-${now}-${Math.round(cash)}`,
+      symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: cash,
+      units: 0, price: 0, timestamp: now, xpEarned: 0, slippage: 0, kind: 'reward',
+    };
+    const newCash = state.cash + cash;
+    const holdingsValue = state.holdings.reduce((sum, h) => {
+      const c = state.coins.find(x => x.symbol === h.symbol);
+      return sum + (c ? c.price * h.units : 0);
+    }, 0);
+    return { ...state, cash: newCash, bankroll: newCash + holdingsValue, trades: [tierTrade, ...state.trades] };
+  }
+  // Cosmetic unlock (title or frame). Auto-equip if nothing is equipped yet.
+  const id = String(value);
+  if (kind === 'title') {
+    return { ...state, cosmetics: {
+      ...state.cosmetics,
+      titles: state.cosmetics.titles.includes(id) ? state.cosmetics.titles : [...state.cosmetics.titles, id],
+      equippedTitle: state.cosmetics.equippedTitle ?? id,
+    } };
+  }
+  return { ...state, cosmetics: {
+    ...state.cosmetics,
+    frames: state.cosmetics.frames.includes(id) ? state.cosmetics.frames : [...state.cosmetics.frames, id],
+    equippedFrame: state.cosmetics.equippedFrame ?? id,
+  } };
 }
 
 function reducer(state: AppState, action: Action): AppState {
@@ -1212,11 +1258,55 @@ function reducer(state: AppState, action: Action): AppState {
         user: { ...state.user, xp: state.user.xp + action.xp },
       };
     }
-    case 'ROLL_SEASON':
-      // New season window: snapshot the XP baseline + clear claimed tiers.
-      // Cosmetics are intentionally preserved. No-op if already on this season.
+    case 'ROLL_SEASON': {
+      // New season window. No-op if already on this season.
       if (state.season.id === action.id) return state;
-      return { ...state, season: { id: action.id, baselineXp: action.baselineXp, claimedTiers: [] } };
+
+      // First season ever (or a wiped profile): there is no outgoing season to
+      // settle. Guard this explicitly — with id === null the baseline is 0, so
+      // the settlement below would read the user's entire lifetime XP as one
+      // season's progress and grant every tier it covers.
+      if (state.season.id === null) {
+        return { ...state, season: { id: action.id, baselineXp: action.baselineXp, claimedTiers: [], lastClosed: null } };
+      }
+
+      // Close out the finished season. Any tier the user earned but never tapped
+      // claim on is granted now; the alternative is a silent forfeit at an
+      // arbitrary clock tick, which is what this ticket is about. Cosmetics are
+      // preserved across seasons regardless.
+      const closedSeasonXp = Math.max(0, state.user.xp - state.season.baselineXp);
+      const owed = SEASON_TIERS.filter(
+        t => closedSeasonXp >= t.seasonXp && !state.season.claimedTiers.includes(t.tier),
+      );
+      const closedAt = Date.now();
+      let settledState: AppState = state;
+      for (const t of owed) {
+        settledState = applySeasonTierReward(settledState, t.kind, t.value, closedAt);
+      }
+
+      return {
+        ...settledState,
+        season: {
+          id: action.id,
+          // Baseline off the POST-settlement XP, not action.baselineXp. Tiers
+          // that pay out in XP add to user.xp here; baselining before that would
+          // credit the finished season's rewards to the new season's progress.
+          baselineXp: settledState.user.xp,
+          claimedTiers: [],
+          lastClosed: {
+            seasonId: state.season.id,
+            seasonXp: closedSeasonXp,
+            tierReached: seasonTierReached(closedSeasonXp),
+            settled: owed.map(t => ({ tier: t.tier, label: t.label })),
+            closedAt,
+          },
+        },
+      };
+    }
+    case 'ACK_SEASON_CLOSED':
+      // The close-out summary has been shown; drop it so it doesn't reappear.
+      if (!state.season.lastClosed) return state;
+      return { ...state, season: { ...state.season, lastClosed: null } };
     case 'GRANT_WEEKLY_PASSES':
       // Free weekly Lane-A pass grant — lands once per week (idempotent on weekKey).
       if (state.passes.lastWeeklyGrantKey === action.weekKey) return state;
@@ -1466,37 +1556,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'CLAIM_SEASON_TIER': {
       if (state.season.claimedTiers.includes(action.tier)) return state;
       const season = { ...state.season, claimedTiers: [...state.season.claimedTiers, action.tier] };
-      if (action.kind === 'xp') {
-        return { ...state, season, user: { ...state.user, xp: state.user.xp + Number(action.value) } };
-      }
-      if (action.kind === 'cash') {
-        const cash = Number(action.value);
-        const tierTrade: Trade = {
-          id: `SSN-${Date.now()}`,
-          symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: cash,
-          units: 0, price: 0, timestamp: Date.now(), xpEarned: 0, slippage: 0, kind: 'reward',
-        };
-        const newCash = state.cash + cash;
-        const holdingsValue = state.holdings.reduce((s, h) => {
-          const c = state.coins.find(x => x.symbol === h.symbol);
-          return s + (c ? c.price * h.units : 0);
-        }, 0);
-        return { ...state, season, cash: newCash, bankroll: newCash + holdingsValue, trades: [tierTrade, ...state.trades] };
-      }
-      // Cosmetic unlock (title or frame). Auto-equip if nothing is equipped yet.
-      const id = String(action.value);
-      if (action.kind === 'title') {
-        return { ...state, season, cosmetics: {
-          ...state.cosmetics,
-          titles: state.cosmetics.titles.includes(id) ? state.cosmetics.titles : [...state.cosmetics.titles, id],
-          equippedTitle: state.cosmetics.equippedTitle ?? id,
-        } };
-      }
-      return { ...state, season, cosmetics: {
-        ...state.cosmetics,
-        frames: state.cosmetics.frames.includes(id) ? state.cosmetics.frames : [...state.cosmetics.frames, id],
-        equippedFrame: state.cosmetics.equippedFrame ?? id,
-      } };
+      return applySeasonTierReward({ ...state, season }, action.kind, action.value, Date.now());
     }
     case 'EQUIP_COSMETIC':
       return { ...state, cosmetics: {
@@ -1835,7 +1895,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // local storage and the stale cloud gamificationJson overwrote them on the
     // next LOAD_PROFILE — so quests/season tiers were claimable again every
     // session. Rolls persist the new day/season baseline too.
-    'CLAIM_QUEST', 'CLAIM_QUEST_CHEST', 'CLAIM_SEASON_TIER', 'ROLL_QUEST_DAY', 'ROLL_SEASON',
+    'CLAIM_QUEST', 'CLAIM_QUEST_CHEST', 'CLAIM_SEASON_TIER', 'ROLL_QUEST_DAY', 'ROLL_SEASON', 'ACK_SEASON_CLOSED',
     // Contest-pass economy (Lane A): weekly grant, rewarded-ad earns, spends on
     // join, and rewarded virtual-cash top-ups all persist like the rest.
     'GRANT_WEEKLY_PASSES', 'ADD_PASS', 'SPEND_PASS', 'GRANT_BONUS_CASH',
@@ -2353,7 +2413,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               // season-pass tier claims, and earned cosmetics reset on every
               // launch (QuestWatcher then rolled a fresh day/season). Restore them.
               quests: g.quests && typeof g.quests === 'object' ? g.quests : undefined,
-              season: g.season && typeof g.season === 'object' ? g.season : undefined,
+              // `lastClosed` post-dates the first shipped blobs, so default it
+              // rather than letting `undefined` reach the reducer — ROLL_SEASON
+              // treats a null id as "first season, don't settle", and a missing
+              // key here would read as an unstarted season on every upgrade.
+              season: g.season && typeof g.season === 'object'
+                ? { lastClosed: null, ...g.season }
+                : undefined,
               cosmetics: g.cosmetics && typeof g.cosmetics === 'object' ? g.cosmetics : undefined,
               passes: g.passes && typeof g.passes === 'object' ? g.passes : undefined,
             },
