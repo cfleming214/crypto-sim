@@ -25,7 +25,9 @@
         "NSPhotoLibraryUsageDescription": "CryptoComp lets you choose a photo from your library to use as your profile avatar. Selected photos are uploaded only to your own account and are never shared without your action.",
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSUserTrackingUsageDescription": "CryptoComp uses this to show ads that are relevant to you instead of repetitive or random ones, and to measure whether they worked. Declining keeps every feature and only makes the ads less relevant.",
+        "NSLocalNetworkUsageDescription": "CryptoComp does not use your local network. This appears only in internal development builds, where it connects to a developer's machine."
       }
     },
     "android": {
@@ -57,7 +59,7 @@
         {
           "androidAppId": "ca-app-pub-3940256099942544~3347511713",
           "iosAppId": "ca-app-pub-2339072628329887~1350538796",
-          "userTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you.",
+          "userTrackingUsageDescription": "CryptoComp uses this to show ads that are relevant to you instead of repetitive or random ones, and to measure whether they worked. Declining keeps every feature and only makes the ads less relevant.",
           "skAdNetworkItems": [
             "cstr6suwn9.skadnetwork",
             "4fzdc2evr5.skadnetwork",
@@ -115,7 +117,7 @@
       [
         "expo-tracking-transparency",
         {
-          "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
+          "userTrackingPermission": "CryptoComp uses this to show ads that are relevant to you instead of repetitive or random ones, and to measure whether they worked. Declining keeps every feature and only makes the ads less relevant."
         }
       ],
       [
@@ -124,7 +126,20 @@
           "enableGooglePay": false
         }
       ],
-      "expo-secure-store"
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CryptoComp lets you choose a photo from your library to use as your profile avatar. Selected photos are uploaded only to your own account and are never shared without your action.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "extra": {
       "eas": {
