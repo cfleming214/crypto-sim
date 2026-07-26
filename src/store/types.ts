@@ -279,6 +279,21 @@ export interface AppState {
     id: number | null;
     baselineXp: number;
     claimedTiers: number[];
+    // Close-out record for the season that just ended, written by ROLL_SEASON.
+    // Tiers earned but never manually claimed are auto-granted at rollover (they
+    // were earned; losing them to a clock tick would be a silent forfeit), and
+    // this is what the app shows the user afterwards. Null until a season ends,
+    // and cleared once the summary has been shown.
+    lastClosed: {
+      seasonId: number;
+      /** Season XP the finished season ended on. */
+      seasonXp: number;
+      /** Highest tier reached, claimed or not. */
+      tierReached: number;
+      /** Tiers auto-granted at close-out, with their reward labels. */
+      settled: { tier: number; label: string }[];
+      closedAt: number;
+    } | null;
   };
   // Unlocked + equipped cosmetics (titles, avatar frames). Persist across seasons.
   cosmetics: {
