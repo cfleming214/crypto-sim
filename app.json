@@ -129,15 +129,15 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": false
+          "faceIDPermission": "CryptoComp does not use Face ID. This permission is present because your sign-in tokens are held in the device Keychain, whose secure-storage component supports optional biometric unlock."
         }
       ],
       [
         "expo-image-picker",
         {
           "photosPermission": "CryptoComp lets you choose a photo from your library to use as your profile avatar. Selected photos are uploaded only to your own account and are never shared without your action.",
-          "cameraPermission": false,
-          "microphonePermission": false
+          "cameraPermission": "Profile photos in CryptoComp are chosen from your photo library. The camera permission is present because the photo-picker component that powers it also supports capture — CryptoComp never opens your camera on its own.",
+          "microphonePermission": "CryptoComp does not record audio. This permission is present because the photo-picker component used for profile avatars also supports video capture, which CryptoComp does not offer."
         }
       ]
     ],
