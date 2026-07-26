@@ -24,13 +24,16 @@ interface AreaChartProps {
   onMarkerGroupPress?: (markers: ChartMarker[]) => void;
 }
 
-function generatePath(data: number[], w: number, h: number, closed = false): string {
+// `xFrac[i]` is where point i sits along the axis, 0..1. Callers derive it from
+// TIMESTAMPS where they have them, so an unevenly-sampled series is drawn to
+// scale. Index spacing is the fallback for synthetic data with no timestamps.
+function generatePath(data: number[], xFrac: number[], w: number, h: number, closed = false): string {
   if (data.length < 2) return '';
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
   const points = data.map((v, i) => ({
-    x: (i / (data.length - 1)) * w,
+    x: (xFrac[i] ?? i / (data.length - 1)) * w,
     y: h - ((v - min) / range) * h * 0.85 - h * 0.075,
   }));
 
@@ -189,15 +192,48 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const plotH = height - bottomGutter;
   const plotWidthPx = Math.max(1, layoutWidth - leftGutter);
 
+  // Horizontal position of each point as a 0..1 fraction, derived from its
+  // TIMESTAMP rather than its index.
+  //
+  // The series is deliberately not evenly sampled: equitySnapshots captures
+  // every 4s while foregrounded, backfillGap fills a closed gap with hourly
+  // points plus a 5-minute tail for the last 3h, and downsample() keeps full
+  // resolution for 3h, 2-min to 24h, hourly to 30d and daily beyond. Spacing by
+  // index therefore stretched whichever region happened to hold the most points
+  // — after a day offline, the recent 3 hours took two thirds of a 24H chart and
+  // read as a flat plateau, while 18 real hours were squeezed into the rest.
+  const xFrac = useMemo(() => {
+    const n = chartData.length;
+    if (n <= 1) return [0];
+    const byIndex = () => chartData.map((_, i) => i / (n - 1));
+    if (!timestamps || timestamps.length !== n) return byIndex();
+    const t0 = timestamps[0];
+    const span = timestamps[n - 1] - t0;
+    if (!(span > 0)) return byIndex();   // all same instant / bad clock
+    return timestamps.map(t => Math.min(1, Math.max(0, (t - t0) / span)));
+  }, [chartData, timestamps]);
+
   const panResponder = useMemo(() => {
     // The pan handlers live on a transparent overlay (a plain View covering the
     // plot region), so locationX is real pixels relative to the plot — it maps
     // directly to the plot width. (Reading locationX off the SVG instead returns
     // viewBox units (0..300), which made the crosshair only track the left third
     // on wide screens.)
+    // Inverse of xFrac: touch position → nearest point. This has to search the
+    // positions rather than scale the index, or the crosshair lands on the wrong
+    // reading wherever the series is unevenly sampled — the same distortion that
+    // made offline gaps render as plateaus.
     const idxFor = (x: number) => {
       const w = plotPx || plotWidthPx;
-      return Math.round(Math.max(0, Math.min(1, x / w)) * (chartData.length - 1));
+      const f = Math.max(0, Math.min(1, x / w));
+      let lo = 0, hi = xFrac.length - 1;
+      while (lo < hi) {                      // xFrac is ascending
+        const mid = (lo + hi) >> 1;
+        if (xFrac[mid] < f) lo = mid + 1; else hi = mid;
+      }
+      // Snap to whichever neighbour is actually closer.
+      if (lo > 0 && Math.abs(xFrac[lo - 1] - f) <= Math.abs(xFrac[lo] - f)) return lo - 1;
+      return lo;
     };
     // One finger → crosshair (single point). Two fingers → range selection
     // (Δ between the two touched points). nativeEvent.touches holds every active
@@ -221,14 +257,14 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       onPanResponderRelease: clear,
       onPanResponderTerminate: clear,
     });
-  }, [crosshairEnabled, plotPx, plotWidthPx, chartData.length]);
+  }, [crosshairEnabled, plotPx, plotWidthPx, chartData.length, xFrac]);
 
   // Precompute layout helpers for crosshair + axis rendering (plot-region space)
   const min = Math.min(...chartData);
   const max = Math.max(...chartData);
   const range = max - min || 1;
   const yForValue = (v: number) => plotH - ((v - min) / range) * plotH * 0.85 - plotH * 0.075;
-  const xForIdx = (i: number) => (i / (chartData.length - 1)) * 300;
+  const xForIdx = (i: number) => (xFrac[i] ?? 0) * 300;
 
   // Map buy/sell markers to the nearest point on the equity curve by timestamp.
   const markerData = useMemo(() => {
@@ -322,7 +358,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       {/* Plot region (inset by the gutters) */}
       <View style={{ position: 'absolute', left: leftGutter, right: 0, top: 0, height: plotH }}>
         <Svg width="100%" height={plotH} viewBox={`0 0 300 ${plotH}`} preserveAspectRatio="none">
-          <Path d={generatePath(chartData, 300, plotH, false)} stroke={color} strokeWidth="2" fill="none" />
+          <Path d={generatePath(chartData, xFrac, 300, plotH, false)} stroke={color} strokeWidth="2" fill="none" />
           {showDot && hoverIdx === null && rangeSel === null && (() => {
             const last = chartData[chartData.length - 1];
             return <Circle cx="300" cy={yForValue(last)} r="3.5" fill={color} />;
@@ -359,7 +395,9 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
         const first = timestamps[0];
         const last = timestamps[timestamps.length - 1];
         const span = last - first;
-        const mid = timestamps[Math.floor((timestamps.length - 1) / 2)];
+        // Midpoint of the time span, not the middle index — with points spaced
+        // by time, the middle index is not the middle of the axis.
+        const mid = first + span / 2;
         const lbl = { fontSize: 9, color: colors.ink4 } as const;
         return (
           <View style={{
@@ -375,7 +413,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
 
       {/* Crosshair tooltip rendered above the chart in real pixel coords */}
       {hoverIdx !== null && hoverValue !== null && (() => {
-        const tooltipX = leftGutter + (hoverIdx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const tooltipX = leftGutter + (xFrac[hoverIdx] ?? 0) * plotWidthPx;
         // Keep tooltip within bounds — 140px wide approx
         const left = Math.max(4, Math.min(layoutWidth - 140, tooltipX - 70));
         return (
@@ -408,7 +446,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
           Centered between the two touched points. */}
       {rangeLo !== null && rangeHi !== null && (() => {
         const midIdx = (rangeLo + rangeHi) / 2;
-        const cx = leftGutter + (midIdx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const cx = leftGutter + (xFrac[Math.round(midIdx)] ?? 0) * plotWidthPx;
         const tipW = 150;
         const left = Math.max(4, Math.min(layoutWidth - tipW - 4, cx - tipW / 2));
         const sign = rangePositive ? '+' : '−';
