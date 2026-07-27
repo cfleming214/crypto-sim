@@ -13,7 +13,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { ACHIEVEMENTS, contestXpForRank, monthKey, winRateFromTrades } from '../services/gamification';
+import { ACHIEVEMENTS, contestXpForRank, monthKey } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw, Gift, Plus } from 'lucide-react-native';
 import { frameColor, titleLabel, FRAMES } from '../data/season';
@@ -376,7 +376,7 @@ export function ProfileScreen() {
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
   // LIFETIME contest stats (total tournaments ever entered + best finish), from
   // ALL the user's entries — so these don't reset to 0 once contests end.
-  const [contestStats, setContestStats] = useState<{ played: number; bestRank: number | null }>({ played: 0, bestRank: null });
+  const [contestStats, setContestStats] = useState<{ played: number; bestRank: number | null; won: number; finished: number }>({ played: 0, bestRank: null, won: 0, finished: 0 });
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
   // Mirror is owner-scoped so list() already returns only this user's rows.
@@ -506,9 +506,15 @@ export function ProfileScreen() {
   };
 
   const pnl = state.bankroll - STARTING_CASH;
-  // Win rate over closed positions — see winRateFromTrades for why a sell can
-  // be undecidable and is then left out of the denominator entirely.
-  const { rate: winRate, decided: decidedSells } = winRateFromTrades(state.trades);
+  // Win rate = contests won / contests FINISHED. Only settled contests count: an
+  // entry still in play hasn't been won or lost yet. This used to be computed
+  // from profitable sell trades, which is a different statistic entirely — that
+  // one still backs the Activity screen and the copy-trade cards, where it
+  // describes trading rather than competing.
+  const winRate = contestStats.finished > 0
+    ? Math.round((contestStats.won / contestStats.finished) * 100)
+    : 0;
+  const hasFinishedContests = contestStats.finished > 0;
   // Best rank across all joined contests: find this user's rank in each
   // live leaderboard, take the lowest (best) number.
   const myRanks: number[] = [];
@@ -553,7 +559,7 @@ export function ProfileScreen() {
     const divLabel = state.user.division > 0 ? String(state.user.division) : '';
     const message =
       `@${state.user.handle} on CryptoComp — ${pnlStr} all-time · ${state.user.league} ${divLabel}`.trim() +
-      `\n${winRate}% win rate · ${state.user.xp.toLocaleString()} XP · ${state.user.streak}-day streak`;
+      `\n${hasFinishedContests ? `${winRate}% win rate · ` : ''}${state.user.xp.toLocaleString()} XP · ${state.user.streak}-day streak`;
     try {
       await Share.share({ message });
     } catch {
@@ -566,7 +572,7 @@ export function ProfileScreen() {
     // Lifetime: total tournaments ever entered + best-ever finish (from all
     // entries), never less than what's currently active.
     ['Tournaments', String(Math.max(contestStats.played, state.joinedTournamentIds.length)), null],
-    ['Win rate',    decidedSells > 0 ? `${winRate}%` : '—', decidedSells > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
+    ['Win rate',    hasFinishedContests ? `${winRate}%` : '—', hasFinishedContests ? (winRate >= 50 ? 'up' : 'down') : null],
     ['Trades',      String(state.trades.length), null],
     ['XP',          state.user.xp.toLocaleString(), null],
     ['Best rank',   contestStats.bestRank != null ? `#${contestStats.bestRank}` : bestRank, null],

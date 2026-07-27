@@ -263,22 +263,32 @@ export async function loadContestPortfolios(): Promise<Record<string, PortfolioS
 // entered (active + finished) and best finish. Uses listMyEntries (owner-scoped,
 // paginated) so it counts EVERY entry, not just currently-active ones — which is
 // why Tournaments/Best-rank previously read 0 once a user's contests had all ended.
-export async function fetchMyContestStats(): Promise<{ played: number; bestRank: number | null }> {
+export async function fetchMyContestStats(): Promise<{ played: number; bestRank: number | null; won: number; finished: number }> {
   const client = await getClient();
-  if (!client) return { played: 0, bestRank: null };
+  if (!client) return { played: 0, bestRank: null, won: 0, finished: 0 };
   try {
     const ownerId = await getCurrentOwnerId();
     const entries = await listMyEntries(client, ownerId);
     const contests = new Set<string>();
+    // `won` / `finished` back the Profile win rate. Only SETTLED contests count:
+    // an entry that's still active hasn't been won or lost yet, and counting it
+    // in the denominator would drag the rate down for anyone currently playing.
+    // isActive === false is the same "settled" marker fetchMyContestWins uses.
+    const finished = new Set<string>();
+    const won = new Set<string>();
     let best: number | null = null;
     for (const e of entries) {
       if (e.competitionId) contests.add(e.competitionId);
       const r = typeof e.rank === 'number' ? e.rank : Number(e.rank);
+      if (e.competitionId && e.isActive === false) {
+        finished.add(e.competitionId);
+        if (r === 1) won.add(e.competitionId);
+      }
       if (Number.isFinite(r) && r >= 1 && r < 900 && (best === null || r < best)) best = r;
     }
-    return { played: contests.size, bestRank: best };
+    return { played: contests.size, bestRank: best, won: won.size, finished: finished.size };
   } catch {
-    return { played: 0, bestRank: null };
+    return { played: 0, bestRank: null, won: 0, finished: 0 };
   }
 }
 
