@@ -187,15 +187,58 @@ async function listMyEntries(client: any, ownerId: string | null): Promise<any[]
 // so the app can show your win count even when you've opted out of the global
 // leaderboard (where that number normally comes from). Matches the
 // tick-global-leaderboard Lambda's win definition (rank===1 && isActive===false).
+// competitionId -> winnerOwner, for every archived contest. Deliberately NOT
+// filtered by cashPrize (unlike the Compete tab's list): a contest you won is
+// yours whether or not this build displays cash contests.
+async function finishedWinnersById(client: any): Promise<Map<string, string>> {
+  const byId = new Map<string, string>();
+  if (!client?.models?.FinishedCompetition) return byId;
+  let nextToken: string | null | undefined;
+  do {
+    const res: any = await client.models.FinishedCompetition.list({
+      limit: 1000,
+      nextToken: nextToken ?? undefined,
+    });
+    for (const row of (res?.data ?? []) as any[]) {
+      if (row?.id && typeof row.winnerOwner === 'string') byId.set(row.id, row.winnerOwner);
+    }
+    nextToken = res?.nextToken;
+  } while (nextToken);
+  return byId;
+}
+
+// Did this user win `competitionId`?
+//
+// Preferred source is FinishedCompetition.winnerOwner, which close-competition
+// computes from live-revalued holdings at settlement. The old test — rank === 1
+// on the entry — is unreliable because settlement marks entries inactive WITHOUT
+// rewriting rank, so rank is whatever the last client-side leaderboard sync left
+// there. A contest won while the app was closed kept a stale rank and the win
+// went silently uncounted.
+//
+// Falls back to that rank test only when no winner was recorded for the contest
+// at all, which covers rows archived before winnerOwner was being written.
+function wonContest(competitionId: string, entryRank: unknown, winners: Map<string, string>, ownerId: string | null): boolean {
+  const winner = winners.get(competitionId);
+  if (winner != null) return !!ownerId && winner.startsWith(ownerId);
+  const r = typeof entryRank === 'number' ? entryRank : Number(entryRank);
+  return r === 1;
+}
+
 export async function fetchMyContestWins(): Promise<number> {
   const client = await getClient();
   if (!client) return 0;
   try {
     const ownerId = await getCurrentOwnerId();
-    const data = await listMyEntries(client, ownerId);
+    const [data, winners] = await Promise.all([
+      listMyEntries(client, ownerId),
+      finishedWinnersById(client),
+    ]);
     const wonContests = new Set<string>();
     for (const e of data) {
-      if (e.rank === 1 && e.isActive === false) wonContests.add(e.competitionId);
+      if (e.isActive === false && e.competitionId && wonContest(e.competitionId, e.rank, winners, ownerId)) {
+        wonContests.add(e.competitionId);
+      }
     }
     return wonContests.size;
   } catch {
@@ -268,7 +311,11 @@ export async function fetchMyContestStats(): Promise<{ played: number; bestRank:
   if (!client) return { played: 0, bestRank: null, won: 0, finished: 0 };
   try {
     const ownerId = await getCurrentOwnerId();
-    const entries = await listMyEntries(client, ownerId);
+    // Both lists in parallel — the winner join costs no extra round-trip time.
+    const [entries, winners] = await Promise.all([
+      listMyEntries(client, ownerId),
+      finishedWinnersById(client),
+    ]);
     const contests = new Set<string>();
     // `won` / `finished` back the Profile win rate. Only SETTLED contests count:
     // an entry that's still active hasn't been won or lost yet, and counting it
@@ -282,7 +329,8 @@ export async function fetchMyContestStats(): Promise<{ played: number; bestRank:
       const r = typeof e.rank === 'number' ? e.rank : Number(e.rank);
       if (e.competitionId && e.isActive === false) {
         finished.add(e.competitionId);
-        if (r === 1) won.add(e.competitionId);
+        // Authoritative winner record, not the entry's possibly-stale rank.
+        if (wonContest(e.competitionId, e.rank, winners, ownerId)) won.add(e.competitionId);
       }
       if (Number.isFinite(r) && r >= 1 && r < 900 && (best === null || r < best)) best = r;
     }

@@ -36,24 +36,25 @@ async function buildPriceMap(tokenTable: string): Promise<Record<string, number>
   return priceMap;
 }
 
-// The owner of the entry with the highest live-revalued portfolio — the contest
-// winner. Recorded permanently on the FinishedCompetition row so lifetime wins
-// survive even after CompetitionEntry rows are cleaned up. null if no entries.
-function winnerOwnerOf(entryItems: any[], priceMap: Record<string, number>): string | null {
-  let best: string | null = null;
-  let bestVal = -Infinity;
-  for (const raw of entryItems) {
-    const e = unmarshall(raw) as { owner?: string; bankroll?: number; cash?: number; holdingsJson?: string };
-    let value = e.bankroll ?? STARTING_BANKROLL;
-    if (e.holdingsJson != null) {
-      let holdings: Holding[] = [];
-      try { holdings = JSON.parse(e.holdingsJson || '[]'); } catch { holdings = []; }
-      value = (e.cash ?? 0) + holdings.reduce((s, h) => s + (h.units || 0) * (priceMap[(h.symbol || '').toUpperCase()] ?? 0), 0);
-    }
-    if (e.owner && value > bestVal) { bestVal = value; best = e.owner; }
-  }
-  return best;
+// Every entry ordered by live-revalued portfolio, best first. Drives two things
+// at settlement: the final `rank` written back to each entry, and the winner
+// (first entry with an owner) recorded permanently on the FinishedCompetition
+// row so lifetime wins survive even after CompetitionEntry rows are cleaned up.
+function rankEntries(entryItems: any[], priceMap: Record<string, number>): { id: string; owner?: string; value: number }[] {
+  return entryItems
+    .map(raw => {
+      const e = unmarshall(raw) as { id: string; owner?: string; bankroll?: number; cash?: number; holdingsJson?: string };
+      let value = e.bankroll ?? STARTING_BANKROLL;
+      if (e.holdingsJson != null) {
+        let holdings: Holding[] = [];
+        try { holdings = JSON.parse(e.holdingsJson || '[]'); } catch { holdings = []; }
+        value = (e.cash ?? 0) + holdings.reduce((s, h) => s + (h.units || 0) * (priceMap[(h.symbol || '').toUpperCase()] ?? 0), 0);
+      }
+      return { id: e.id, owner: e.owner, value };
+    })
+    .sort((a, b) => b.value - a.value);
 }
+
 
 // Amplify owner fields can be stored as "<sub>::<username>" or just "<sub>".
 // Payout rows are keyed by the bare sub, so normalize before use.
@@ -250,16 +251,21 @@ export const handler = async (): Promise<void> => {
     // Durable win record: the winner's owner, stored on the FinishedCompetition
     // row below so lifetime wins survive entry cleanup (tick-global-leaderboard
     // tallies these). Recomputed from live-revalued holdings, like settlement.
-    const winnerOwner = winnerOwnerOf(entryItems, priceMap);
-    await Promise.all(entryItems.map(rawEntry => {
-      const entry = unmarshall(rawEntry) as { id: string };
-      return ddb.send(new UpdateItemCommand({
+    // Rank every entry by its live-revalued portfolio, then write BOTH the final
+    // rank and isActive in one update. This used to set isActive only, leaving
+    // rank at whatever the last client-side leaderboard sync happened to store —
+    // so a player whose app was closed when the contest settled kept a stale
+    // rank, and anything reading rank (win counts, "best rank") was wrong.
+    const ranked = rankEntries(entryItems, priceMap);
+    const winnerOwner = ranked.find(r => !!r.owner)?.owner ?? null;
+    await Promise.all(ranked.map((entry, i) =>
+      ddb.send(new UpdateItemCommand({
         TableName: entryTable,
         Key: marshall({ id: entry.id }),
-        UpdateExpression: 'SET isActive = :f',
-        ExpressionAttributeValues: marshall({ ':f': false }),
-      }));
-    }));
+        UpdateExpression: 'SET isActive = :f, #r = :rank',
+        ExpressionAttributeNames: { '#r': 'rank' },
+        ExpressionAttributeValues: marshall({ ':f': false, ':rank': i + 1 }),
+      }))));
 
     // Archive: MOVE the finished contest into FinishedCompetition (copy + delete
     // from Competition) so the live table only ever holds open/live contests and

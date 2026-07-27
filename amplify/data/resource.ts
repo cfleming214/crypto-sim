@@ -199,6 +199,13 @@ const schema = a.schema({
     lockAfterStart: a.boolean(),
     joinCutoffPct: a.float(),         // mirrors Competition.joinCutoffPct (carried on archive)
     finishedAt: a.string(),          // ISO timestamp the contest was archived
+    // Owner of the winning entry, computed from live-revalued holdings at
+    // settlement. close-competition has always WRITTEN this straight to DynamoDB,
+    // but it was never declared here — so AppSync stripped it and no client could
+    // read it. Declaring it makes the existing attribute readable, including on
+    // rows archived before this change. Plain optional field, not a
+    // secondaryIndex, so the table is not recreated.
+    winnerOwner: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
   ]),
