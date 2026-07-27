@@ -13,6 +13,7 @@ import { useApp } from '../store/AppContext';
 import { fetchPayoutHistory, claimPrize, type PayoutHistoryRow } from '../services/walletService';
 import { PAYOUTS_ENABLED } from '../constants/featureFlags';
 import { ArrowUp, ArrowDown, Shield, User, Clock, Gift, Trophy } from 'lucide-react-native';
+import { winRateFromTrades } from '../services/gamification';
 
 // A reward/cash-injection event (e.g. daily-reward bonus) is recorded as a
 // sentinel trade with symbol 'USD' / kind 'reward' — not a coin trade.
@@ -97,16 +98,10 @@ export function ActivityScreen() {
   const weekBuyCost = week7.filter(t => t.side === 'buy' && !isReward(t)).reduce((s, t) => s + t.amount, 0);
   const totalPnl = weekSellProceeds - weekBuyCost;
 
-  // Win rate: sell trades where slippage is positive (proxy for profitable exit)
-  const allSells = state.trades.filter(t => t.side === 'sell');
-  const wins = allSells.filter(t => {
-    // Prefer the realized P&L recorded at sell time (exact); fall back to the
-    // old heuristic for legacy rows that predate realizedPnl.
-    if (typeof t.realizedPnl === 'number') return t.realizedPnl > 0;
-    const h = state.holdings.find(x => x.symbol === t.symbol);
-    return h ? t.price > h.avgCost : t.slippage >= 0;
-  });
-  const winRate = allSells.length > 0 ? Math.round((wins.length / allSells.length) * 100) : 0;
+  // Win rate over closed positions. This used to fall back to the sign of
+  // `slippage` (unrelated to profit) and to the CURRENT holding's avg cost, so
+  // fully-closed positions always read as losses.
+  const { rate: winRate, decided: decidedSells } = winRateFromTrades(state.trades);
 
   return (
     <ScreenShell title="Activity">
@@ -117,7 +112,7 @@ export function ActivityScreen() {
         {[
           ['7D P&L', `${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(0)}`, totalPnl >= 0 ? 'up' : 'down'],
           ['Trades', String(state.trades.length), null],
-          ['Win rate', `${winRate}%`, winRate >= 50 ? 'up' : 'down'],
+          ['Win rate', decidedSells > 0 ? `${winRate}%` : '—', decidedSells > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
         ].map(([k, v, c], i) => (
           <View key={k} style={{ flex: 1, padding: 14, alignItems: 'center', borderRightWidth: i < 2 ? 1 : 0, borderRightColor: colors.hairline }}>
             <Text style={{ fontSize: 11, color: colors.ink3 }}>{k}</Text>

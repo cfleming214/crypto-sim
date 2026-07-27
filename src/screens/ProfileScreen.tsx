@@ -13,7 +13,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../store/AuthContext';
-import { ACHIEVEMENTS, contestXpForRank, monthKey } from '../services/gamification';
+import { ACHIEVEMENTS, contestXpForRank, monthKey, winRateFromTrades } from '../services/gamification';
 import { achievementIcon } from '../components/ui/achievementIcons';
 import { MoreHorizontal, Star, Flame, Trophy, Shield, User, ArrowLeftRight, BarChart2, Moon, Bell, Activity, X, Camera, LogOut, Ban, FileText, Trash2, Banknote, GraduationCap, RotateCcw, Sparkles, Crown, RefreshCw, Gift, Plus } from 'lucide-react-native';
 import { frameColor, titleLabel, FRAMES } from '../data/season';
@@ -506,31 +506,9 @@ export function ProfileScreen() {
   };
 
   const pnl = state.bankroll - STARTING_CASH;
-  const sellTrades = state.trades.filter(t => t.side === 'sell');
-  // Win rate = % of sells that closed in profit. Prefer the realized P&L recorded
-  // at sell time; for any sell missing it (legacy / rebalance / copy rows), rebuild
-  // the symbol's running average cost from the BUY ledger and compare against it.
-  // The old fallback compared the sell price to the CURRENT holding's avg cost —
-  // but a fully-closed position has no current holding, so it always read as a
-  // loss and dragged the win rate down. This replays trades oldest-first instead.
-  const winRate = (() => {
-    const chron = [...state.trades].sort((a, b) => a.timestamp - b.timestamp);
-    const pos: Record<string, { units: number; cost: number }> = {};
-    let wins = 0, sells = 0;
-    for (const t of chron) {
-      const p = pos[t.symbol] ?? { units: 0, cost: 0 };
-      if (t.side === 'buy') { p.units += t.units; p.cost += t.amount; pos[t.symbol] = p; continue; }
-      if (t.side !== 'sell') continue;
-      sells++;
-      const avgCost = p.units > 0 ? p.cost / p.units : 0;
-      const win = typeof t.realizedPnl === 'number' ? t.realizedPnl > 0 : (avgCost > 0 && t.price > avgCost);
-      if (win) wins++;
-      p.units = Math.max(0, p.units - t.units);
-      p.cost = avgCost * p.units;            // shrink cost basis at avg cost
-      pos[t.symbol] = p;
-    }
-    return sells > 0 ? Math.round((wins / sells) * 100) : 0;
-  })();
+  // Win rate over closed positions — see winRateFromTrades for why a sell can
+  // be undecidable and is then left out of the denominator entirely.
+  const { rate: winRate, decided: decidedSells } = winRateFromTrades(state.trades);
   // Best rank across all joined contests: find this user's rank in each
   // live leaderboard, take the lowest (best) number.
   const myRanks: number[] = [];
@@ -588,7 +566,7 @@ export function ProfileScreen() {
     // Lifetime: total tournaments ever entered + best-ever finish (from all
     // entries), never less than what's currently active.
     ['Tournaments', String(Math.max(contestStats.played, state.joinedTournamentIds.length)), null],
-    ['Win rate',    sellTrades.length > 0 ? `${winRate}%` : '—', sellTrades.length > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
+    ['Win rate',    decidedSells > 0 ? `${winRate}%` : '—', decidedSells > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
     ['Trades',      String(state.trades.length), null],
     ['XP',          state.user.xp.toLocaleString(), null],
     ['Best rank',   contestStats.bestRank != null ? `#${contestStats.bestRank}` : bestRank, null],
