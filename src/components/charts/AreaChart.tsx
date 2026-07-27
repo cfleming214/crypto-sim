@@ -42,16 +42,42 @@ function generatePath(data: number[], xFrac: number[], w: number, h: number, clo
   // tangents at each point (cp1y = prevY, cp2y = curY), which flattened the line
   // at every vertex and rendered dense intraday data (60 one-min points) as a
   // staircase. Neighbor-based tangents give a natural flowing line instead.
+  //
+  // CENTRIPETAL parameterization (alpha = 0.5), not uniform. Uniform tangents —
+  // (p2 - p0) / 6 — assume every point is evenly spaced along x. That held while
+  // points were positioned by index, but they're positioned by TIMESTAMP now, so
+  // a dense cluster of live captures followed by a wide gap makes p3 far away
+  // and drives cp2x left of p1.x. The curve then doubles back on itself: the
+  // line visibly reverses and hooks, which is what this looked like on the Live
+  // window. Centripetal parameterization scales each tangent by the actual
+  // distance between knots and is provably free of cusps and self-intersections
+  // on non-uniform data.
+  const dist = (a: typeof points[0], b: typeof points[0]) => Math.hypot(b.x - a.x, b.y - a.y);
   let d = `M ${points[0].x} ${points[0].y}`;
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[i - 1] ?? points[i];
     const p1 = points[i];
     const p2 = points[i + 1];
     const p3 = points[i + 2] ?? points[i + 1];
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    // sqrt of chord length = alpha 0.5. Floored so coincident points (a repeated
+    // timestamp, or a perfectly flat run) can't divide by zero.
+    const t01 = Math.sqrt(dist(p0, p1)) || 1e-6;
+    const t12 = Math.sqrt(dist(p1, p2)) || 1e-6;
+    const t23 = Math.sqrt(dist(p2, p3)) || 1e-6;
+    const m1x = (p2.x - p1.x) + t12 * ((p1.x - p0.x) / t01 - (p2.x - p0.x) / (t01 + t12));
+    const m1y = (p2.y - p1.y) + t12 * ((p1.y - p0.y) / t01 - (p2.y - p0.y) / (t01 + t12));
+    const m2x = (p2.x - p1.x) + t12 * ((p3.x - p2.x) / t23 - (p3.x - p1.x) / (t12 + t23));
+    const m2y = (p2.y - p1.y) + t12 * ((p3.y - p2.y) / t23 - (p3.y - p1.y) / (t12 + t23));
+    // Belt-and-braces: hold both control points inside the segment's x span. The
+    // input x values only ever increase, so a cubic whose control x values stay
+    // within [p1.x, p2.x] cannot move backwards — the reversal is impossible by
+    // construction, not merely unlikely. Only x is clamped; y stays free, so the
+    // curve keeps its shape.
+    const clampX = (v: number) => Math.min(p2.x, Math.max(p1.x, v));
+    const cp1x = clampX(p1.x + m1x / 3);
+    const cp1y = p1.y + m1y / 3;
+    const cp2x = clampX(p2.x - m2x / 3);
+    const cp2y = p2.y - m2y / 3;
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
 
