@@ -6,6 +6,8 @@
 // Grows across phases. Phase 1: daily-reward streak + payout.
 // ---------------------------------------------------------------------------
 
+import type { Trade } from '../store/types';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Sentinel symbol for a cash-injection event (e.g. a daily-reward bonus). It is
@@ -359,4 +361,56 @@ export function applyDailyClaim(prev: DailyClaimState, now: number): DailyClaimR
     xp: dailyXp(streak),
     cash: dailyCash(streak),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Win rate — the share of closed positions that made money.
+//
+// There were three separate implementations of this and two of them were wrong
+// in the same way: they decided a sell by comparing its price against the
+// CURRENT holding's avgCost. A position the user fully closed has no current
+// holding, so those sells always read as losses — the exact trades a win rate is
+// meant to measure. A trader who closes positions saw a rate near zero.
+//
+// This replays the ledger oldest-first to rebuild the average cost basis that
+// applied AT the moment of each sell, and prefers the realizedPnl recorded when
+// the sell executed.
+//
+// Sells we genuinely cannot evaluate are excluded from the denominator rather
+// than counted as losses. That covers a sell with no matching buy in the ledger
+// (a seeded starter holding, or history truncated before the buy) and the
+// rebalance/copy paths, which record realizedPnl: 0 when no holding was found —
+// indistinguishable from a real break-even sell except that there is no cost
+// basis either, so it is treated as unknown. Counting unknowns as losses is what
+// dragged the number down; dropping them keeps it honest about what it knows.
+// ---------------------------------------------------------------------------
+export function winRateFromTrades(trades: Trade[]): { rate: number; decided: number } {
+  const chron = [...trades].sort((a, b) => a.timestamp - b.timestamp);
+  const pos: Record<string, { units: number; cost: number }> = {};
+  let wins = 0, decided = 0;
+  for (const t of chron) {
+    if (t.symbol === CASH_EVENT_SYMBOL || t.kind === 'reward') continue;  // cash event, not a trade
+    const p = pos[t.symbol] ?? { units: 0, cost: 0 };
+    if (t.side === 'buy') {
+      p.units += t.units;
+      p.cost += t.amount;
+      pos[t.symbol] = p;
+      continue;
+    }
+    if (t.side !== 'sell') continue;
+    const avgCost = p.units > 0 ? p.cost / p.units : 0;
+    const hasBasis = avgCost > 0;
+    if (typeof t.realizedPnl === 'number' && (t.realizedPnl !== 0 || hasBasis)) {
+      decided++;
+      if (t.realizedPnl > 0) wins++;
+    } else if (hasBasis) {
+      decided++;
+      if (t.price > avgCost) wins++;
+    }
+    // else: no realized P&L and no cost basis — undecidable, left out entirely.
+    p.units = Math.max(0, p.units - t.units);
+    p.cost = avgCost * p.units;              // shrink the basis at avg cost
+    pos[t.symbol] = p;
+  }
+  return { rate: decided > 0 ? Math.round((wins / decided) * 100) : 0, decided };
 }

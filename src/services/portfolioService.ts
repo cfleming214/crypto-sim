@@ -3,6 +3,7 @@ import { entriesByCompetition } from './competitionService';
 import type { AppState, Trade, CompetitionEntry, PortfolioSlice } from '../store/types';
 import type { EquityPoint } from './equitySnapshots';
 import { STARTING_CASH } from '../constants/featureFlags';
+import { winRateFromTrades } from './gamification';
 
 // Lazily initialised so it doesn't blow up before Amplify.configure() is called
 let clientPromise: Promise<any> | null = null;
@@ -262,22 +263,32 @@ export async function loadContestPortfolios(): Promise<Record<string, PortfolioS
 // entered (active + finished) and best finish. Uses listMyEntries (owner-scoped,
 // paginated) so it counts EVERY entry, not just currently-active ones — which is
 // why Tournaments/Best-rank previously read 0 once a user's contests had all ended.
-export async function fetchMyContestStats(): Promise<{ played: number; bestRank: number | null }> {
+export async function fetchMyContestStats(): Promise<{ played: number; bestRank: number | null; won: number; finished: number }> {
   const client = await getClient();
-  if (!client) return { played: 0, bestRank: null };
+  if (!client) return { played: 0, bestRank: null, won: 0, finished: 0 };
   try {
     const ownerId = await getCurrentOwnerId();
     const entries = await listMyEntries(client, ownerId);
     const contests = new Set<string>();
+    // `won` / `finished` back the Profile win rate. Only SETTLED contests count:
+    // an entry that's still active hasn't been won or lost yet, and counting it
+    // in the denominator would drag the rate down for anyone currently playing.
+    // isActive === false is the same "settled" marker fetchMyContestWins uses.
+    const finished = new Set<string>();
+    const won = new Set<string>();
     let best: number | null = null;
     for (const e of entries) {
       if (e.competitionId) contests.add(e.competitionId);
       const r = typeof e.rank === 'number' ? e.rank : Number(e.rank);
+      if (e.competitionId && e.isActive === false) {
+        finished.add(e.competitionId);
+        if (r === 1) won.add(e.competitionId);
+      }
       if (Number.isFinite(r) && r >= 1 && r < 900 && (best === null || r < best)) best = r;
     }
-    return { played: contests.size, bestRank: best };
+    return { played: contests.size, bestRank: best, won: won.size, finished: finished.size };
   } catch {
-    return { played: 0, bestRank: null };
+    return { played: 0, bestRank: null, won: 0, finished: 0 };
   }
 }
 
@@ -495,12 +506,11 @@ export async function saveProfile(state: AppState): Promise<void> {
 
     // Mirror to PublicProfile so other authenticated users can discover this
     // trader. Computed fields (pnlPct, winRate) are derived from local state.
-    const sellTrades = state.trades.filter(t => t.side === 'sell');
-    const winningSells = sellTrades.filter(t => {
-      const h = state.holdings.find(x => x.symbol === t.symbol);
-      return h ? t.price > h.avgCost : false;
-    }).length;
-    const winRate    = sellTrades.length > 0 ? (winningSells / sellTrades.length) * 100 : 0;
+    // Shared with the Profile/Activity screens so the number other traders see
+    // matches the owner's own. The previous inline version compared each sell
+    // against the CURRENT holding's avgCost, so every fully-closed position
+    // counted as a loss and copy-trade cards showed a near-zero win rate.
+    const winRate = winRateFromTrades(state.trades).rate;
     const pnlPct     = ((state.bankroll - STARTING_CASH) / STARTING_CASH) * 100;
     const { data: existingPublic } = await client.models.PublicProfile.list();
     // Build the rolling equity history. Append a new {t, v} point if we

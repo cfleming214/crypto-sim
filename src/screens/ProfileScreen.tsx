@@ -376,7 +376,7 @@ export function ProfileScreen() {
   const [activeMirrorCount, setActiveMirrorCount] = useState(0);
   // LIFETIME contest stats (total tournaments ever entered + best finish), from
   // ALL the user's entries — so these don't reset to 0 once contests end.
-  const [contestStats, setContestStats] = useState<{ played: number; bestRank: number | null }>({ played: 0, bestRank: null });
+  const [contestStats, setContestStats] = useState<{ played: number; bestRank: number | null; won: number; finished: number }>({ played: 0, bestRank: null, won: 0, finished: 0 });
 
   // Refresh active mirror count on mount + whenever the user adds/removes one.
   // Mirror is owner-scoped so list() already returns only this user's rows.
@@ -506,31 +506,15 @@ export function ProfileScreen() {
   };
 
   const pnl = state.bankroll - STARTING_CASH;
-  const sellTrades = state.trades.filter(t => t.side === 'sell');
-  // Win rate = % of sells that closed in profit. Prefer the realized P&L recorded
-  // at sell time; for any sell missing it (legacy / rebalance / copy rows), rebuild
-  // the symbol's running average cost from the BUY ledger and compare against it.
-  // The old fallback compared the sell price to the CURRENT holding's avg cost —
-  // but a fully-closed position has no current holding, so it always read as a
-  // loss and dragged the win rate down. This replays trades oldest-first instead.
-  const winRate = (() => {
-    const chron = [...state.trades].sort((a, b) => a.timestamp - b.timestamp);
-    const pos: Record<string, { units: number; cost: number }> = {};
-    let wins = 0, sells = 0;
-    for (const t of chron) {
-      const p = pos[t.symbol] ?? { units: 0, cost: 0 };
-      if (t.side === 'buy') { p.units += t.units; p.cost += t.amount; pos[t.symbol] = p; continue; }
-      if (t.side !== 'sell') continue;
-      sells++;
-      const avgCost = p.units > 0 ? p.cost / p.units : 0;
-      const win = typeof t.realizedPnl === 'number' ? t.realizedPnl > 0 : (avgCost > 0 && t.price > avgCost);
-      if (win) wins++;
-      p.units = Math.max(0, p.units - t.units);
-      p.cost = avgCost * p.units;            // shrink cost basis at avg cost
-      pos[t.symbol] = p;
-    }
-    return sells > 0 ? Math.round((wins / sells) * 100) : 0;
-  })();
+  // Win rate = contests won / contests FINISHED. Only settled contests count: an
+  // entry still in play hasn't been won or lost yet. This used to be computed
+  // from profitable sell trades, which is a different statistic entirely — that
+  // one still backs the Activity screen and the copy-trade cards, where it
+  // describes trading rather than competing.
+  const winRate = contestStats.finished > 0
+    ? Math.round((contestStats.won / contestStats.finished) * 100)
+    : 0;
+  const hasFinishedContests = contestStats.finished > 0;
   // Best rank across all joined contests: find this user's rank in each
   // live leaderboard, take the lowest (best) number.
   const myRanks: number[] = [];
@@ -575,7 +559,7 @@ export function ProfileScreen() {
     const divLabel = state.user.division > 0 ? String(state.user.division) : '';
     const message =
       `@${state.user.handle} on CryptoComp — ${pnlStr} all-time · ${state.user.league} ${divLabel}`.trim() +
-      `\n${winRate}% win rate · ${state.user.xp.toLocaleString()} XP · ${state.user.streak}-day streak`;
+      `\n${hasFinishedContests ? `${winRate}% win rate · ` : ''}${state.user.xp.toLocaleString()} XP · ${state.user.streak}-day streak`;
     try {
       await Share.share({ message });
     } catch {
@@ -588,7 +572,7 @@ export function ProfileScreen() {
     // Lifetime: total tournaments ever entered + best-ever finish (from all
     // entries), never less than what's currently active.
     ['Tournaments', String(Math.max(contestStats.played, state.joinedTournamentIds.length)), null],
-    ['Win rate',    sellTrades.length > 0 ? `${winRate}%` : '—', sellTrades.length > 0 ? (winRate >= 50 ? 'up' : 'down') : null],
+    ['Win rate',    hasFinishedContests ? `${winRate}%` : '—', hasFinishedContests ? (winRate >= 50 ? 'up' : 'down') : null],
     ['Trades',      String(state.trades.length), null],
     ['XP',          state.user.xp.toLocaleString(), null],
     ['Best rank',   contestStats.bestRank != null ? `#${contestStats.bestRank}` : bestRank, null],
