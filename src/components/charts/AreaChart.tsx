@@ -36,6 +36,9 @@ function generatePath(data: number[], xFrac: number[], w: number, h: number, clo
     x: (xFrac[i] ?? i / (data.length - 1)) * w,
     y: h - ((v - min) / range) * h * 0.85 - h * 0.075,
   }));
+  // The vertical band every data point maps into: max -> yTop, min -> yBottom.
+  const yTop = h * 0.075;
+  const yBottom = h - h * 0.075;
 
   // Catmull-Rom spline → cubic beziers: a smooth curve through every point whose
   // tangents come from the NEIGHBORING points. The old scheme used horizontal
@@ -68,16 +71,23 @@ function generatePath(data: number[], xFrac: number[], w: number, h: number, clo
     const m1y = (p2.y - p1.y) + t12 * ((p1.y - p0.y) / t01 - (p2.y - p0.y) / (t01 + t12));
     const m2x = (p2.x - p1.x) + t12 * ((p3.x - p2.x) / t23 - (p3.x - p1.x) / (t12 + t23));
     const m2y = (p2.y - p1.y) + t12 * ((p3.y - p2.y) / t23 - (p3.y - p1.y) / (t12 + t23));
-    // Belt-and-braces: hold both control points inside the segment's x span. The
-    // input x values only ever increase, so a cubic whose control x values stay
-    // within [p1.x, p2.x] cannot move backwards — the reversal is impossible by
-    // construction, not merely unlikely. Only x is clamped; y stays free, so the
-    // curve keeps its shape.
+    // Hold both control points inside the segment's x span. The input x values
+    // only ever increase, so a cubic whose control x values stay within
+    // [p1.x, p2.x] cannot move backwards — the reversal is impossible by
+    // construction, not merely unlikely.
     const clampX = (v: number) => Math.min(p2.x, Math.max(p1.x, v));
+    // And hold control Y inside the band the data itself maps into. A cubic is
+    // contained by the convex hull of its control points, so with all four
+    // inside the band the whole curve is too. Without this the spline could
+    // overshoot vertically past a sharp turn and dip BELOW the plot, drawing
+    // over the X-axis labels. Clamping to the band rather than to each segment's
+    // own [p1.y, p2.y] keeps the curve smooth through peaks — it only stops it
+    // leaving the chart.
+    const clampY = (v: number) => Math.min(yBottom, Math.max(yTop, v));
     const cp1x = clampX(p1.x + m1x / 3);
-    const cp1y = p1.y + m1y / 3;
+    const cp1y = clampY(p1.y + m1y / 3);
     const cp2x = clampX(p2.x - m2x / 3);
-    const cp2y = p2.y - m2y / 3;
+    const cp2y = clampY(p2.y - m2y / 3);
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
 
@@ -216,7 +226,13 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
   const leftGutter = axesOn ? Math.max(40, Math.ceil(yLabelChars * AXIS_CHAR_W) + 14) : 0;
   const bottomGutter = axesOn ? 16 : 0;
   const plotH = height - bottomGutter;
-  const plotWidthPx = Math.max(1, layoutWidth - leftGutter);
+  // Right inset. The curve's last point sits at the very end of the viewBox and
+  // carries a filled dot, so with the plot flush to the container the line and
+  // dot were clipped against the screen edge. Reserve enough for the dot plus
+  // its stroke. The X-axis label row already inset itself by 4 for the same
+  // reason, which is why "Now" cleared the edge while the line did not.
+  const rightGutter = axesOn ? 10 : 0;
+  const plotWidthPx = Math.max(1, layoutWidth - leftGutter - rightGutter);
 
   // Horizontal position of each point as a 0..1 fraction, derived from its
   // TIMESTAMP rather than its index.
@@ -382,7 +398,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       })}
 
       {/* Plot region (inset by the gutters) */}
-      <View style={{ position: 'absolute', left: leftGutter, right: 0, top: 0, height: plotH }}>
+      <View style={{ position: 'absolute', left: leftGutter, right: rightGutter, top: 0, height: plotH }}>
         <Svg width="100%" height={plotH} viewBox={`0 0 300 ${plotH}`} preserveAspectRatio="none">
           <Path d={generatePath(chartData, xFrac, 300, plotH, false)} stroke={color} strokeWidth="2" fill="none" />
           {showDot && hoverIdx === null && rangeSel === null && (() => {
@@ -427,7 +443,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
         const lbl = { fontSize: 9, color: colors.ink4 } as const;
         return (
           <View style={{
-            position: 'absolute', left: leftGutter, right: 4, top: plotH, height: bottomGutter,
+            position: 'absolute', left: leftGutter, right: rightGutter, top: plotH, height: bottomGutter,
             flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <Text style={lbl}>{formatAxisTime(first, span)}</Text>
@@ -500,7 +516,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
           left third on wide screens. */}
       {crosshairEnabled && (
         <View
-          style={{ position: 'absolute', left: leftGutter, right: 0, top: 0, height: plotH }}
+          style={{ position: 'absolute', left: leftGutter, right: rightGutter, top: 0, height: plotH }}
           onLayout={e => setPlotPx(e.nativeEvent.layout.width)}
           {...panResponder.panHandlers}
         />
@@ -511,7 +527,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
           multi-trade bucket is a plain dot (the transaction count lives in the
           tap popup, not on the icon). Above the touch overlay so taps hit it. */}
       {markerGroups.map((g, i) => {
-        const xPx = leftGutter + (g.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const xPx = leftGutter + (xFrac[g.idx] ?? 0) * plotWidthPx;
         const yPx = Math.max(7, Math.min(plotH - 7, yForValue(chartData[g.idx])));
         const allBuy = g.markers.every(m => m.side === 'buy');
         const allSell = g.markers.every(m => m.side === 'sell');
@@ -550,7 +566,7 @@ export function AreaChart({ height = 170, data, timeframe, baseValue, down = fal
       {!onMarkerGroupPress && selGroup !== null && markerGroups[selGroup] && (() => {
         const g = markerGroups[selGroup];
         const m = g.markers[0];
-        const xPx = leftGutter + (g.idx / Math.max(1, chartData.length - 1)) * plotWidthPx;
+        const xPx = leftGutter + (xFrac[g.idx] ?? 0) * plotWidthPx;
         const tipW = 150;
         const left = Math.max(4, Math.min(layoutWidth - tipW - 4, xPx - tipW / 2));
         const buy = m.side === 'buy';
