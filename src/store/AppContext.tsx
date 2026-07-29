@@ -2164,31 +2164,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const lastT = existing[existing.length - 1]?.t;
       // backfillGap no-ops under 5 minutes; check here too so a quick app-switch
       // doesn't hit the network at all.
-      const filled = !!lastT && now - lastT >= EQUITY_GAP_MIN_MS;
-      if (filled) {
-        await backfillGap(
+      const hasGap = !!lastT && now - lastT >= EQUITY_GAP_MIN_MS;
+
+      // Reconstructing the gap values the CURRENT basket at historical prices, so
+      // it is only meaningful once that basket has actually loaded. The same
+      // readiness gate the capture interval uses.
+      //
+      // Without it this fired on foreground against INITIAL_STATE, whose bankroll
+      // is STARTING_CASH — so it passed the `bankroll > 0` check with holdings
+      // still empty. backfillGap then took its "no positions → balance is pure
+      // cash and can't have moved" path and wrote a FLAT line across the whole
+      // closed period. That's the flat/empty gap on the chart: not a missing
+      // reconstruction, a confidently wrong one.
+      const ready = (authRef.current === 'authenticated' && profileLoadedRef.current)
+        || (authRef.current === 'unauthenticated' && offlineHydratedRef.current);
+      if (!ready) return;
+
+      let added = 0;
+      if (hasGap) {
+        const merged = await backfillGap(
           pid,
           { cash: s.cash, holdings: s.holdings },
           lastT!,
           now,
           new Map(s.coins.map(c => [c.symbol, c.price])),
         );
+        // Count points landing INSIDE the gap, not the change in total length:
+        // downsample also trims at its MAX_POINTS cap, so on a long history a
+        // successful backfill can leave the total unchanged.
+        added = merged.reduce((n, p) => (p.t > lastT! ? n + 1 : n), 0);
       }
-      // Only stamp the current balance when we did NOT just reconstruct a gap.
+      // Stamp the current balance unless the backfill ACTUALLY added points.
       //
       // The 10s price poll is suspended alongside the capture interval, so on
       // foreground `s.bankroll` is still priced at whatever the market was doing
       // before the app went away. After a long absence that's badly stale — and
       // writing it at `now`, right after a backfill that ran up to `now` on real
       // historical prices, would end the reconstructed curve with a step back to
-      // an hours-old balance.
+      // an hours-old balance. So a successful reconstruction still suppresses it.
       //
-      // Nothing is lost by skipping it: the capture interval resumes immediately
-      // and records a properly-priced point within CAPTURE_MS. The stamp still
-      // happens for short absences, which is what it was there for — brief
-      // sessions that never let the capture interval fire, and where the prices
-      // are fresh enough to be worth recording.
-      if (!filled) await appendSnapshot(pid, { t: Date.now(), v: s.bankroll });
+      // But this used to skip on `now - lastT >= GAP`, i.e. on the clock alone,
+      // decided before backfillGap had run. backfillGap has several paths that
+      // return without writing anything — an empty grid, every candidate value
+      // non-positive, or points that all collapse into buckets it already had —
+      // and none of them throw, so the catch below never saw them either. The
+      // result was a resume that recorded nothing at all. Keying off the number
+      // of points actually added closes that: reconstruct if we can, otherwise
+      // fall back to stamping something real.
+      if (added === 0) await appendSnapshot(pid, { t: Date.now(), v: s.bankroll });
     } catch (e) {
       // Never let history reconstruction break the foreground path.
       console.warn('equity gap backfill failed (ignored):', e);
