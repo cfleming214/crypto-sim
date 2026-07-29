@@ -21,12 +21,18 @@ interface Props { visible: boolean; onClose: () => void; }
 
 // Fallback price strings shown before/if the store offering fails to load, so the
 // sheet is never blank. The real localized price replaces these once loaded.
+// `term` spells the subscription LENGTH out in words on the card itself. Apple
+// guideline 3.1.2 requires the length to be stated in the app, and "/month" as a
+// price suffix alone has been read as insufficient.
 const OPTIONS = [
   { key: 'noads',   productId: PRODUCT_NO_ADS,    title: 'No Ads',             price: '$2.99', period: '/month',  sub: true,
+    term: 'Auto-renewing subscription · 1 month',
     desc: 'Remove banner, in-feed, and full-screen ads. Optional reward videos still work.', icon: Ban },
   { key: 'balance', productId: PRODUCT_BALANCE_5M, title: '$5M Practice Balance', price: '$2.99', period: 'one-time', sub: false,
+    term: 'One-time purchase · does not renew',
     desc: 'Add $5,000,000 of play money to a new or existing offline portfolio.', icon: Wallet },
   { key: 'premium', productId: PRODUCT_PREMIUM,   title: 'Premium',            price: '$3.99', period: '/month',  sub: true,
+    term: 'Auto-renewing subscription · 1 month',
     desc: `No ads + $5M every month + up to ${PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH} extra $5M portfolios per month.`, icon: Crown },
 ] as const;
 
@@ -219,6 +225,7 @@ export function PurchaseModal({ visible, onClose }: Props) {
                         <Text style={{ fontSize: 12, fontWeight: '600', color: colors.ink3 }}> {opt.period}</Text>
                       </Text>
                     </View>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.ink2, marginTop: 2 }}>{opt.term}</Text>
                     <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 4, lineHeight: 17 }}>{opt.desc}</Text>
                   </View>
                 </View>
@@ -251,7 +258,8 @@ export function PurchaseModal({ visible, onClose }: Props) {
           {/* Renewal terms — Apple review requirement for auto-renewing subs. */}
           <View style={{ gap: 6, marginTop: 4 }}>
             <Text style={{ fontSize: 11, color: colors.ink3, lineHeight: 16 }}>
-              No Ads ($2.99/month) and Premium ($3.99/month) are auto-renewing subscriptions. Payment is charged to your
+              No Ads ({priceFor(PRODUCT_NO_ADS, '$2.99')}/month) and Premium ({priceFor(PRODUCT_PREMIUM, '$3.99')}/month),
+              each a 1-month term, are auto-renewing subscriptions. Payment is charged to your
               Apple ID at confirmation. The subscription renews automatically unless cancelled at least 24 hours before the
               end of the current period; your Apple ID is charged for renewal within 24 hours of the period ending. Manage or
               cancel anytime in your device Settings → Apple ID → Subscriptions. The $5M Practice Balance is a one-time
