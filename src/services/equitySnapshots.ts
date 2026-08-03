@@ -38,18 +38,22 @@ const RECENT_FULL = 3 * HOUR;
 // the coalesce window is 3s, so captures never merge: 3h produced 3*3600/4 =
 // 2700 points, MORE than MAX_POINTS on its own. The slice below then trimmed to
 // the newest 2500, so the store never held more than ~2.8h and every 2-min /
-// hourly / daily bucket beneath it was destroyed on every single write. At 30s
-// the same window is 360 points and the coarser tiers survive, which is what
-// makes MAX_POINTS a backstop rather than the thing actually setting retention.
-const RECENT_BUCKET_MS = 30_000;
-// Absolute backstop on the local series length. The tiers below already bound a
-// year of use to ~2k points; this guarantees the array (which is serialized to
-// native storage every 30s) can never blow up from clock skew / corruption.
-const MAX_POINTS = 2500;
+// hourly / daily bucket beneath it was destroyed on every single write. Bucketing
+// keeps the coarser tiers alive, which is what makes MAX_POINTS a backstop rather
+// than the thing actually setting retention. At 15s the 3h window is 720 points —
+// 60 across the Live (15m) view and 240 across 1H.
+const RECENT_BUCKET_MS = 15_000;
+// Absolute backstop on the local series length. It must stay comfortably ABOVE
+// what the tiers below can legitimately produce, otherwise it silently becomes
+// the retention policy and starts evicting real history — see CRYP-35, where the
+// recent tier alone outgrew it. At 15s buckets three years of continuous use is
+// ~3.1k points, so 4000 leaves headroom while still catching clock skew or a
+// corrupted array.
+const MAX_POINTS = 4000;
 
-// Tiered retention so the series can't grow unbounded: 30s resolution for the
-// last 3h, 2-min out to 24h, hourly out to 30d, daily beyond. A year of history
-// is then well under MAX_POINTS. Within a bucket the LATEST point wins (overwrite),
+// Tiered retention so the series can't grow unbounded: 15s resolution for the
+// last 3h, 2-min out to 24h, hourly out to 30d, daily beyond. Three years of
+// history is then ~3.1k points, still under MAX_POINTS. Within a bucket the LATEST point wins (overwrite),
 // so the most recent value in each window survives.
 export function downsample(points: EquityPoint[], now: number): EquityPoint[] {
   const sorted = [...points].filter(p => Number.isFinite(p.t) && Number.isFinite(p.v))
@@ -59,7 +63,7 @@ export function downsample(points: EquityPoint[], now: number): EquityPoint[] {
   for (const p of sorted) {
     const age = now - p.t;
     const bucket = age <= RECENT_FULL
-      ? `m:${Math.floor(p.t / RECENT_BUCKET_MS)}`   // last 3h: 30s
+      ? `m:${Math.floor(p.t / RECENT_BUCKET_MS)}`   // last 3h: 15s
       : age <= DAY
         ? `f:${Math.floor(p.t / (2 * MINUTE))}`     // 3-24h: 2-min
         : age <= 30 * DAY
