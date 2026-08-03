@@ -59,6 +59,16 @@ export async function uploadAvatarPhoto(localUri: string): Promise<{ key: string
 
 // ---- Profile ----
 
+// Parse a stops blob, returning undefined for absent/corrupt data so callers can
+// distinguish "no column" from "explicitly empty".
+function parseStops(raw: unknown): any {
+  if (typeof raw !== 'string' || !raw) return undefined;
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : undefined;
+  } catch { return undefined; }
+}
+
 async function profileFromRecord(p: any): Promise<Partial<AppState>> {
   const avatarUri = p.avatarKey ? (await resolveAvatarUrl(p.avatarKey)) ?? undefined : undefined;
   // Cross-device gamification blob (daily-claim, achievements, predictions).
@@ -83,6 +93,11 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
     bankroll:  p.bankroll ?? STARTING_CASH,
     riskScore: p.riskScore ?? 0,
     holdings:  p.holdingsJson ? JSON.parse(p.holdingsJson) : [],
+    // Undefined (not {}) when the column is absent, so LOAD_PROFILE's
+    // `p.stopLosses ?? state.stopLosses` keeps whatever is already in memory
+    // rather than wiping live stops on a profile row written before this shipped.
+    stopLosses: parseStops(p.stopLossesJson),
+    buyStops:   parseStops(p.buyStopsJson),
     ...(gami ? {
       lastClaimDay:     typeof gami.lastClaimDay === 'string' ? gami.lastClaimDay : null,
       achievements:     gami.achievements && typeof gami.achievements === 'object' ? gami.achievements : {},
@@ -520,6 +535,8 @@ export async function saveProfile(state: AppState): Promise<void> {
       bankroll:     state.bankroll,
       riskScore:    state.riskScore,
       holdingsJson: JSON.stringify(state.holdings),
+      stopLossesJson: JSON.stringify(state.stopLosses ?? {}),
+      buyStopsJson:   JSON.stringify(state.buyStops ?? {}),
       avatarKey:    state.user.avatarKey,
       avatarColor:  state.user.avatarColor,
       // Public-leaderboard opt-in (default true). The tick-global-leaderboard

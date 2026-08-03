@@ -765,7 +765,14 @@ function reducer(state: AppState, action: Action): AppState {
         holdings,
         trades:     Array.isArray(p.trades) ? p.trades : state.trades,
         watchlist:  Array.isArray(p.watchlist) ? p.watchlist : state.watchlist,
-        stopLosses: p.stopLosses ?? state.stopLosses,
+        // A sell-stop is meaningless without a position, and the auto-fire in
+        // TICK_PRICES deletes the stop it consumes WITHOUT triggering a profile
+        // save (stopsChanged only recomputes the risk score). So the cloud can
+        // still hold a stop for a coin that was already stopped out — inert
+        // while unheld, but it would silently re-arm if the user bought that
+        // coin again. Drop those on load. Buy-stops are deliberately NOT pruned:
+        // they exist precisely to fire on a coin you don't hold yet.
+        stopLosses: pruneStopsToHoldings(p.stopLosses ?? state.stopLosses, holdings),
         buyStops:   p.buyStops ?? state.buyStops,
         bankroll:   cash + holdingsValue,
       };
@@ -1854,6 +1861,18 @@ const AppContext = createContext<AppContextValue>({
 // BTC + its SEED- trade): a real buy/sell/daily-reward always leaves a non-SEED
 // trade in the ledger. Used at first sign-up to decide whether to adopt the
 // guest portfolio into the new account vs. start them on a fresh starter.
+// Keep only the sell-stops whose coin is still held. See the call site in
+// LOAD_PROFILE for why a stale one can exist.
+function pruneStopsToHoldings(
+  stops: Record<string, number>,
+  holdings: { symbol: string }[],
+): Record<string, number> {
+  const held = new Set(holdings.map(h => h.symbol));
+  const out: Record<string, number> = {};
+  for (const [sym, pct] of Object.entries(stops ?? {})) if (held.has(sym)) out[sym] = pct;
+  return out;
+}
+
 function hasMeaningfulGuestPortfolio(s: AppState): boolean {
   return s.trades.some(t => !t.id.startsWith('SEED-'));
 }
@@ -1892,7 +1911,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     'SEED_STARTER',
     'BUY', 'SELL', 'REBALANCE', 'COPY_ALLOCATION',
     'SET_HANDLE', 'SET_LEADERBOARD_VISIBLE', 'SET_AVATAR_COLOR', 'SET_AVATAR_URI', 'SET_AVATAR',
-    'SET_STOP_LOSS', 'TOGGLE_WATCHLIST',
+    'SET_STOP_LOSS', 'SET_BUY_STOP', 'CLEAR_BUY_STOP', 'TOGGLE_WATCHLIST',
     'PLACE_LIMIT_ORDER', 'CANCEL_LIMIT_ORDER',
     'RESET_DEMO', 'CLAIM_DAILY_REWARD', 'RECORD_PREDICTION', 'SETTLE_PREDICTION', 'CLAIM_CONTEST_XP', 'INCREMENT_DUELS_CREATED',
     'ADD_XP', // persist XP grants (e.g. the rewarded-ad "triple daily XP")

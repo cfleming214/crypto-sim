@@ -49,6 +49,14 @@ const schema = a.schema({
     referralCode: a.string(),
     referredByCode: a.string(),
     activatedReferrals: a.integer(),
+    // Sell-stops (% below entry, per symbol) and buy-stops ({price, amount} per
+    // symbol). JSON blobs, matching holdingsJson. Guests already persisted these
+    // to AsyncStorage, but for a signed-in user the local save is skipped on the
+    // grounds that "the cloud UserProfile owns persistence" — and it had no
+    // column for them, so they were written nowhere and lost on every relaunch.
+    // Plain optional fields, not secondaryIndexes, so no table recreation.
+    stopLossesJson: a.string(),
+    buyStopsJson: a.string(),
   }).authorization(allow => [allow.owner()]),
 
   // Public code → referrer lookup so a brand-new (or any) authenticated user can
