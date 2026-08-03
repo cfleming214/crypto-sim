@@ -17,6 +17,18 @@ const preSignUp = defineFunction({
   resourceGroupName: 'auth',
 });
 
+// CustomMessage trigger. Cognito reuses ONE verification-message template for
+// both sign-up confirmation and forgot-password, which is why a password reset
+// used to arrive saying "Here is the code for your new account". triggerSource
+// is the only thing that distinguishes the flows, and it's only available here.
+const customMessage = defineFunction({
+  name: 'custom-message',
+  entry: './custom-message-handler.ts',
+  // Same reasoning as preSignUp: keep the trigger in the AUTH stack so the
+  // auth -> function -> data -> auth CloudFormation cycle can't form.
+  resourceGroupName: 'auth',
+});
+
 export const auth = defineAuth({
   // Email sign-in. This matches the already-deployed Cognito pool
   // (username_attributes / standard_required_attributes / user_verification_types
@@ -29,5 +41,6 @@ export const auth = defineAuth({
   },
   triggers: {
     preSignUp,
+    customMessage,
   },
 });
