@@ -112,44 +112,6 @@ function sanitizeSnapshots(points: EquityPoint[]): EquityPoint[] {
   return points.filter(p => p.v !== STARTING_CASH || p.t === earliestT);
 }
 
-// Resample an (unevenly spaced) equity series onto a uniform time grid of
-// `count` points spaced `stepMs` apart and ending at `endT`, linearly
-// interpolating between recorded points and holding the edge values flat
-// outside the recorded range. The AreaChart distributes points evenly along X,
-// so feeding it a uniform-time grid keeps the time axis honest — e.g. the 1H
-// window becomes 60 one-minute points instead of whatever uneven mix of 60s
-// captures and gap-backfill happened to land in the hour. Returns [] when there
-// are no source points, so the caller keeps its own sparse fallback.
-export function resampleSeries(points: EquityPoint[], endT: number, stepMs: number, count: number): EquityPoint[] {
-  if (!(stepMs > 0) || count < 2) return [];
-  const src = [...points].filter(p => Number.isFinite(p.t) && Number.isFinite(p.v)).sort((a, b) => a.t - b.t);
-  if (src.length === 0) return [];
-  const out: EquityPoint[] = [];
-  let i = 0; // forward cursor: grid times are monotonic, so it only advances → O(count + src)
-  for (let k = 0; k < count; k++) {
-    const gt = endT - (count - 1 - k) * stepMs;
-    while (i + 1 < src.length && src[i + 1].t <= gt) i++;
-    let v: number;
-    if (gt <= src[0].t) v = src[0].v;                 // before first reading → flat
-    else if (i + 1 >= src.length) v = src[src.length - 1].v; // after last reading → flat
-    else {
-      const a = src[i], b = src[i + 1];               // bracketing readings → linear
-      v = b.t > a.t ? a.v + (b.v - a.v) * ((gt - a.t) / (b.t - a.t)) : a.v;
-    }
-    out.push({ t: gt, v });
-  }
-  return out;
-}
-
-// Remove isolated single-point spikes from an equity series. A recorded balance
-// can momentarily spike when a snapshot is captured against a transiently bad
-// price (a CoinGecko outlier, an app-open before live prices settle, a stale
-// tick) — it shows as a thin vertical spike on the chart even though the real
-// portfolio didn't move. A point that deviates from BOTH of its time-neighbors
-// in the SAME direction by more than `tol` (relative) is such an artifact, so we
-// snap it onto the line between them. Genuine sustained moves aren't isolated
-// (their neighbors moved the same way), so they survive untouched. Display-only:
-// the stored series keeps the raw points; we just don't draw the spikes.
 export function despikeSeries(points: EquityPoint[], tol = 0.015): EquityPoint[] {
   if (points.length < 3) return points;
   const out = points.slice();
