@@ -1148,6 +1148,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "winnerOwner": {
+              "name": "winnerOwner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
