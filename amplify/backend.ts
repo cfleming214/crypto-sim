@@ -20,6 +20,7 @@ import { executeTrade } from './functions/execute-trade/resource.js';
 import { escrow } from './functions/escrow/resource.js';
 import { runMirror } from './functions/run-mirror/resource.js';
 import { settleSeason } from './functions/settle-season/resource.js';
+import { closeSeason } from './functions/close-season/resource.js';
 import { settleRecruiterCup } from './functions/settle-recruiter-cup/resource.js';
 import { tickReplayLeaderboard } from './functions/tick-replay-leaderboard/resource.js';
 import { closeReplayContest } from './functions/close-replay-contest/resource.js';
@@ -53,6 +54,7 @@ const backend = defineBackend({
   escrow,
   runMirror,
   settleSeason,
+  closeSeason,
   settleRecruiterCup,
   tickReplayLeaderboard,
   closeReplayContest,
@@ -318,6 +320,21 @@ seasonFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
 new Rule(Stack.of(seasonFn), 'SettleSeasonRule', {
   schedule: Schedule.rate(Duration.days(7)),
   targets: [new LambdaFunction(seasonFn)],
+});
+
+// --- closeSeason: advance the 28-day Season Pass for EVERY account ---
+// The client rolls its own season on open, so an account whose owner doesn't
+// launch the app sits on a finished season indefinitely. This runs hourly (cheap:
+// it early-outs on every already-current profile) so the boundary is picked up
+// within the hour rather than whenever someone happens to open the app.
+const closeSeasonFn = backend.closeSeason.resources.lambda;
+profileTable.grantReadWriteData(closeSeasonFn);
+// @ts-expect-error addEnvironment exists on the concrete Function, not on IFunction
+closeSeasonFn.addEnvironment('USER_PROFILE_TABLE_NAME', profileTable.tableName);
+
+new Rule(Stack.of(closeSeasonFn), 'CloseSeasonRule', {
+  schedule: Schedule.rate(Duration.hours(1)),
+  targets: [new LambdaFunction(closeSeasonFn)],
 });
 
 // --- settleRecruiterCup: every 5 min, rebuild the Recruiter Cup standings (top
