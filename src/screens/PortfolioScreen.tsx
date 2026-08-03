@@ -21,7 +21,8 @@ import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward, watchForBonusXp } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
-import { loadSnapshots, backfillGap, despikeSeries, clearSnapshots, appendSnapshot, type EquityPoint } from '../services/equitySnapshots';
+import { loadSnapshots, backfillGap, despikeSeries, clearSnapshots, appendSnapshot, mergeSnapshots, type EquityPoint } from '../services/equitySnapshots';
+import { computePortfolioHistory } from '../services/portfolioHistory';
 import { applyDailyClaim, canClaim, nextClaimAt, todayKey, dailyXp } from '../services/gamification';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -288,6 +289,7 @@ export function PortfolioScreen() {
   }, [isContest]); // eslint-disable-line react-hooks/exhaustive-deps
   const [view, setView] = useState('List');
   const [stopSheetVisible, setStopSheetVisible] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
   const [rebalanceVisible, setRebalanceVisible] = useState(false);
   const [rebalanceLines, setRebalanceLines] = useState<RebalanceLine[]>([]);
   const [rebalanceTarget, setRebalanceTarget] = useState(0);
@@ -529,6 +531,67 @@ export function PortfolioScreen() {
             // isn't empty; the 60s capture grows it fresh from here.
             const series = await appendSnapshot(pid, { t: Date.now(), v: totalEquity });
             setHistory(series);
+          },
+        },
+      ],
+    );
+  };
+
+  // Rebuild the balance history from the trade ledger instead of from recorded
+  // samples. value(t) = cash(t) + Σ units(t) × historicalPrice(t), replaying
+  // trades up to t — so it reconstructs the whole lifetime even for periods the
+  // app was never open, and it's stable (a past point depends only on trades at
+  // or before t plus immutable prices).
+  //
+  // This is the repair path for a history that recorded badly: a stretch where
+  // capture didn't run, or a flat line left behind by an earlier build. Recorded
+  // sampling stays the normal source — it captures intra-minute movement that
+  // hourly candles can't — so this REPLACES the stored series rather than
+  // running continuously.
+  const handleRebuildHistory = () => {
+    const pid = state.activePortfolioId;
+    const activeName = isMain ? 'Main' : (state.offlinePortfolios.names[pid] ?? 'this portfolio');
+    Alert.alert(
+      `Rebuild “${activeName}” history?`,
+      'Recalculates the balance chart from your trade history and real historical prices, replacing the recorded one.\n\nUse this if the chart looks wrong — flat stretches, or missing time. Your cash, holdings and trades are not affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Rebuild',
+          onPress: async () => {
+            setRebuilding(true);
+            try {
+              const res = await computePortfolioHistory(
+                state.trades,
+                { cash: state.cash, holdings: state.holdings },
+                'MAX',
+                {
+                  nowValue: totalEquity,
+                  currentPrices: new Map(state.coins.map(c => [c.symbol, c.price])),
+                  createdAt: state.user.createdAt,
+                },
+              );
+              if (res.points.length < 2) {
+                Alert.alert('Couldn’t rebuild', 'Not enough price history was available. Check your connection and try again.');
+                return;
+              }
+              // Replace rather than merge: the recorded series is what we're
+              // repairing, so keeping it would preserve the very points that
+              // look wrong.
+              await clearSnapshots(pid);
+              const series = await mergeSnapshots(pid, res.points);
+              setHistory(series);
+              Alert.alert(
+                'History rebuilt',
+                res.partial
+                  ? `Rebuilt ${res.points.length} points. Some coins had no price history, so parts are estimated — try again later for a more exact result.`
+                  : `Rebuilt ${res.points.length} points from your trade history.`,
+              );
+            } catch {
+              Alert.alert('Couldn’t rebuild', 'Something went wrong reading price history. Please try again.');
+            } finally {
+              setRebuilding(false);
+            }
           },
         },
       ],
@@ -1121,7 +1184,11 @@ export function PortfolioScreen() {
       </Card>
 
       {isPractice && (
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+        // flexWrap: three sm ghost buttons total ~371pt, which overflows a 390pt
+        // screen once ScreenShell's 20pt insets are taken off (~350pt usable) and
+        // gets worse on smaller devices. Wrapping drops the third onto its own
+        // line rather than squashing all three.
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
           <Button
             testID="portfolio-reset-btn"
             variant="ghost"
@@ -1137,6 +1204,16 @@ export function PortfolioScreen() {
             onPress={handleResetGraph}
           >
             Reset graph
+          </Button>
+          <Button
+            testID="portfolio-rebuild-history-btn"
+            variant="ghost"
+            size="sm"
+            loading={rebuilding}
+            disabled={rebuilding}
+            onPress={handleRebuildHistory}
+          >
+            Rebuild history
           </Button>
         </View>
       )}
