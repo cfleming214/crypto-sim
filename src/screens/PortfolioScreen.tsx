@@ -61,6 +61,12 @@ function formatCountdown(ms: number): string {
 
 const STOP_OPTIONS = [5, 10, 15];
 
+// Price/units formatting for the Active stops card, matching the conventions
+// already used by the marker popup below (sub-cent coins get more decimals).
+const fmtPrice = (v: number): string =>
+  `$${v < 0.01 ? v.toFixed(6) : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtUnits = (u: number): string => (u < 1 ? u.toFixed(4) : u.toFixed(2));
+
 const DONUT_COLORS = ['#F7931A', '#627EEA', '#9945FF', '#BA9F33', '#2775CA', '#00D632'];
 
 interface RebalanceLine {
@@ -834,6 +840,81 @@ export function PortfolioScreen() {
           <Button testID="portfolio-stop-loss-btn" variant="brand" size="sm" style={{ flex: 1 }} onPress={() => setStopSheetVisible(true)}>Set stops</Button>
         </View>
       </Card>
+
+      {/* Active stops — set one and you couldn't see it anywhere afterwards, so
+          there was no way to confirm the level or how close it was to firing.
+          Sits directly under Risk health, next to the "Set stops" button that
+          creates them. Only rendered when at least one exists. */}
+      {(() => {
+        // Sell-stops are stored as a % below avgCost; the trigger price is
+        // avgCost x (1 - pct/100) — the same expression the auto-fire in
+        // TICK_PRICES uses, so what's shown is what will actually fire.
+        const sellStops = Object.entries(state.stopLosses)
+          .map(([symbol, pct]) => {
+            const h = state.holdings.find(x => x.symbol === symbol);
+            const coin = state.coins.find(c => c.symbol === symbol);
+            if (!h || !coin || !(pct > 0)) return null;   // position closed since
+            const trigger = h.avgCost * (1 - pct / 100);
+            return { symbol, side: 'sell' as const, trigger, price: coin.price, pct, units: h.units };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null);
+
+        const buyStops = Object.entries(state.buyStops)
+          .map(([symbol, cfg]) => {
+            const coin = state.coins.find(c => c.symbol === symbol);
+            if (!coin || !cfg || !(cfg.price > 0)) return null;
+            return { symbol, side: 'buy' as const, trigger: cfg.price, price: coin.price, amount: cfg.amount };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null);
+
+        const rows = [...sellStops, ...buyStops];
+        if (rows.length === 0) return null;
+
+        return (
+          <Card style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Shield color={colors.ink} size={18} strokeWidth={1.75} />
+                <Text style={{ fontWeight: '600', color: colors.ink }}>Active stops</Text>
+              </View>
+              <Chip>{rows.length}</Chip>
+            </View>
+            {rows.map(r => {
+              // BOTH kinds fire when the price FALLS to the trigger — the sell
+              // stop guards `coin.price > avgCost x (1 - pct/100)` and the buy
+              // stop guards `coin.price > bs.price`, so one formula covers both.
+              // Signed, so a stop already past its level reads as armed rather
+              // than as a healthy cushion.
+              const awayPct = ((r.price - r.trigger) / (r.trigger || 1)) * 100;
+              const armed = awayPct <= 0;
+              const close = !armed && awayPct < 5;
+              return (
+                <View key={`${r.side}-${r.symbol}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink }}>
+                      {r.symbol} · {r.side === 'sell' ? 'Sell stop' : 'Buy stop'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.ink3, marginTop: 2 }}>
+                      {r.side === 'sell'
+                        ? `Sells all ${fmtUnits(r.units)} at ${fmtPrice(r.trigger)} (${r.pct}% below entry)`
+                        : `Buys $${Math.round(r.amount).toLocaleString()} at ${fmtPrice(r.trigger)}`}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                      {fmtPrice(r.price)}
+                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', marginTop: 2, color: armed ? colors.warn : close ? colors.down : colors.ink3 }}>
+                      {armed ? 'Triggering' : `${Math.abs(awayPct).toFixed(1)}% away`}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+            <Button testID="portfolio-edit-stops-btn" variant="ghost" size="sm" onPress={() => setStopSheetVisible(true)}>Edit stops</Button>
+          </Card>
+        );
+      })()}
 
       {/* Continue learning — Crypto Academy entry */}
       {(() => {
