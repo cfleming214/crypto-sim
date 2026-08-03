@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useApp } from '../store/AppContext';
-import { todayKey, nextClaimAt, seasonId, weekKey, weeklyPassGrant } from '../services/gamification';
+import { todayKey, nextClaimAt, seasonId, weekKey, weeklyPassGrant, passCap } from '../services/gamification';
 import { scheduleAt } from '../lib/notifications';
 
 // Rolls the Daily Quests over at UTC midnight (re-snapshots baselines, clears
@@ -23,7 +23,7 @@ export function QuestWatcher() {
       // weekKey). Subscribers get the larger grant (20 vs 5).
       const wk = weekKey(now);
       if (state.passes.lastWeeklyGrantKey !== wk) {
-        dispatch({ type: 'GRANT_WEEKLY_PASSES', weekKey: wk, amount: weeklyPassGrant(state.isSubscriber) });
+        dispatch({ type: 'GRANT_WEEKLY_PASSES', weekKey: wk, amount: weeklyPassGrant(state.isSubscriber), cap: passCap(state.isSubscriber) });
       }
     };
     check();

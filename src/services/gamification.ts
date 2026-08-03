@@ -36,13 +36,25 @@ export function monthKey(now: number): string {
   return new Date(now).toISOString().slice(0, 7);
 }
 
-// Free Lane-A contest passes granted at the start of each week. Subscribers get a
-// larger grant; the subscription that sets isSubscriber is future-scope IAP, so
-// today everyone effectively gets the free tier.
-export const WEEKLY_PASS_GRANT_FREE = 5;
+// Free Lane-A contest passes granted at the start of each week, and the ceiling
+// the weekly grant tops up TOWARDS. Once a player is at (or over) the cap the
+// weekly grant stops adding, so passes can't pile up indefinitely for someone who
+// never enters a contest.
+export const WEEKLY_PASS_GRANT_FREE = 10;
 export const WEEKLY_PASS_GRANT_SUBSCRIBER = 20;
+export const PASS_CAP_FREE = 20;
+export const PASS_CAP_SUBSCRIBER = 40;
 export function weeklyPassGrant(isSubscriber: boolean): number {
   return isSubscriber ? WEEKLY_PASS_GRANT_SUBSCRIBER : WEEKLY_PASS_GRANT_FREE;
+}
+export function passCap(isSubscriber: boolean): number {
+  return isSubscriber ? PASS_CAP_SUBSCRIBER : PASS_CAP_FREE;
+}
+// How many of `amount` a player with `balance` may actually receive. Never
+// negative — a balance already over the cap (earned from rewarded ads, which are
+// uncapped) is left alone rather than confiscated.
+export function weeklyPassTopUp(balance: number, amount: number, cap: number): number {
+  return Math.max(0, Math.min(amount, cap - balance));
 }
 
 // Difference in whole UTC days between two day-keys (b - a). Both are
