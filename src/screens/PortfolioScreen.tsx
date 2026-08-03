@@ -351,7 +351,6 @@ export function PortfolioScreen() {
         { cash: state.cash, holdings: state.holdings },
         lastT,
         now,
-        new Map(state.coins.map(c => [c.symbol, c.price])),
       );
       if (!cancelled) {
         setHistory(series);
