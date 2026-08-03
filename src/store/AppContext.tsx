@@ -10,7 +10,7 @@ import { createCloudAlert, deleteCloudAlert, createCloudOrder, deleteCloudOrder,
 import { fetchCompetitions, fetchFinishedCompetitions, subscribeToCompetitions, deactivateCompetitionEntriesForUser } from '../services/competitionService';
 import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } from '../services/replayService';
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
-import { applyDailyClaim, sellXp, realizedPnl, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
+import { applyDailyClaim, sellXp, realizedPnl, weeklyPassTopUp, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, backfillGap } from '../services/equitySnapshots';
 import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
@@ -353,7 +353,7 @@ type Action =
   | { type: 'CLAIM_QUEST_CHEST'; xp: number; cash: number }
   | { type: 'ROLL_SEASON'; id: number; baselineXp: number }
   | { type: 'ACK_SEASON_CLOSED' }
-  | { type: 'GRANT_WEEKLY_PASSES'; weekKey: string; amount: number }
+  | { type: 'GRANT_WEEKLY_PASSES'; weekKey: string; amount: number; cap: number }
   | { type: 'ADD_PASS'; amount: number }
   | { type: 'SPEND_PASS' }
   | { type: 'GRANT_BONUS_CASH'; amount: number; xp?: number }
@@ -1307,10 +1307,15 @@ function reducer(state: AppState, action: Action): AppState {
       // The close-out summary has been shown; drop it so it doesn't reappear.
       if (!state.season.lastClosed) return state;
       return { ...state, season: { ...state.season, lastClosed: null } };
-    case 'GRANT_WEEKLY_PASSES':
+    case 'GRANT_WEEKLY_PASSES': {
       // Free weekly Lane-A pass grant — lands once per week (idempotent on weekKey).
+      // Tops up TOWARDS the cap rather than adding blindly, so a player who never
+      // spends passes stops accruing. The week is still marked granted when the
+      // top-up is 0, otherwise this would retry every 60s for the rest of the week.
       if (state.passes.lastWeeklyGrantKey === action.weekKey) return state;
-      return { ...state, passes: { balance: state.passes.balance + action.amount, lastWeeklyGrantKey: action.weekKey } };
+      const room = weeklyPassTopUp(state.passes.balance, action.amount, action.cap);
+      return { ...state, passes: { balance: state.passes.balance + room, lastWeeklyGrantKey: action.weekKey } };
+    }
     case 'ADD_PASS':
       // Earned by watching a rewarded ad (never purchased).
       return { ...state, passes: { ...state.passes, balance: state.passes.balance + action.amount } };
