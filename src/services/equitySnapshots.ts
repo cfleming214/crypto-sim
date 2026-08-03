@@ -212,7 +212,6 @@ export async function backfillGap(
   slice: { cash: number; holdings: Holding[] },
   fromT: number,
   toT: number,
-  currentPrices: Map<string, number>,
 ): Promise<EquityPoint[]> {
   const existing = await loadSnapshots(portfolioId);
   const span = toT - fromT;
@@ -261,13 +260,36 @@ export async function backfillGap(
     series.set(h.symbol, pts.sort((a, b) => a.t - b.t));
   }));
 
+  // Reconstruction is only honest when EVERY held coin has real history.
+  //
+  // fetchOhlc returns [] on ordinary failures — a symbol missing from
+  // COINGECKO_IDS, a 429 with a cold cache, a network error — and priceAt used to
+  // fall back to the coin's CURRENT price in that case. That doesn't recover the
+  // history; it values every point in the gap at today's price and writes a flat
+  // line at today's balance, persisted and indistinguishable from "the balance
+  // genuinely didn't move". Worse, a symbol with no live price either priced
+  // at 0, so the point recorded the portfolio as cash-only and still passed the
+  // `v > 0` check below.
+  //
+  // Writing nothing is strictly better: the chart then interpolates between real
+  // recorded points, which is an honest "we don't know", and the next successful
+  // open can still fill the gap because `existing` is unchanged.
+  const unpriced = tradable.filter(h => (series.get(h.symbol)?.length ?? 0) === 0);
+  if (unpriced.length > 0) {
+    console.warn(
+      `[equity] skipping gap backfill — no price history for ${unpriced.map(h => h.symbol).join(', ')}`,
+    );
+    return existing;
+  }
+
   // Forward price cursor per symbol → O(grid + Σcandles), no per-point search.
   // The grid is monotonic (hourly old points then 5-min recent ones), so the
   // cursor only ever advances.
   const cursor = new Map<string, number>();
   const priceAt = (sym: string, gt: number): number => {
-    const s = series.get(sym);
-    if (!s || s.length === 0) return currentPrices.get(sym) ?? 0;
+    // Guaranteed non-empty by the `unpriced` check above; the fallback that used
+    // to live here is what fabricated flat lines.
+    const s = series.get(sym)!;
     let idx = cursor.get(sym) ?? 0;
     while (idx + 1 < s.length && s[idx + 1].t <= gt) idx++;
     cursor.set(sym, idx);
@@ -277,9 +299,18 @@ export async function backfillGap(
   const filled: EquityPoint[] = [];
   for (const t of grid) {
     let v = slice.cash;
-    for (const h of tradable) v += h.units * priceAt(h.symbol, t);
-    if (v > 0) filled.push({ t, v });
+    let priced = true;
+    for (const h of tradable) {
+      const p = priceAt(h.symbol, t);
+      // A zero price means the candle itself is unusable. Skip the whole point
+      // rather than record a value with that holding worth nothing — `v > 0`
+      // alone would happily accept cash-only as a valid portfolio value.
+      if (!(p > 0)) { priced = false; break; }
+      v += h.units * p;
+    }
+    if (priced && v > 0) filled.push({ t, v });
   }
+  if (filled.length === 0) return existing;
 
   return mergeSnapshots(portfolioId, filled);
 }

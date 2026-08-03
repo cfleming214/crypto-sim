@@ -2192,7 +2192,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           { cash: s.cash, holdings: s.holdings },
           lastT!,
           now,
-          new Map(s.coins.map(c => [c.symbol, c.price])),
         );
         // Count points landing INSIDE the gap, not the change in total length:
         // downsample also trims at its MAX_POINTS cap, so on a long history a
