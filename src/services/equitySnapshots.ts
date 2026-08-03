@@ -27,19 +27,29 @@ const DAY = 24 * HOUR;
 
 const KEY = (portfolioId: string) => `equitySnapshots.v1:${portfolioId}`;
 
-// Keep every point only for the last 3h — that's all the Live (15m) and 1H
+// Keep fine resolution only for the last 3h — that's all the Live (15m) and 1H
 // windows ever read at full fidelity. Anything we keep beyond that is purely for
 // the wider 24H/7D/30D zooms, which are massively oversampled, so coarser buckets
 // look identical there.
 const RECENT_FULL = 3 * HOUR;
+// Bucket width inside that recent window. This tier used to key on the raw
+// timestamp — one bucket per point — which the comment above described as "30s
+// resolution" but the code never implemented. AppContext captures every 4s and
+// the coalesce window is 3s, so captures never merge: 3h produced 3*3600/4 =
+// 2700 points, MORE than MAX_POINTS on its own. The slice below then trimmed to
+// the newest 2500, so the store never held more than ~2.8h and every 2-min /
+// hourly / daily bucket beneath it was destroyed on every single write. At 30s
+// the same window is 360 points and the coarser tiers survive, which is what
+// makes MAX_POINTS a backstop rather than the thing actually setting retention.
+const RECENT_BUCKET_MS = 30_000;
 // Absolute backstop on the local series length. The tiers below already bound a
 // year of use to ~2k points; this guarantees the array (which is serialized to
 // native storage every 30s) can never blow up from clock skew / corruption.
 const MAX_POINTS = 2500;
 
-// Tiered retention so the series can't grow unbounded: full 30s resolution for
-// the last 3h, 2-min out to 24h, hourly out to 30d, daily beyond. A year of
-// history is then ~2k points. Within a bucket the LATEST point wins (overwrite),
+// Tiered retention so the series can't grow unbounded: 30s resolution for the
+// last 3h, 2-min out to 24h, hourly out to 30d, daily beyond. A year of history
+// is then well under MAX_POINTS. Within a bucket the LATEST point wins (overwrite),
 // so the most recent value in each window survives.
 export function downsample(points: EquityPoint[], now: number): EquityPoint[] {
   const sorted = [...points].filter(p => Number.isFinite(p.t) && Number.isFinite(p.v))
@@ -49,7 +59,7 @@ export function downsample(points: EquityPoint[], now: number): EquityPoint[] {
   for (const p of sorted) {
     const age = now - p.t;
     const bucket = age <= RECENT_FULL
-      ? `m:${p.t}`                                  // last 3h: every distinct point
+      ? `m:${Math.floor(p.t / RECENT_BUCKET_MS)}`   // last 3h: 30s
       : age <= DAY
         ? `f:${Math.floor(p.t / (2 * MINUTE))}`     // 3-24h: 2-min
         : age <= 30 * DAY
