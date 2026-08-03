@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, ViewStyle, PanResponder, Pressable } from 'react-native';
 import { Text } from '../ui/Text';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
@@ -8,8 +8,6 @@ import type { ChartMarker } from './CandleChart';
 interface AreaChartProps {
   height?: number;
   data?: number[];
-  timeframe?: string;
-  baseValue?: number;
   down?: boolean;
   showDot?: boolean;
   style?: ViewStyle;
@@ -98,21 +96,18 @@ function generatePath(data: number[], xFrac: number[], w: number, h: number, clo
   return d;
 }
 
-const TF_CONFIG: Record<string, { points: number; volatility: number; drawdown: number }> = {
-  '1H':  { points: 24,  volatility: 0.0008, drawdown: 0.008 },
-  '1D':  { points: 48,  volatility: 0.003,  drawdown: 0.025 },
-  '7D':  { points: 56,  volatility: 0.010,  drawdown: 0.07  },
-  '30D': { points: 60,  volatility: 0.020,  drawdown: 0.15  },
-  'SEA': { points: 90,  volatility: 0.035,  drawdown: 0.25  },
-  'ALL': { points: 120, volatility: 0.050,  drawdown: 0.35  },
-};
+// Shape parameters for the decorative placeholder curve below. This used to be a
+// table keyed by timeframe, but no caller has ever passed `timeframe` — the two
+// remaining data-less callers (a lesson illustration and a walkthrough slide)
+// take the default — so every other row was unreachable.
+const PLACEHOLDER_BASE = 10847;
+const PLACEHOLDER = { points: 56, volatility: 0.010, drawdown: 0.07 };
 
-function generateData(timeframe: string, endValue: number): number[] {
-  const cfg = TF_CONFIG[timeframe] ?? TF_CONFIG['7D'];
-  const { points, volatility, drawdown } = cfg;
-
-  // Seed from timeframe string for deterministic but different shapes
-  const seed = timeframe.split('').reduce((s, c, i) => s + c.charCodeAt(0) * (i + 1), 0);
+// Decorative placeholder curve for the two callers that render a chart with no
+// data at all. Deterministic, so it doesn't reshuffle on every render.
+function generateData(endValue: number): number[] {
+  const { points, volatility, drawdown } = PLACEHOLDER;
+  const seed = 7;
 
   const startValue = endValue * (1 - drawdown);
   const data: number[] = [];
@@ -175,19 +170,11 @@ function fmtMarkerUnits(u: number): string {
   return u.toFixed(4);
 }
 
-export function AreaChart({ height = 170, data, timeframe, baseValue, down = false, showDot = true, style, timestamps, crosshair, axes = false, markers, onMarkerGroupPress }: AreaChartProps) {
+export function AreaChart({ height = 170, data, down = false, showDot = true, style, timestamps, crosshair, axes = false, markers, onMarkerGroupPress }: AreaChartProps) {
   const { colors } = useTheme();
   const [selGroup, setSelGroup] = useState<number | null>(null);
 
-  const baseValueRef = useRef(baseValue ?? 10847);
-  useEffect(() => {
-    if (baseValue !== undefined) baseValueRef.current = baseValue;
-  }, [timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const chartData = useMemo(() => {
-    if (data) return data;
-    return generateData(timeframe ?? '7D', baseValueRef.current);
-  }, [timeframe, data]);
+  const chartData = useMemo(() => data ?? generateData(PLACEHOLDER_BASE), [data]);
 
   const color = down ? colors.down : colors.up;
   const crosshairEnabled = crosshair !== false && !!data && chartData.length >= 2;
