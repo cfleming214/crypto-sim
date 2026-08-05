@@ -64,6 +64,10 @@ const STOP_OPTIONS = [5, 10, 15];
 
 // Price/units formatting for the Active stops card, matching the conventions
 // already used by the marker popup below (sub-cent coins get more decimals).
+// How much recent history "Rebuild history" leaves untouched. Inside this window
+// recorded 15s samples beat anything reconstructable from candles.
+const REBUILD_KEEP_RECENT_MS = 3 * 60 * 60 * 1000;   // 3h — matches the store's fine tier
+
 const fmtPrice = (v: number): string =>
   `$${v < 0.01 ? v.toFixed(6) : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtUnits = (u: number): string => (u < 1 ? u.toFixed(4) : u.toFixed(2));
@@ -569,17 +573,33 @@ export function PortfolioScreen() {
                   nowValue: totalEquity,
                   currentPrices: new Map(state.coins.map(c => [c.symbol, c.price])),
                   createdAt: state.user.createdAt,
+                  // Enough to satisfy the snapshot store's hourly tier (~720
+                  // points for 30 days) plus a daily tail. The default 150 is
+                  // sized for drawing a chart, not for filling the store.
+                  maxPoints: 2000,
                 },
               );
               if (res.points.length < 2) {
                 Alert.alert('Couldn’t rebuild', 'Not enough price history was available. Check your connection and try again.');
                 return;
               }
-              // Replace rather than merge: the recorded series is what we're
-              // repairing, so keeping it would preserve the very points that
-              // look wrong.
+              // Repair the OLD history; keep recent recorded points.
+              //
+              // Reconstruction is built from OHLC candles, whose finest grain is
+              // 5 minutes and, over a long window, a day. Recorded sampling is
+              // far finer than that for the recent window (15s buckets), so
+              // replacing everything traded real detail for coarse steps: the
+              // 24H view collapsed to a couple of daily points drawn flat, then
+              // dropped vertically to the live value (CRYP-48).
+              //
+              // So rebuild strictly before the cutoff and preserve everything
+              // recorded after it. "Reset graph" remains the tool for when the
+              // recent recorded data is itself the problem.
+              const existing = await loadSnapshots(pid);
+              const recent = existing.filter(p => p.t >= Date.now() - REBUILD_KEEP_RECENT_MS);
               await clearSnapshots(pid);
-              const series = await mergeSnapshots(pid, res.points);
+              const rebuilt = res.points.filter(p => p.t < Date.now() - REBUILD_KEEP_RECENT_MS);
+              const series = await mergeSnapshots(pid, [...rebuilt, ...recent]);
               setHistory(series);
               Alert.alert(
                 'History rebuilt',
