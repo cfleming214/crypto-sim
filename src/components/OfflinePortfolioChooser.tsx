@@ -7,6 +7,7 @@ import { ChevronLeft, Plus, Wallet } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../store/AppContext';
 import { MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
+import { portfolioValue } from '../services/portfolioValue';
 
 // Where the $5M grant came from — decides which actions the chooser dispatches:
 //   consumable       — one-time $5M purchase (create OR add to existing).
@@ -46,10 +47,11 @@ export function OfflinePortfolioChooser({ onClose, amount, source, monthKey, onD
     : (state.portfolios[id] ?? { cash: 0, holdings: [] }));
   const equityOf = (id: string) => {
     const s = sliceFor(id);
-    return s.cash + s.holdings.reduce((a, h) => {
-      const c = state.coins.find(x => x.symbol === h.symbol);
-      return a + (c ? c.price * h.units : 0);
-    }, 0);
+    return portfolioValue(
+      s.holdings,
+      s.cash,
+      sym => state.coins.find(x => x.symbol === sym)?.price,
+    )!;
   };
 
   const addable = allowAdd

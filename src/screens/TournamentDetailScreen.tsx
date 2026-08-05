@@ -25,6 +25,7 @@ import type { Competition } from '../store/types';
 import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 import { Bell, MoreHorizontal, Trophy, X } from 'lucide-react-native';
+import { portfolioValue } from '../services/portfolioValue';
 
 
 export function TournamentDetailScreen() {
@@ -80,10 +81,11 @@ export function TournamentDetailScreen() {
   const contestPortfolio = state.activePortfolioId === competitionId
     ? { cash: state.cash, holdings: state.holdings, trades: state.trades }
     : (state.portfolios[competitionId] ?? { cash: STARTING_CASH, holdings: [], trades: [] });
-  const contestBankroll = contestPortfolio.cash + contestPortfolio.holdings.reduce((s, h) => {
-    const c = state.coins.find(x => x.symbol === h.symbol);
-    return s + (c ? c.price * h.units : 0);
-  }, 0);
+  const contestBankroll = portfolioValue(
+    contestPortfolio.holdings,
+    contestPortfolio.cash,
+    sym => state.coins.find(x => x.symbol === sym)?.price,
+  )!;
   const pnlPct = ((contestBankroll - STARTING_CASH) / STARTING_CASH) * 100;
 
   // Live player count derives from the subscribed leaderboard rather than the
