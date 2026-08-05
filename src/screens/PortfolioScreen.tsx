@@ -593,6 +593,9 @@ export function PortfolioScreen() {
               const res = {
                 points: [...coarse.points, ...fine.points],
                 partial: coarse.partial || fine.partial,
+                // Worst drift across the passes — how far the replayed ledger
+                // was from the real balance before anchoring.
+                ledgerDrift: Math.max(coarse.ledgerDrift, fine.ledgerDrift),
               };
               if (res.points.length < 2) {
                 Alert.alert('Couldn’t rebuild', 'Not enough price history was available. Check your connection and try again.');
@@ -636,11 +639,19 @@ export function PortfolioScreen() {
                 ...recorded,
               ]);
               setHistory(series);
+              // Drift is a different failure from missing candles, and a more
+              // serious one: it means the trade ledger can't account for the
+              // balance you actually hold, so the reconstruction is built on
+              // holdings that were never right. Say so rather than presenting a
+              // confident line.
+              const driftPct = Math.round(res.ledgerDrift * 100);
               Alert.alert(
-                'History rebuilt',
-                res.partial
-                  ? `Rebuilt ${res.points.length} points. Some coins had no price history, so parts are estimated — try again later for a more exact result.`
-                  : `Rebuilt ${res.points.length} points from your trade history.`,
+                driftPct >= 2 ? 'History rebuilt — but check it' : 'History rebuilt',
+                driftPct >= 2
+                  ? `Rebuilt ${res.points.length} points, but the reconstruction came out ${driftPct}% away from your current balance. That usually means some trades are missing from your saved history, so older values may be overstated.`
+                  : res.partial
+                    ? `Rebuilt ${res.points.length} points. Some coins had no price history, so parts are estimated — try again later for a more exact result.`
+                    : `Rebuilt ${res.points.length} points from your trade history.`,
               );
             } catch {
               Alert.alert('Couldn’t rebuild', 'Something went wrong reading price history. Please try again.');

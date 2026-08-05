@@ -21,7 +21,14 @@ export interface EquityPoint { t: number; v: number; }
 export interface PortfolioHistoryResult {
   points: EquityPoint[];
   partial: boolean;   // true if any coin's history had to be flat-estimated
+  /** |reconstructed(now) - live bankroll| / live bankroll. Above a fraction of a
+   *  percent this indicates missing trades rather than stale candles. */
+  ledgerDrift: number;
 }
+
+// Candle staleness accounts for a few tenths of a percent. Beyond this the
+// reconstruction disagrees with reality by more than pricing lag can explain.
+const LEDGER_DRIFT_TOLERANCE = 0.02;   // 2%
 
 export interface ComputeOpts {
   nowValue: number;                     // live bankroll — anchors the final point exactly
@@ -136,7 +143,7 @@ export async function computePortfolioHistory(
   const fetched = await Promise.all(
     symArr.map(async sym => ({ sym, candles: await fetchOhlc(sym, tfKey) })),
   );
-  if (opts.signal?.cancelled) return { points: [], partial: false };
+  if (opts.signal?.cancelled) return { points: [], partial: false, ledgerDrift: 0 };
   for (const { sym, candles } of fetched) {
     if (candles.length > 0) {
       seriesBySymbol.set(
@@ -223,7 +230,24 @@ export async function computePortfolioHistory(
   // 7) Anchor the final point to the live bankroll so the chart's right edge
   // matches the header $ value exactly (reconstruction at `now` uses the latest
   // candle, which can be a few minutes stale).
+  //
+  // But first: measure how far the reconstruction was OFF at `now`. A few tenths
+  // of a percent is candle staleness and expected. A large gap means the ledger
+  // can't explain the portfolio that actually exists — trades are missing — so
+  // every earlier point is built on holdings that were never right, and the
+  // anchor would paper over it by making only the last point correct. That's how
+  // a ~9% overstatement across a whole week rendered as one vertical cliff at the
+  // right edge instead of an obviously wrong chart.
+  //
+  // Reported, not corrected: with an incomplete ledger there's nothing to correct
+  // TO. The caller surfaces it so the number isn't presented as fact.
+  const reconstructedNow = points.length > 0 ? points[points.length - 1].v : opts.nowValue;
+  const ledgerDrift = opts.nowValue > 0
+    ? Math.abs(reconstructedNow - opts.nowValue) / opts.nowValue
+    : 0;
+  if (ledgerDrift > LEDGER_DRIFT_TOLERANCE) partial = true;
+
   if (points.length > 0) points[points.length - 1] = { t: now, v: opts.nowValue };
 
-  return { points, partial };
+  return { points, partial, ledgerDrift };
 }
