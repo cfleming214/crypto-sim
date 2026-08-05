@@ -1892,6 +1892,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const lastActionRef = useRef<Action | null>(null);
   const [saveTick, setSaveTick] = useState(0);  // incremented by wrappedDispatch to trigger save effect
   const [profileLoaded, setProfileLoaded] = useState(false); // true once the cloud profile load resolves (gates seeding)
+  // Trade ids already in the cloud. Seeded from whatever LOAD_PROFILE brought
+  // down, then grown as we persist. Diffing against this is how we catch EVERY
+  // new trade instead of guessing from the action type — see the save effect.
+  const persistedTradeIds = useRef<Set<string>>(new Set());
+
+  // Everything a cloud load handed us is BY DEFINITION already in the cloud.
+  // Seeding from it is what stops the diff-based save above re-uploading the
+  // whole ledger on every launch and duplicating every row.
+  const seedPersistedTrades = (profile: Partial<AppState> | null | undefined) => {
+    for (const t of profile?.trades ?? []) if (t?.id) persistedTradeIds.current.add(t.id);
+  };
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
   const blockedHydratedRef = useRef(false);      // gate blocked-users saves until we've loaded the stored list
@@ -2318,6 +2329,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(async (res) => {
         if (res.status === 'exists') {
           // Returning sign-in → load the cloud account.
+          seedPersistedTrades(res.profile);
           dispatch({ type: 'LOAD_PROFILE', profile: res.profile });
           // Seed the local equity-snapshot store from the cloud backup so the
           // chart's history survives a reinstall / new device. Merges under the
@@ -2338,7 +2350,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             // LOAD_PROFILE, so cash/holdings/trades are preserved exactly.
           } else {
             const starter = await createStarterProfile();
-            if (starter) dispatch({ type: 'LOAD_PROFILE', profile: starter });
+            if (starter) { seedPersistedTrades(starter); dispatch({ type: 'LOAD_PROFILE', profile: starter }); }
           }
         }
         // res.status === 'error' → keep local state (network hiccup); a later
@@ -2387,6 +2399,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ]);
       if (sig === lastSig) return;
       lastSig = sig;
+      seedPersistedTrades(profile);
       dispatch({ type: 'LOAD_PROFILE', profile });
     };
     subscribeToProfile(accept).then(unsub => { unsubProfile = unsub; });
@@ -2753,12 +2766,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Route the save to the active portfolio's persistence source.
     if (state.activePortfolioId === 'main') {
       saveProfile(state);
-      // BUY/SELL prepend a coin trade; CLAIM_DAILY_REWARD prepends a 'USD'
-      // cash-injection trade. Persist whichever just landed at trades[0] so it
-      // survives reload (the reconstruction reads symbol 'USD' as a cash event).
-      if ((action.type === 'BUY' || action.type === 'SELL' || action.type === 'CLAIM_DAILY_REWARD') && state.trades.length > 0) {
-        saveTrade(state.trades[0]);
-      }
+      // Persist EVERY trade the cloud doesn't have yet.
+      //
+      // This used to save state.trades[0] only, and only for BUY / SELL /
+      // CLAIM_DAILY_REWARD. Trades are created by more than that: TICK_PRICES
+      // executes limit orders, stop-losses and buy-stops; REBALANCE and
+      // COPY_ALLOCATION each prepend SEVERAL at once. None of those reached the
+      // cloud, and even a saved action only ever wrote its newest row.
+      //
+      // The ledger was therefore incomplete, which quietly corrupts anything
+      // derived from it. "Rebuild history" reverse-replays the ledger from
+      // current holdings, so a missing BUY means it never subtracts that buy
+      // going backwards and reads past holdings as too large — reconstructing a
+      // portfolio worth ~9% more than it was, for the whole window (CRYP-51).
+      //
+      // Diffing against what we've persisted catches every case without having
+      // to enumerate which actions create trades — a list that was already wrong
+      // and would drift again.
+      const unsaved = state.trades.filter(t => t.id && !persistedTradeIds.current.has(t.id));
+      for (const t of unsaved) {
+        persistedTradeIds.current.add(t.id);   // mark first: saveTrade swallows
+        saveTrade(t);                          // its own errors, and a retry loop
+      }                                        // would be worse than a lost row
       // Broadcast real coin buys/sells to the global live-trades ticker (Compete).
       if ((action.type === 'BUY' || action.type === 'SELL') && state.trades.length > 0) {
         recordLiveTrade(state.trades[0], state.user);
