@@ -565,20 +565,35 @@ export function PortfolioScreen() {
           onPress: async () => {
             setRebuilding(true);
             try {
-              const res = await computePortfolioHistory(
-                state.trades,
-                { cash: state.cash, holdings: state.holdings },
-                'MAX',
-                {
-                  nowValue: totalEquity,
-                  currentPrices: new Map(state.coins.map(c => [c.symbol, c.price])),
-                  createdAt: state.user.createdAt,
-                  // Enough to satisfy the snapshot store's hourly tier (~720
-                  // points for 30 days) plus a daily tail. The default 150 is
-                  // sized for drawing a chart, not for filling the store.
-                  maxPoints: 2000,
-                },
-              );
+              // TWO passes at different resolutions.
+              //
+              // computePortfolioHistory builds its grid from candle timestamps
+              // and picks ONE timeframe for the whole span, so a single 'MAX'
+              // pass inherits that span's granularity: hourly under 90 days,
+              // daily beyond. For an account older than 90 days that's one point
+              // per day — 1 point in a 24H window and none in 1H or Live, which
+              // is why only 30D and MAX had usable data (CRYP-50). Raising
+              // maxPoints couldn't help: it caps the grid, it can't add
+              // timestamps that were never fetched.
+              //
+              // So: a coarse pass for the lifetime, and a fine '24H' pass (5-min
+              // candles) for the recent day. Same split backfillGap already uses.
+              const priceMap = new Map(state.coins.map(c => [c.symbol, c.price]));
+              const baseOpts = {
+                nowValue: totalEquity,
+                currentPrices: priceMap,
+                createdAt: state.user.createdAt,
+              };
+              const [coarse, fine] = await Promise.all([
+                computePortfolioHistory(state.trades, { cash: state.cash, holdings: state.holdings }, 'MAX',
+                  { ...baseOpts, maxPoints: 2000 }),
+                computePortfolioHistory(state.trades, { cash: state.cash, holdings: state.holdings }, '24H',
+                  { ...baseOpts, maxPoints: 400 }),
+              ]);
+              const res = {
+                points: [...coarse.points, ...fine.points],
+                partial: coarse.partial || fine.partial,
+              };
               if (res.points.length < 2) {
                 Alert.alert('Couldn’t rebuild', 'Not enough price history was available. Check your connection and try again.');
                 return;
@@ -595,11 +610,31 @@ export function PortfolioScreen() {
               // So rebuild strictly before the cutoff and preserve everything
               // recorded after it. "Reset graph" remains the tool for when the
               // recent recorded data is itself the problem.
+              const now = Date.now();
+              const fineFrom = now - 24 * 60 * 60 * 1000;
+              const keepFrom = now - REBUILD_KEEP_RECENT_MS;
               const existing = await loadSnapshots(pid);
-              const recent = existing.filter(p => p.t >= Date.now() - REBUILD_KEEP_RECENT_MS);
               await clearSnapshots(pid);
-              const rebuilt = res.points.filter(p => p.t < Date.now() - REBUILD_KEEP_RECENT_MS);
-              const series = await mergeSnapshots(pid, [...rebuilt, ...recent]);
+              // Explicit, non-overlapping ranges — coarse for the deep past, the
+              // 5-min pass for the last day, recorded 15s samples for the last
+              // few hours. Slicing by range rather than concatenating and letting
+              // downsample's latest-in-bucket rule decide, because that rule
+              // depends on array order and would be silently fragile here.
+              const recorded = existing.filter(p => p.t >= keepFrom);
+              // Recorded 15s samples beat 5-min candles inside the keep window —
+              // but only if there ARE any. Rebuilding straight after a fresh
+              // install (or after Reset graph) leaves nothing recorded, and
+              // dropping the fine pass there would punch a hole from keepFrom to
+              // now. Fall back to the candles in that case.
+              const fineRecent = recorded.length >= 2
+                ? []
+                : fine.points.filter(p => p.t >= keepFrom);
+              const series = await mergeSnapshots(pid, [
+                ...coarse.points.filter(p => p.t < fineFrom),
+                ...fine.points.filter(p => p.t >= fineFrom && p.t < keepFrom),
+                ...fineRecent,
+                ...recorded,
+              ]);
               setHistory(series);
               Alert.alert(
                 'History rebuilt',
