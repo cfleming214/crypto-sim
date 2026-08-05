@@ -185,6 +185,20 @@
               "isRequired": false,
               "attributes": []
             },
+            "stopLossesJson": {
+              "name": "stopLossesJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "buyStopsJson": {
+              "name": "buyStopsJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
