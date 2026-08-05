@@ -71,6 +71,8 @@ function parseStops(raw: unknown): any {
 
 async function profileFromRecord(p: any): Promise<Partial<AppState>> {
   const avatarUri = p.avatarKey ? (await resolveAvatarUrl(p.avatarKey)) ?? undefined : undefined;
+  const stopLosses = parseStops(p.stopLossesJson);
+  const buyStops   = parseStops(p.buyStopsJson);
   // Cross-device gamification blob (daily-claim, achievements, predictions).
   // Only merged when present + valid, so an older row without it leaves the
   // locally-hydrated values (gamification.v1) intact.
@@ -93,11 +95,13 @@ async function profileFromRecord(p: any): Promise<Partial<AppState>> {
     bankroll:  p.bankroll ?? STARTING_CASH,
     riskScore: p.riskScore ?? 0,
     holdings:  p.holdingsJson ? JSON.parse(p.holdingsJson) : [],
-    // Undefined (not {}) when the column is absent, so LOAD_PROFILE's
-    // `p.stopLosses ?? state.stopLosses` keeps whatever is already in memory
-    // rather than wiping live stops on a profile row written before this shipped.
-    stopLosses: parseStops(p.stopLossesJson),
-    buyStops:   parseStops(p.buyStopsJson),
+    // OMIT these keys entirely when the column is absent — do NOT set them to
+    // undefined. LOAD_PROFILE merges with `{ ...state, ...profile }`, and object
+    // spread copies keys whose value is undefined, so `stopLosses: undefined`
+    // OVERWRITES the live stops with undefined. The next TICK_PRICES then hits
+    // Object.entries(undefined) and takes the whole app down (CRYP-47).
+    ...(stopLosses ? { stopLosses } : {}),
+    ...(buyStops ? { buyStops } : {}),
     ...(gami ? {
       lastClaimDay:     typeof gami.lastClaimDay === 'string' ? gami.lastClaimDay : null,
       achievements:     gami.achievements && typeof gami.achievements === 'object' ? gami.achievements : {},
