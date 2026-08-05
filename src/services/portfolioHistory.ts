@@ -27,6 +27,11 @@ export interface ComputeOpts {
   currentPrices: Map<string, number>;   // symbol → current price (fallback for missing series)
   createdAt?: number;                   // account/portfolio start (ms epoch)
   signal?: { cancelled: boolean };      // cooperative cancellation
+  // Cap on emitted points. The default suits feeding a chart directly. Populating
+  // the snapshot store needs far more: the store's own tiers keep hourly detail
+  // for 30 days (~720 points) and 150 across a lifetime collapses to roughly one
+  // point per day, which renders as flat steps on any short timeframe.
+  maxPoints?: number;
 }
 
 const MINUTE = 60_000;
@@ -156,7 +161,7 @@ export async function computePortfolioHistory(
   }
   let grid = [...gridSet].sort((a, b) => a - b);
 
-  const MAX_POINTS = 150;
+  const MAX_POINTS = opts.maxPoints ?? 150;
   if (grid.length > MAX_POINTS) {
     const tradeTs = new Set(tradesAsc.map(t => t.timestamp));
     const keep = new Set<number>([grid[0], grid[grid.length - 1]]);
