@@ -14,6 +14,7 @@ import { applyDailyClaim, sellXp, realizedPnl, weeklyPassTopUp, PREDICTION_XP, P
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, backfillGap } from '../services/equitySnapshots';
 import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
+import { portfolioValue } from '../services/portfolioValue';
 import { SEASON_TIERS, seasonTierReached, type SeasonRewardKind } from '../data/season';
 import { useAuth } from './AuthContext';
 
@@ -629,11 +630,11 @@ function reducer(state: AppState, action: Action): AppState {
       // Value the active portfolio's holdings — replay-aware: a replay portfolio
       // values its event coin at the current historical price, not the live one.
       const valCoins = activeCoins(newState);
-      const holdingsValue = newState.holdings.reduce((sum, h) => {
-        const coin = valCoins.find(c => c.symbol === h.symbol);
-        return sum + (coin ? coin.price * h.units : 0);
-      }, 0);
-      const tickedBankroll = newState.cash + holdingsValue;
+      const tickedBankroll = portfolioValue(
+        newState.holdings,
+        newState.cash,
+        sym => valCoins.find(c => c.symbol === sym)?.price,
+      )!;   // lenient -> never null
       // A fired stop-loss removed a position → refresh the risk score against it.
       const tickedRisk = stopsChanged
         ? computeRiskScore(newState.holdings, newState.cash, tickedBankroll, valCoins, newState.stopLosses)
@@ -724,10 +725,11 @@ function reducer(state: AppState, action: Action): AppState {
       // The stored bankroll in DynamoDB is a stale snapshot from the moment
       // saveProfile last ran, so loading it directly would cause a flash
       // every time the subscription fires after a save.
-      const recomputedBankroll = loadedCash + loadedHoldings.reduce((s, h) => {
-        const c = merged.coins.find(x => x.symbol === h.symbol);
-        return s + (c ? c.price * h.units : 0);
-      }, 0);
+      const recomputedBankroll = portfolioValue(
+        loadedHoldings,
+        loadedCash,
+        sym => merged.coins.find(x => x.symbol === sym)?.price,
+      )!;   // lenient -> never null
       const recomputedNudges = computeCoachNudges(
         loadedHoldings,
         loadedCash,
@@ -1953,11 +1955,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const inMeta = state.replayMeta[action.portfolioId];
         const inPrice = inMeta ? replayPriceAt(inMeta, Date.now()) : 0;
         const incoming = state.portfolios[action.portfolioId] ?? { cash: STARTING_CASH, holdings: [], trades: [] };
-        const inBankroll = incoming.cash + incoming.holdings.reduce((s, h) => {
-          if (inMeta && h.symbol === inMeta.coin) return s + inPrice * h.units;
-          const c = state.coins.find(x => x.symbol === h.symbol);
-          return s + (c ? c.price * h.units : 0);
-        }, 0);
+        // Replay contests price their own coin off the deterministic replay
+        // clock, not the live market — the priceOf closure carries that.
+        const inBankroll = portfolioValue(
+          incoming.holdings,
+          incoming.cash,
+          sym => (inMeta && sym === inMeta.coin)
+            ? inPrice
+            : state.coins.find(x => x.symbol === sym)?.price,
+        )!;
         const inPnl = ((inBankroll - STARTING_CASH) / STARTING_CASH) * 100;
         if (inMeta) { if (!inMeta.solo) saveReplayEntry(action.portfolioId, incoming, inBankroll, inPnl); }
         else saveContestPortfolio(action.portfolioId, incoming, inBankroll, inPnl);

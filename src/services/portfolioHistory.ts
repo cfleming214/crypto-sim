@@ -1,6 +1,7 @@
 import { fetchOhlc } from './priceService';
 import { CASH_EVENT_SYMBOL } from './gamification';
 import type { Trade, Holding } from '../store/types';
+import { portfolioValue } from './portfolioValue';
 
 // ---------------------------------------------------------------------------
 // Historical portfolio value reconstruction.
@@ -207,11 +208,15 @@ export async function computePortfolioHistory(
         else units.set(tr.symbol, u);
       }
     }
-    let v = cash;
-    for (const [sym, u] of units) {
-      if (u <= 0) continue;
-      v += u * stepPrice(sym, gt);
-    }
+    // Lenient, matching the previous behaviour here: stepPrice already falls back
+    // to the last trade price for a coin with no candle, so a 0 means genuinely
+    // unknown and dropping the whole point would punch holes in a series whose
+    // whole value is being complete.
+    const v = portfolioValue(
+      [...units].map(([symbol, u]) => ({ symbol, units: u })),
+      cash,
+      sym => stepPrice(sym, gt),
+    )!;
     points.push({ t: gt, v });
   }
 

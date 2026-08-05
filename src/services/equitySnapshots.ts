@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchOhlc } from './priceService';
 import { STARTING_CASH } from '../constants/featureFlags';
 import type { Holding } from '../store/types';
+import { portfolioValue } from './portfolioValue';
 
 // ---------------------------------------------------------------------------
 // Recorded portfolio-balance history.
@@ -298,17 +299,11 @@ export async function backfillGap(
 
   const filled: EquityPoint[] = [];
   for (const t of grid) {
-    let v = slice.cash;
-    let priced = true;
-    for (const h of tradable) {
-      const p = priceAt(h.symbol, t);
-      // A zero price means the candle itself is unusable. Skip the whole point
-      // rather than record a value with that holding worth nothing — `v > 0`
-      // alone would happily accept cash-only as a valid portfolio value.
-      if (!(p > 0)) { priced = false; break; }
-      v += h.units * p;
-    }
-    if (priced && v > 0) filled.push({ t, v });
+    // strict: an unusable candle rejects the whole point rather than recording a
+    // value with that holding worth nothing — this gets persisted and read back
+    // as fact (CRYP-45).
+    const v = portfolioValue(tradable, slice.cash, sym => priceAt(sym, t), { strict: true });
+    if (v !== null && v > 0) filled.push({ t, v });
   }
   if (filled.length === 0) return existing;
 

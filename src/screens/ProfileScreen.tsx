@@ -36,6 +36,7 @@ import { PurchaseModal } from '../components/PurchaseModal';
 import { OfflinePortfolioChooser, type OfflineGrantSource } from '../components/OfflinePortfolioChooser';
 import { OFFLINE_BALANCE_GRANT } from '../constants/featureFlags';
 import type { AppDispatch } from '../store/AppContext';
+import { portfolioValue } from '../services/portfolioValue';
 
 // Open the system "Manage Subscriptions" sheet (Apple ID / Play Store).
 function openManageSubscriptions() {
@@ -503,10 +504,11 @@ export function ProfileScreen() {
       const slice = state.activePortfolioId === id
         ? { cash: state.cash, holdings: state.holdings }
         : (portfolio ?? { cash: STARTING_CASH, holdings: [] });
-      const bankroll = slice.cash + slice.holdings.reduce((s, h) => {
-        const c = state.coins.find(x => x.symbol === h.symbol);
-        return s + (c ? c.price * h.units : 0);
-      }, 0);
+      const bankroll = portfolioValue(
+        slice.holdings,
+        slice.cash,
+        sym => state.coins.find(x => x.symbol === sym)?.price,
+      )!;
       const contestPnl = bankroll - STARTING_CASH;
       const entries = state.leaderboard[id] ?? [];
       const sorted = [...entries].sort((a, b) => b.bankroll - a.bankroll);
