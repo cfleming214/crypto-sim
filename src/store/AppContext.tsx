@@ -549,7 +549,9 @@ function reducer(state: AppState, action: Action): AppState {
 
       // Auto-fire stop-losses: when a held coin falls to avgCost×(1−pct/100),
       // market-sell the WHOLE position. Trade id 'STP-' so EventWatcher toasts it.
-      for (const [sym, pct] of Object.entries(newState.stopLosses)) {
+      // `?? {}` is deliberate: these maps arrive from a cloud profile merge, and
+      // a single undefined here crashes every price tick — see CRYP-47.
+      for (const [sym, pct] of Object.entries(newState.stopLosses ?? {})) {
         const coin = newState.coins.find(c => c.symbol === sym);
         const h = newState.holdings.find(x => x.symbol === sym);
         if (!coin || !h || !(pct > 0)) continue;
@@ -576,7 +578,7 @@ function reducer(state: AppState, action: Action): AppState {
 
       // Auto-fire buy-stops: when a coin falls to the target, market-buy `amount`
       // dollars. Trade id 'BYS-' so EventWatcher toasts it.
-      for (const [sym, bs] of Object.entries(newState.buyStops)) {
+      for (const [sym, bs] of Object.entries(newState.buyStops ?? {})) {
         const coin = newState.coins.find(c => c.symbol === sym);
         if (!coin || sym === 'USDC' || coin.price > bs.price || newState.cash < bs.amount) continue;
         const units = bs.amount / coin.price;
@@ -740,6 +742,10 @@ function reducer(state: AppState, action: Action): AppState {
         cash: loadedCash,
         holdings: loadedHoldings,
         bankroll: recomputedBankroll,
+        // Never let the merge above leave these undefined, whatever the profile
+        // payload contained. Cheap, and the alternative is a crash loop on load.
+        stopLosses: merged.stopLosses ?? state.stopLosses ?? {},
+        buyStops:   merged.buyStops ?? state.buyStops ?? {},
         activeTournament: null,
         coachNudges: recomputedNudges,
         // dismissedNudgeIds preserved — login shouldn't un-dismiss nudges the
