@@ -382,6 +382,42 @@ export function PortfolioScreen() {
       setHistory(series);
       setHistoryLoading(false);
 
+      // Deep-history extension (CRYP-55 C). backfillGap only fills from the last
+      // recorded point forward, so a store that STARTS late (fresh install,
+      // post-reset, pre-capture era) has nothing before its first point and the
+      // wide timeframes come up short. Reconstruct the era before the first
+      // recorded point from the trade ledger — once per mount, and only when
+      // there is a meaningful hole.
+      //
+      // Drift-guarded, and this is the load-bearing part: with an incomplete
+      // ledger the reconstruction overstates history (CRYP-51), and writing it
+      // automatically would re-poison the store CRYP-54 just made cleanable. If
+      // the replay can't land within tolerance of the live balance, write
+      // NOTHING — an honest short chart over a confident wrong one.
+      if (isContest) return;
+      const first = series[0]?.t;
+      const created = state.user.createdAt ?? 0;
+      const DEEP_HOLE_MIN_MS = 24 * 60 * 60 * 1000;
+      if (!created || first === undefined || first - created < DEEP_HOLE_MIN_MS) return;
+      try {
+        const deep = await computePortfolioHistory(
+          state.trades,
+          { cash: state.cash, holdings: state.holdings },
+          'MAX',
+          {
+            nowValue: totalEquity,
+            currentPrices: new Map(state.coins.map(c => [c.symbol, c.price])),
+            createdAt: created,
+            maxPoints: 2000,
+          },
+        );
+        if (cancelled || deep.ledgerDrift > 0.02 || deep.points.length < 2) return;
+        const older = deep.points.filter(pt => pt.t < first);
+        if (older.length < 2) return;
+        const extended = await mergeSnapshots(pid, older);
+        if (!cancelled) setHistory(extended);
+      } catch { /* deep extension is best-effort; the recorded series stands */ }
+
       // backfillGap declines to write when a held coin has no price history
       // (CRYP-45) — better than fabricating a flat line, but on a cold launch
       // that's usually transient: the Amplify client may not be ready, so the

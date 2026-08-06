@@ -190,6 +190,18 @@ async function fetchOhlcFromBackend(symbol: string, timeframe: string): Promise<
     const series = await fetchTokenHistory(symbol);
     if (!series) return null;
     const long = timeframe === '1Y' || timeframe === 'MAX';
+    // Short windows prefer the 5-MIN tier when it's reasonably fresh. Without
+    // this, a '24H' request served hourly closes — which is why Live/1H drew a
+    // staircase after a cold open (CRYP-55 B). Fresh = updated within two walk
+    // cadences (the walker runs every 30 min); staler than that, fall back to
+    // hourly rather than present day-old 5-min data as current.
+    if (timeframe === '24H') {
+      const fresh = series.fiveMinUpdatedAt != null
+        && Date.now() - series.fiveMinUpdatedAt < 2 * 30 * 60 * 1000;
+      if (fresh && series.fiveMin.length >= 2) {
+        return candlesFromCloses(series.fiveMin);
+      }
+    }
     const source = long ? series.daily : series.hourly;
     if (!source || source.length < 2) return null;
     // Slice the hourly stream down to the requested window; the daily stream is

@@ -23,6 +23,22 @@ async function getClient() {
   return clientPromise;
 }
 
+// Auth mode for catalog/price/history reads. Signed-in users go through the
+// default userPool mode; GUESTS use identityPool (the unauthenticated Cognito
+// identity), which the schema now permits read-only on Token/TokenHistory
+// (CRYP-55 A2). Before this, a guest's read was rejected outright, so every
+// guest fell through to polling CoinGecko directly on the shared key — the one
+// API cost that scaled with user count.
+async function readAuth(): Promise<{ authMode?: 'identityPool' }> {
+  try {
+    const { fetchAuthSession } = await import('aws-amplify/auth');
+    const session = await fetchAuthSession();
+    return session.tokens ? {} : { authMode: 'identityPool' };
+  } catch {
+    return { authMode: 'identityPool' };
+  }
+}
+
 function parseSpark(json: any): number[] {
   if (!json) return [];
   try { const a = JSON.parse(json); return Array.isArray(a) ? a.filter((n: any) => typeof n === 'number') : []; }
@@ -49,6 +65,7 @@ export async function fetchTokenCatalog(): Promise<Coin[]> {
   if (!client) return [];
   try {
     const res = await client.models.Token.list({
+      ...(await readAuth()),
       filter: { enabledForPractice: { eq: true } },
     });
     const rows = (res?.data ?? []) as any[];
@@ -86,7 +103,7 @@ export async function fetchTokenPrices(): Promise<PriceData[]> {
   const client = await getClient();
   if (!client) return [];
   try {
-    const res = await client.models.Token.list({ filter: { enabledForPractice: { eq: true } } });
+    const res = await client.models.Token.list({ ...(await readAuth()), filter: { enabledForPractice: { eq: true } } });
     const rows = (res?.data ?? []) as any[];
     // Only trust prices the tick-prices Lambda refreshed recently. Without this
     // freshness gate the app would serve STALE seed `lastPrice` values (and never
@@ -126,6 +143,8 @@ export async function fetchTokenPrices(): Promise<PriceData[]> {
 export interface TokenHistorySeries {
   hourly: Array<[number, number]>;  // ~90 days hourly (serves 7D/30D/90D)
   daily:  Array<[number, number]>;  // ~365 days daily (serves 1Y)
+  fiveMin: Array<[number, number]>; // last 24h at 5-min (serves Live/1H/24H fine tail)
+  fiveMinUpdatedAt: number | null;  // ms epoch of the last fiveMin walk, for freshness checks
 }
 
 function parsePairs(json: any): Array<[number, number]> {
@@ -145,13 +164,15 @@ export async function fetchTokenHistory(symbol: string): Promise<TokenHistorySer
   const client = await getClient();
   if (!client) return null;
   try {
-    const res = await client.models.TokenHistory.get({ symbol: symbol.toUpperCase() });
+    const res = await client.models.TokenHistory.get({ symbol: symbol.toUpperCase() }, await readAuth());
     const row = res?.data as any;
     if (!row) return null;
     const hourly = parsePairs(row.hourlyJson);
     const daily  = parsePairs(row.dailyJson);
-    if (hourly.length < 2 && daily.length < 2) return null;
-    return { hourly, daily };
+    const fiveMin = parsePairs(row.fiveMinJson);
+    if (hourly.length < 2 && daily.length < 2 && fiveMin.length < 2) return null;
+    const fiveMinUpdatedAt = row.fiveMinUpdatedAt ? Date.parse(row.fiveMinUpdatedAt) || null : null;
+    return { hourly, daily, fiveMin, fiveMinUpdatedAt };
   } catch (e) {
     console.warn('fetchTokenHistory failed:', e);
     return null;
