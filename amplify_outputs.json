@@ -2248,6 +2248,13 @@
                     "operations": [
                       "read"
                     ]
+                  },
+                  {
+                    "allow": "public",
+                    "provider": "identityPool",
+                    "operations": [
+                      "read"
+                    ]
                   }
                 ]
               }
@@ -2292,6 +2299,20 @@
             },
             "dailyJson": {
               "name": "dailyJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fiveMinJson": {
+              "name": "fiveMinJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fiveMinUpdatedAt": {
+              "name": "fiveMinUpdatedAt",
               "isArray": false,
               "type": "String",
               "isRequired": false,
@@ -2486,6 +2507,13 @@
                 "rules": [
                   {
                     "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "public",
+                    "provider": "identityPool",
                     "operations": [
                       "read"
                     ]
