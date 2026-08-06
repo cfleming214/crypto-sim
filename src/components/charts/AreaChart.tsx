@@ -38,56 +38,22 @@ function generatePath(data: number[], xFrac: number[], w: number, h: number, clo
   const yTop = h * 0.075;
   const yBottom = h - h * 0.075;
 
-  // Catmull-Rom spline → cubic beziers: a smooth curve through every point whose
-  // tangents come from the NEIGHBORING points. The old scheme used horizontal
-  // tangents at each point (cp1y = prevY, cp2y = curY), which flattened the line
-  // at every vertex and rendered dense intraday data (60 one-min points) as a
-  // staircase. Neighbor-based tangents give a natural flowing line instead.
+  // Straight segments between points, matching CandleChart (the coin history
+  // chart) — `L`, not curves.
   //
-  // CENTRIPETAL parameterization (alpha = 0.5), not uniform. Uniform tangents —
-  // (p2 - p0) / 6 — assume every point is evenly spaced along x. That held while
-  // points were positioned by index, but they're positioned by TIMESTAMP now, so
-  // a dense cluster of live captures followed by a wide gap makes p3 far away
-  // and drives cp2x left of p1.x. The curve then doubles back on itself: the
-  // line visibly reverses and hooks, which is what this looked like on the Live
-  // window. Centripetal parameterization scales each tangent by the actual
-  // distance between knots and is provably free of cusps and self-intersections
-  // on non-uniform data.
-  const dist = (a: typeof points[0], b: typeof points[0]) => Math.hypot(b.x - a.x, b.y - a.y);
+  // This replaces a centripetal Catmull-Rom spline. The curve was smoothing
+  // BETWEEN samples, which invented movement the data never recorded: on the
+  // Live view a handful of 15s points became a flowing curve implying a shape
+  // nobody measured. A portfolio chart should show what was recorded.
+  //
+  // It also deletes two whole bug classes rather than defending against them.
+  // The spline needed clampX to stop the line reversing (CRYP-27) and clampY to
+  // stop it dipping below the plot and over the axis labels (CRYP-32). A
+  // polyline between x-ascending points cannot do either: it is monotonic in x
+  // by construction, and a segment between two points inside the value band
+  // stays inside it by convexity. No clamps, no parameterization, no overshoot.
   let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? points[i + 1];
-    // sqrt of chord length = alpha 0.5. Floored so coincident points (a repeated
-    // timestamp, or a perfectly flat run) can't divide by zero.
-    const t01 = Math.sqrt(dist(p0, p1)) || 1e-6;
-    const t12 = Math.sqrt(dist(p1, p2)) || 1e-6;
-    const t23 = Math.sqrt(dist(p2, p3)) || 1e-6;
-    const m1x = (p2.x - p1.x) + t12 * ((p1.x - p0.x) / t01 - (p2.x - p0.x) / (t01 + t12));
-    const m1y = (p2.y - p1.y) + t12 * ((p1.y - p0.y) / t01 - (p2.y - p0.y) / (t01 + t12));
-    const m2x = (p2.x - p1.x) + t12 * ((p3.x - p2.x) / t23 - (p3.x - p1.x) / (t12 + t23));
-    const m2y = (p2.y - p1.y) + t12 * ((p3.y - p2.y) / t23 - (p3.y - p1.y) / (t12 + t23));
-    // Hold both control points inside the segment's x span. The input x values
-    // only ever increase, so a cubic whose control x values stay within
-    // [p1.x, p2.x] cannot move backwards — the reversal is impossible by
-    // construction, not merely unlikely.
-    const clampX = (v: number) => Math.min(p2.x, Math.max(p1.x, v));
-    // And hold control Y inside the band the data itself maps into. A cubic is
-    // contained by the convex hull of its control points, so with all four
-    // inside the band the whole curve is too. Without this the spline could
-    // overshoot vertically past a sharp turn and dip BELOW the plot, drawing
-    // over the X-axis labels. Clamping to the band rather than to each segment's
-    // own [p1.y, p2.y] keeps the curve smooth through peaks — it only stops it
-    // leaving the chart.
-    const clampY = (v: number) => Math.min(yBottom, Math.max(yTop, v));
-    const cp1x = clampX(p1.x + m1x / 3);
-    const cp1y = clampY(p1.y + m1y / 3);
-    const cp2x = clampX(p2.x - m2x / 3);
-    const cp2y = clampY(p2.y - m2y / 3);
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-  }
+  for (let i = 1; i < points.length; i++) d += ` L ${points[i].x} ${points[i].y}`;
 
   if (closed) {
     d += ` L ${points[points.length - 1].x} ${h} L ${points[points.length - 1].x} ${h} L ${points[0].x} ${h} Z`;
