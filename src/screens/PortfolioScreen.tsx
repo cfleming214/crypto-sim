@@ -64,6 +64,12 @@ const STOP_OPTIONS = [5, 10, 15];
 
 // Price/units formatting for the Active stops card, matching the conventions
 // already used by the marker popup below (sub-cent coins get more decimals).
+// Retry budget for a gap backfill that declined to write. Spaced far enough
+// apart to outlast a CoinGecko 429 backoff (60s) and an Amplify client that
+// hasn't finished configuring.
+const GAP_RETRY_LIMIT = 3;
+const GAP_RETRY_DELAY_MS = 20_000;
+
 // How much recent history "Rebuild history" leaves untouched. Inside this window
 // recorded 15s samples beat anything reconstructable from candles.
 const REBUILD_KEEP_RECENT_MS = 3 * 60 * 60 * 1000;   // 3h — matches the store's fine tier
@@ -271,7 +277,7 @@ function StopSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 
 export function PortfolioScreen() {
   const { colors } = useTheme();
-  const { state, getCoin, getHolding, dispatch } = useApp();
+  const { state, getCoin, getHolding, dispatch, portfolioReady } = useApp();
   const { status: authStatus } = useAuth();
   const nav = useNavigation<any>();
   const isMain = state.activePortfolioId === 'main';
@@ -340,7 +346,20 @@ export function PortfolioScreen() {
   // lands (so a fresh buy/sell shows immediately). Timeframe filtering happens
   // synchronously in the memo below, so flipping timeframes never refetches.
   const tradesSig = `${state.trades.length}:${state.trades[0]?.id ?? ''}`;
+  // Bumped to force a retry when a backfill declines to write (see below).
+  const [gapRetry, setGapRetry] = React.useState(0);
   React.useEffect(() => {
+    // Wait for the real portfolio. On a cold launch this effect used to run
+    // against INITIAL_STATE — STARTING_CASH and no holdings — and backfillGap
+    // would take its "no positions, so the balance is pure cash" path and write
+    // a flat $100k line across the whole gap. The same defect CRYP-30 fixed in
+    // resumeEquity; this second caller was missed.
+    //
+    // It matters more here, because resumeEquity only fires on an AppState
+    // change to 'active'. A COLD launch is already active, so no event fires and
+    // this effect is the only thing that fills the gap on reopen.
+    if (!portfolioReady) return;
+
     let cancelled = false;
     setHistoryLoading(true);
     (async () => {
@@ -358,13 +377,24 @@ export function PortfolioScreen() {
         lastT,
         now,
       );
-      if (!cancelled) {
-        setHistory(series);
-        setHistoryLoading(false);
+      if (cancelled) return;
+      setHistory(series);
+      setHistoryLoading(false);
+
+      // backfillGap declines to write when a held coin has no price history
+      // (CRYP-45) — better than fabricating a flat line, but on a cold launch
+      // that's usually transient: the Amplify client may not be ready, so the
+      // TokenHistory read fails and the CoinGecko fallback can be rate-limited.
+      // Without a retry the gap stays empty for the whole session, which reads
+      // as "history isn't being calculated on reopen".
+      const stillMissing = series.length === existing.length
+        && now - lastT >= 5 * 60 * 1000;
+      if (stillMissing && gapRetry < GAP_RETRY_LIMIT) {
+        setTimeout(() => { if (!cancelled) setGapRetry(n => n + 1); }, GAP_RETRY_DELAY_MS);
       }
     })();
     return () => { cancelled = true; };
-  }, [state.activePortfolioId, tradesSig]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.activePortfolioId, tradesSig, portfolioReady, gapRetry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the chart growing while the app stays open. The equity-snapshot capture
   // appends a point every ~4s (AppContext CAPTURE_MS), so re-read the store every
