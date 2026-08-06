@@ -1856,6 +1856,12 @@ interface AppContextValue {
   dispatch: React.Dispatch<Action>;
   getCoin: (symbol: string) => Coin | undefined;
   getHolding: (symbol: string) => { units: number; value: number; pnl: number; pnlPct: number } | null;
+  /** True once the portfolio is real: the cloud profile has resolved when signed
+   *  in, or local hydrate has finished as a guest. Anything that derives history
+   *  from `cash`/`holdings` must wait for this — before it, they're the
+   *  INITIAL_STATE placeholder (STARTING_CASH, no holdings), and reconstructing
+   *  a gap from that writes a flat line for a portfolio that doesn't exist. */
+  portfolioReady: boolean;
 }
 
 const AppContext = createContext<AppContextValue>({
@@ -1863,6 +1869,7 @@ const AppContext = createContext<AppContextValue>({
   dispatch: () => {},
   getCoin: () => undefined,
   getHolding: () => null,
+  portfolioReady: false,
 });
 
 // True when the guest has done anything beyond the auto-seeded starter (0.01
@@ -1904,6 +1911,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     for (const t of profile?.trades ?? []) if (t?.id) persistedTradeIds.current.add(t.id);
   };
   const offlineHydratedRef = useRef(false);      // gate offline saves until we've loaded the saved portfolio
+  // State mirror of the ref above. The ref alone can't drive portfolioReady:
+  // flipping a ref doesn't re-render, so a guest's consumers would keep seeing
+  // portfolioReady === false until some unrelated state change happened to
+  // re-render them.
+  const [offlineHydrated, setOfflineHydrated] = useState(false);
   const gamiHydratedRef = useRef(false);         // gate gamification saves until we've loaded local claim state
   const blockedHydratedRef = useRef(false);      // gate blocked-users saves until we've loaded the stored list
   const nudgesHydratedRef = useRef(false);       // gate dismissed-nudge saves until we've loaded the stored list
@@ -2426,6 +2438,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authStatus === 'authenticated') {
       offlineHydratedRef.current = false;
+      setOfflineHydrated(false);
       return;
     }
     if (authStatus !== 'unauthenticated' || offlineHydratedRef.current) return;
@@ -2437,6 +2450,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Corrupt/absent storage → fall through to the seeded starter.
       }
       offlineHydratedRef.current = true;
+      setOfflineHydrated(true);
     })();
   }, [authStatus]);
 
@@ -2816,6 +2830,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Replay-aware: when a replay portfolio is active, its event coin reports the
   // current historical price (so the holdings list / donut value it correctly).
+  // Same readiness condition resumeEquity and the capture interval use. Exposed
+  // so screens can gate on it too rather than each inventing their own.
+  const portfolioReady = (authStatus === 'authenticated' && profileLoaded)
+    || (authStatus === 'unauthenticated' && offlineHydrated);
+
   const getCoin = (symbol: string) => {
     const c = state.coins.find(x => x.symbol === symbol);
     const meta = state.replayMeta[state.activePortfolioId];
@@ -2837,7 +2856,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AppContext.Provider value={{ state, dispatch: wrappedDispatch, getCoin, getHolding }}>
+    <AppContext.Provider value={{ state, dispatch: wrappedDispatch, getCoin, getHolding, portfolioReady }}>
       {children}
     </AppContext.Provider>
   );
