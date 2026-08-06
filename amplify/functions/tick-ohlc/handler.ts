@@ -13,8 +13,12 @@ const ddb = new DynamoDBClient({});
 // 365-day daily stream covers 1Y. The Demo/public plan caps history at 365 days,
 // so 'daily' uses exactly 365 (a larger value 401s).
 const MODES = {
-  hourly: { days: 90,  field: 'hourlyJson', tsField: 'hourlyUpdatedAt' },
-  daily:  { days: 365, field: 'dailyJson',  tsField: 'dailyUpdatedAt'  },
+  hourly:  { days: 90,  field: 'hourlyJson',  tsField: 'hourlyUpdatedAt'  },
+  daily:   { days: 365, field: 'dailyJson',   tsField: 'dailyUpdatedAt'   },
+  // days=1 -> CoinGecko returns 5-MINUTE closes (~288 points). The fine tier
+  // behind Live/1H reconstruction (CRYP-55 B): without it the finest thing the
+  // backend stores is hourly, and short windows render as a staircase.
+  fiveMin: { days: 1,   field: 'fiveMinJson', tsField: 'fiveMinUpdatedAt' },
 } as const;
 
 // Space requests so the catalog walk stays under CoinGecko's keyless BURST

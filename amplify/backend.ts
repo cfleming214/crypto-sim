@@ -139,6 +139,14 @@ new Rule(Stack.of(ohlcFn), 'TickOhlcDailyRule', {
   schedule: Schedule.cron({ minute: '35', hour: '4' }),
   targets: [new LambdaFunction(ohlcFn, { event: RuleTargetInput.fromObject({ mode: 'daily' }) })],
 });
+// 5-min tier: every 30 minutes at :20 and :50. Offsets are load-bearing — each
+// keyless walk takes ~13 min (65 coins x 12s spacing), so the windows are
+// hourly :05-:18, fiveMin :20-:33 and :50-:03, daily 04:35-04:48. No two walks
+// ever run concurrently and 429 each other. ~+3.1k CoinGecko calls/day.
+new Rule(Stack.of(ohlcFn), 'TickOhlcFiveMinRule', {
+  schedule: Schedule.cron({ minute: '20,50' }),
+  targets: [new LambdaFunction(ohlcFn, { event: RuleTargetInput.fromObject({ mode: 'fiveMin' }) })],
+});
 
 // --- tickLeaderboard: runs every 5 minutes ---
 const tickFn = backend.tickLeaderboard.resources.lambda;

@@ -378,6 +378,11 @@ const schema = a.schema({
     lastSeededAt:       a.string(),                // ISO timestamp of the most recent seed
   }).authorization(allow => [
     allow.authenticated().to(['read']),
+      // Guests read the same cached prices instead of each polling CoinGecko
+      // directly on the shared key (CRYP-55 A2) — API cost must not scale with
+      // user count. Read-only; writes stay with the tick-prices Lambda via the
+      // DynamoDB SDK.
+      allow.guest().to(['read']),
   ]),
 
   // Server-cached price history for the Trade-screen chart, keyed by symbol so a
@@ -397,6 +402,12 @@ const schema = a.schema({
     hourlyJson:      a.string(),              // JSON [[ms, price], ...] ~90 days hourly
     hourlyUpdatedAt: a.string(),              // ISO timestamp of the last hourly refresh
     dailyJson:       a.string(),              // JSON [[ms, price], ...] ~365 days daily
+    // 5-minute closes for the last 24h (CoinGecko market_chart days=1), the
+    // fine tier behind Live/1H reconstruction (CRYP-55 B). Refreshed on its own
+    // EventBridge cadence by tick-ohlc mode 'fiveMin'. Additive field — no
+    // table recreation.
+    fiveMinJson: a.string(),
+    fiveMinUpdatedAt: a.string(),
     dailyUpdatedAt:  a.string(),              // ISO timestamp of the last daily refresh
   })
     .identifier(['symbol'])
@@ -429,6 +440,7 @@ const schema = a.schema({
     lastActiveAt: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
+      allow.guest().to(['read']),
   ]),
 
   // Precomputed Recruiter Cup standings — the bounded top-N "Top Recruiters this
