@@ -23,6 +23,7 @@ import { watchForReward, watchForBonusXp } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
 import { loadSnapshots, backfillGap, despikeSeries, clearSnapshots, appendSnapshot, mergeSnapshots, type EquityPoint } from '../services/equitySnapshots';
 import { computePortfolioHistory } from '../services/portfolioHistory';
+import { saveEquityHistory } from '../services/portfolioService';
 import { applyDailyClaim, canClaim, nextClaimAt, todayKey, dailyXp } from '../services/gamification';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -565,6 +566,17 @@ export function PortfolioScreen() {
             // isn't empty; the 60s capture grows it fresh from here.
             const series = await appendSnapshot(pid, { t: Date.now(), v: totalEquity });
             setHistory(series);
+            // Overwrite the CLOUD backup too. Every signed-in launch merges
+            // UserProfile.equityHistoryJson back into the local store, so a
+            // reset that only clears local is undone on the next launch — the
+            // old (possibly damaged) series re-imports itself, and the periodic
+            // flush then re-persists it (CRYP-54). saveEquityHistory does a full
+            // replace of the field, so writing the fresh one-point series makes
+            // the reset stick. Main portfolio only: the cloud backup exists only
+            // for 'main'; offline portfolios are device-local.
+            if (pid === 'main') {
+              try { await saveEquityHistory(series); } catch { /* next flush persists the clean series */ }
+            }
           },
         },
       ],
