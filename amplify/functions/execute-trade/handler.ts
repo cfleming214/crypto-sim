@@ -1,9 +1,9 @@
 import { DynamoDBClient, ScanCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { buyFillPrice, sellFillPrice } from '../lib/trading';
 
 const ddb = new DynamoDBClient({});
 
-const SLIPPAGE = 0.001;   // 0.1%, matches the client sim
 const MAX_TRADES = 50;    // cap the per-entry trade log we persist
 
 // AppSync resolver event for the executeContestTrade mutation. identity is the
@@ -71,7 +71,7 @@ export const handler = async (event: ResolverEvent): Promise<Record<string, any>
   try { holdings = JSON.parse(entry.holdingsJson || '[]'); } catch { holdings = []; }
 
   const sym = symbol.toUpperCase();
-  const effPrice = side === 'buy' ? price * (1 + SLIPPAGE) : price * (1 - SLIPPAGE);
+  const effPrice = side === 'buy' ? buyFillPrice(price) : sellFillPrice(price);
   const units = amount / effPrice;
 
   if (side === 'buy') {

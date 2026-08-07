@@ -8,6 +8,7 @@ import {
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { randomUUID } from 'crypto';
 import { pushToUser } from '../lib/expoPush';
+import { SLIPPAGE_RATE, buyFillPrice, sellFillPrice } from '../lib/trading';
 
 const ddb = new DynamoDBClient({});
 
@@ -150,9 +151,9 @@ export const handler = async (): Promise<void> => {
           side: order.side,
           amount: fill.amount,
           units: fill.units,
-          price: p,
+          price: fill.price,
           xpEarned: fill.xpEarned,
-          slippage: 0,
+          slippage: SLIPPAGE_RATE,
           timestamp: Date.now(),
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -177,29 +178,34 @@ function applyFill(
   prof: { cash: number; xp: number; holdings: Holding[] },
   o: OrderRow,
   price: number,
-): { amount: number; units: number; xpEarned: number } | null {
+): { amount: number; units: number; xpEarned: number; price: number } | null {
   if (o.symbol === 'USDC') return null;              // USDC is the cash anchor — never trade it
   if (o.side === 'buy') {
     if (prof.cash < o.amount) return null;           // can't afford
-    const units = o.amount / price;
+    // A triggered order executes as a market order — same spread the client
+    // reducer charges, so where an order fills can't change what it costs.
+    const fill = buyFillPrice(price);
+    const units = o.amount / fill;
     const existing = prof.holdings.find(h => h.symbol === o.symbol);
     if (existing) {
       existing.avgCost = (existing.avgCost * existing.units + o.amount) / (existing.units + units);
       existing.units += units;
     } else {
-      prof.holdings.push({ symbol: o.symbol, units, avgCost: price });
+      prof.holdings.push({ symbol: o.symbol, units, avgCost: fill });
     }
     prof.cash -= o.amount;
     prof.xp += BUY_XP;
-    return { amount: o.amount, units, xpEarned: BUY_XP };
+    return { amount: o.amount, units, xpEarned: BUY_XP, price: fill };
   }
   // sell
   const holding = prof.holdings.find(h => h.symbol === o.symbol);
   if (!holding) return null;
+  // Size at MARKET (matching the client), haircut the proceeds.
+  const sellFill = sellFillPrice(price);
   const unitsToSell = Math.min(o.amount / price, holding.units);
   if (unitsToSell <= 0) return null;
-  const proceeds = unitsToSell * price;
-  const pnl = unitsToSell * (price - holding.avgCost);
+  const proceeds = unitsToSell * sellFill;
+  const pnl = unitsToSell * (sellFill - holding.avgCost);
   const xpEarned = sellXp(pnl, proceeds);
   if (unitsToSell >= holding.units - 1e-9) {
     prof.holdings = prof.holdings.filter(h => h.symbol !== o.symbol);
@@ -208,7 +214,7 @@ function applyFill(
   }
   prof.cash += proceeds;
   prof.xp += xpEarned;
-  return { amount: proceeds, units: unitsToSell, xpEarned };
+  return { amount: proceeds, units: unitsToSell, xpEarned, price: sellFill };
 }
 
 type Fill = NonNullable<ReturnType<typeof applyFill>>;

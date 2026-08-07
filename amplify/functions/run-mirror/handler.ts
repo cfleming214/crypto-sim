@@ -1,5 +1,6 @@
 import { DynamoDBClient, ScanCommand, GetItemCommand, UpdateItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { SLIPPAGE_RATE } from '../lib/trading';
 
 const ddb = new DynamoDBClient({});
 
@@ -46,6 +47,11 @@ export const handler = async (event: { Records: any[] }): Promise<void> => {
       if (mirroredAmount < 1) continue;
 
       const holdings: { symbol: string; units: number; avgCost: number }[] = JSON.parse(follower.holdingsJson || '[]');
+      // No extra spread here, deliberately. trade.price is the LEADER's FILL
+      // price (market * 1.001 on a buy, * 0.999 on a sell), so sizing the
+      // follower at that same price gives them exactly the fill they'd get
+      // placing the order themselves. Applying the spread again would charge
+      // the follower twice.
       const units = mirroredAmount / trade.price;
 
       if (trade.side === 'buy' && follower.cash >= mirroredAmount) {
@@ -76,7 +82,7 @@ export const handler = async (event: { Records: any[] }): Promise<void> => {
             amount: mirroredAmount,
             units,
             price: trade.price,
-            slippage: 0.001,
+            slippage: SLIPPAGE_RATE,
             timestamp: new Date().toISOString(),
             xpEarned: 5,
             mirroredFrom: trade.owner,
@@ -110,7 +116,7 @@ export const handler = async (event: { Records: any[] }): Promise<void> => {
             amount: mirroredAmount,
             units,
             price: trade.price,
-            slippage: 0.001,
+            slippage: SLIPPAGE_RATE,
             timestamp: new Date().toISOString(),
             xpEarned: 5,
             mirroredFrom: trade.owner,
