@@ -26,6 +26,7 @@ import { LEGAL_URLS } from '../constants/legal';
 import { openExternal } from '../lib/linking';
 import { Bell, MoreHorizontal, Trophy, X } from 'lucide-react-native';
 import { portfolioValue } from '../services/portfolioValue';
+import { loadSnapshots, despikeSeries, type EquityPoint } from '../services/equitySnapshots';
 
 
 export function TournamentDetailScreen() {
@@ -78,6 +79,8 @@ export function TournamentDetailScreen() {
   // Pull the contest portfolio: active state if currently selected, else
   // the stashed slice from state.portfolios. Falls back to a fresh $100K
   // shape for not-yet-joined contests so the chart still renders something.
+  const hasLocalContestPortfolio = state.activePortfolioId === competitionId
+    || !!state.portfolios[competitionId];
   const contestPortfolio = state.activePortfolioId === competitionId
     ? { cash: state.cash, holdings: state.holdings, trades: state.trades }
     : (state.portfolios[competitionId] ?? { cash: STARTING_CASH, holdings: [], trades: [] });
@@ -96,14 +99,35 @@ export function TournamentDetailScreen() {
   const leaderEntry = [...entries].sort((a, b) => b.pnlPct - a.pnlPct)[0];
   const leaderPct = leaderEntry?.pnlPct ?? 0;
 
-  // Determine the user's rank from the live leaderboard.
-  const meEntry = entries.find(e => e.handle === state.user.handle);
-  const userRank: number | string | null = meEntry?.rank ?? (joined ? '—' : null);
+  // Rank is DERIVED from bankroll order, never read from the stored `rank`
+  // column. That column is seeded to the sentinel 999 at join time and is only
+  // rewritten by the tick-leaderboard cron every 5 minutes, so reading it showed
+  // freshly-joined players "Your rank #999" while the leaderboard immediately
+  // below — which already sorted by bankroll — correctly showed them #1
+  // (CRYP-62, same mistake CRYP-29 fixed in win counting).
+  // The current user's own row is corrected to the LIVE valuation before
+  // sorting. `entry.bankroll` is written by the leaderboard cron, so our own row
+  // lagged the equity figure at the top of this screen — the same portfolio
+  // reading $99,999 in the header and $100,000 in the list. Only substituted
+  // when we actually hold the portfolio locally; otherwise the not-joined
+  // fallback shape would clobber a real cloud bankroll with a fresh $100K.
+  const rankedEntries = React.useMemo(() => {
+    const live = hasLocalContestPortfolio
+      ? entries.map(e => (e.handle === state.user.handle
+          ? { ...e, bankroll: contestBankroll, pnlPct }
+          : e))
+      : entries;
+    return [...live].sort((a, b) => b.bankroll - a.bankroll);
+  }, [entries, hasLocalContestPortfolio, contestBankroll, pnlPct, state.user.handle]);
+  const myRankIndex = rankedEntries.findIndex(e => e.handle === state.user.handle);
+  // '—' = joined but not yet on the board (no entry row synced). Never a sentinel.
+  const userRank: number | string | null = myRankIndex >= 0
+    ? myRankIndex + 1
+    : (joined ? '—' : null);
 
-  // XP-prize claim (when cash prizes are off). The winner's final rank comes from
-  // the leaderboard sorted by bankroll; the podium splits prizeXp 100/50/25%.
-  const myFinalRank = [...entries].sort((a, b) => b.bankroll - a.bankroll)
-    .findIndex(e => e.handle === state.user.handle) + 1;
+  // XP-prize claim (when cash prizes are off). Same live ordering; 0 when absent,
+  // which the canClaimXp guard below already requires to be >= 1.
+  const myFinalRank = myRankIndex + 1;
   const myPrizeXp = contestXpForRank(competition.prizeXp, myFinalRank);
   const contestXpClaimed = state.claimedContestIds.includes(competition.id);
   const canClaimXp = !CONTEST_CASH_PRIZES && competition.status === 'finished'
@@ -118,56 +142,87 @@ export function TournamentDetailScreen() {
     .map(rank => ({ rank, xp: contestXpForRank(competition.prizeXp, rank) }))
     .filter(p => p.xp > 0);
 
-  // Derive a real equity-since-start chart from this contest's trade
-  // history. Walks trades chronologically, using each trade's price as the
-  // last-known price for that symbol; snapshots bankroll at each trade.
+  // Recorded equity snapshots for this contest. The 4s capture in AppContext
+  // keys on activePortfolioId, and a contest portfolio IS the active portfolio
+  // while you play it — so these already exist; this screen just never read them
+  // and drew its curve from the trade ledger instead, which puts a point only at
+  // each trade and renders one buy as a straight line (CRYP-65).
+  const [recorded, setRecorded] = useState<EquityPoint[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    loadSnapshots(competitionId)
+      .then(pts => { if (!cancelled) setRecorded(pts); })
+      .catch(() => { if (!cancelled) setRecorded([]); });
+    return () => { cancelled = true; };
+  }, [competitionId, contestPortfolio.trades.length]);
+
+  // Derive a real equity-since-start chart. Prefers the recorded snapshots
+  // (the actual equity curve); falls back to walking the trade ledger for the
+  // window before any snapshot existed.
   const { chartData, chartTimestamps } = React.useMemo(() => {
-    const sorted = [...contestPortfolio.trades].sort((a, b) => a.timestamp - b.timestamp);
-    let cash = STARTING_CASH;
-    const holdings = new Map<string, { units: number; avgCost: number }>();
-    const lastPrice = new Map<string, number>();
-    // Anchor the series at the contest start (or first trade) and walk forward.
-    const startTs = sorted[0]?.timestamp ?? competition.startAt;
-    const snaps: number[]  = [STARTING_CASH];
-    const stamps: number[] = [startTs];
-    for (const tr of sorted) {
-      lastPrice.set(tr.symbol, tr.price);
-      if (tr.side === 'buy') {
-        cash -= tr.amount;
-        const ex = holdings.get(tr.symbol);
-        if (ex) {
-          const u = ex.units + tr.units;
-          holdings.set(tr.symbol, { units: u, avgCost: (ex.avgCost * ex.units + tr.amount) / u });
+    // Clamp to the contest window so a reused portfolio id can't drag in points
+    // recorded before this contest started.
+    const inWindow = recorded.filter(pt => pt.t >= competition.startAt);
+    if (inWindow.length >= 2) {
+      const clean = despikeSeries(inWindow);
+      const vals   = clean.map(pt => pt.v);
+      const stamps = clean.map(pt => pt.t);
+      // Keep the right edge current — the newest snapshot is up to one capture
+      // interval old, and the header figure is live.
+      const last = stamps[stamps.length - 1];
+      if (Date.now() - last > 5_000) { vals.push(contestBankroll); stamps.push(Date.now()); }
+      return { chartData: vals, chartTimestamps: stamps };
+    }
+    return deriveFromTrades();
+
+    function deriveFromTrades() {
+      const sorted = [...contestPortfolio.trades].sort((a, b) => a.timestamp - b.timestamp);
+      let cash = STARTING_CASH;
+      const holdings = new Map<string, { units: number; avgCost: number }>();
+      const lastPrice = new Map<string, number>();
+      // Anchor the series at the contest start (or first trade) and walk forward.
+      const startTs = sorted[0]?.timestamp ?? competition.startAt;
+      const snaps: number[]  = [STARTING_CASH];
+      const stamps: number[] = [startTs];
+      for (const tr of sorted) {
+        lastPrice.set(tr.symbol, tr.price);
+        if (tr.side === 'buy') {
+          cash -= tr.amount;
+          const ex = holdings.get(tr.symbol);
+          if (ex) {
+            const u = ex.units + tr.units;
+            holdings.set(tr.symbol, { units: u, avgCost: (ex.avgCost * ex.units + tr.amount) / u });
+          } else {
+            holdings.set(tr.symbol, { units: tr.units, avgCost: tr.price });
+          }
         } else {
-          holdings.set(tr.symbol, { units: tr.units, avgCost: tr.price });
+          cash += tr.amount;
+          const ex = holdings.get(tr.symbol);
+          if (ex) {
+            const u = ex.units - tr.units;
+            if (u <= 1e-6) holdings.delete(tr.symbol);
+            else holdings.set(tr.symbol, { units: u, avgCost: ex.avgCost });
+          }
         }
-      } else {
-        cash += tr.amount;
-        const ex = holdings.get(tr.symbol);
-        if (ex) {
-          const u = ex.units - tr.units;
-          if (u <= 1e-6) holdings.delete(tr.symbol);
-          else holdings.set(tr.symbol, { units: u, avgCost: ex.avgCost });
+        let bankroll = cash;
+        for (const [sym, h] of holdings) {
+          const price = lastPrice.get(sym) ?? state.coins.find(c => c.symbol === sym)?.price ?? 0;
+          bankroll += h.units * price;
         }
+        snaps.push(bankroll);
+        stamps.push(tr.timestamp);
       }
-      let bankroll = cash;
-      for (const [sym, h] of holdings) {
-        const price = lastPrice.get(sym) ?? state.coins.find(c => c.symbol === sym)?.price ?? 0;
-        bankroll += h.units * price;
+      snaps.push(contestBankroll);
+      stamps.push(Date.now());
+      if (snaps.length < 2) {
+        return {
+          chartData:       [STARTING_CASH, contestBankroll],
+          chartTimestamps: [competition.startAt, Date.now()],
+        };
       }
-      snaps.push(bankroll);
-      stamps.push(tr.timestamp);
+      return { chartData: snaps, chartTimestamps: stamps };
     }
-    snaps.push(contestBankroll);
-    stamps.push(Date.now());
-    if (snaps.length < 2) {
-      return {
-        chartData:       [STARTING_CASH, contestBankroll],
-        chartTimestamps: [competition.startAt, Date.now()],
-      };
-    }
-    return { chartData: snaps, chartTimestamps: stamps };
-  }, [contestPortfolio.trades, contestBankroll, state.coins, competition.startAt]);
+  }, [recorded, contestPortfolio.trades, contestBankroll, state.coins, competition.startAt]);
 
   useEffect(() => {
     refreshLeaderboard(competitionId);
@@ -397,7 +452,7 @@ export function TournamentDetailScreen() {
                 )}
               </View>
             </View>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>${contestBankroll.toFixed(0)}</Text>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>${Math.round(contestBankroll).toLocaleString()}</Text>
           </View>
           <View style={{ marginTop: 10 }}>
             <AreaChart height={110} data={chartData} timestamps={chartTimestamps} down={pnlPct < 0} />
@@ -510,8 +565,7 @@ export function TournamentDetailScreen() {
             Join the contest and rankings will appear here.
           </Text>
         ) : (() => {
-          const rows = [...entries]
-            .sort((a, b) => b.bankroll - a.bankroll)
+          const rows = rankedEntries
             .map((e, idx, arr) => {
               const liveRank = idx + 1;
               const prize = liveRank <= competition.prizes.length
