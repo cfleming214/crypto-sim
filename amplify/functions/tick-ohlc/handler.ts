@@ -34,7 +34,7 @@ const BACKOFF_MS = [15000, 30000, 45000];
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-interface OhlcEvent { mode?: 'hourly' | 'daily' }
+interface OhlcEvent { mode?: keyof typeof MODES }
 
 // Fetch one coin's market_chart, retrying on 429. Returns the prices array, or
 // null if it never succeeded within MAX_ATTEMPTS.
@@ -71,7 +71,12 @@ export const handler = async (event: OhlcEvent = {}): Promise<{ mode: string; wr
   const histTable = process.env.TOKEN_HISTORY_TABLE_NAME;
   if (!tokenTable || !histTable) throw new Error('TOKEN_TABLE_NAME / TOKEN_HISTORY_TABLE_NAME not set');
 
-  const mode = event?.mode === 'daily' ? 'daily' : 'hourly';
+  // Accept any key of MODES. This was a binary ternary ('daily' else 'hourly')
+  // written when two modes existed — so when the fiveMin rule shipped, its
+  // events silently fell through to 'hourly' and both :20/:50 invocations ran
+  // full hourly walks while fiveMinJson stayed empty (CRYP-55). Deriving from
+  // MODES means a future tier can't repeat this.
+  const mode = (event?.mode && event.mode in MODES ? event.mode : 'hourly') as keyof typeof MODES;
   const { days, field, tsField } = MODES[mode];
 
   // 1. Catalog: symbol -> coingeckoId for every catalogued coin.
@@ -131,6 +136,9 @@ export const handler = async (event: OhlcEvent = {}): Promise<{ mode: string; wr
     if (i < coins.length - 1) await sleep(SPACING_MS);
   }
 
+  // Always log the summary. Both mis-mode walks were diagnosed blind because a
+  // successful run produced no output at all.
+  console.log(`[tick-ohlc] mode=${mode} days=${days} written=${written}/${coins.length}`);
   return { mode, written };
 };
 
