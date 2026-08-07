@@ -679,6 +679,29 @@ export function PortfolioScreen() {
                 Alert.alert('Couldn’t rebuild', 'Not enough price history was available. Check your connection and try again.');
                 return;
               }
+              // Consent gate BEFORE anything is written. The automatic
+              // deep-history extension refuses to write above this drift; the
+              // manual button used to write first and warn after, which meant
+              // one press could re-poison a store a Reset graph had just
+              // cleaned — and the periodic flush would then push the overstated
+              // series back to the cloud, silently undoing the reset (CRYP-57).
+              // Overstated-but-shaped may still be what the user wants; that's
+              // their call, made explicitly, not a footnote after the fact.
+              const driftPct = Math.round(Math.max(coarse.ledgerDrift, fine.ledgerDrift) * 100);
+              if (driftPct >= 2) {
+                const proceed = await new Promise<boolean>(resolve => {
+                  Alert.alert(
+                    'Rebuild will be inaccurate',
+                    `The reconstruction comes out ${driftPct}% away from your current balance — some trades are missing from your saved history, so older values would be overstated by about that much.\n\nRebuild anyway?`,
+                    [
+                      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                      { text: 'Rebuild anyway', style: 'destructive', onPress: () => resolve(true) },
+                    ],
+                  );
+                });
+                if (!proceed) return;
+              }
+
               // Repair the OLD history; keep recent recorded points.
               //
               // Reconstruction is built from OHLC candles, whose finest grain is
@@ -717,16 +740,10 @@ export function PortfolioScreen() {
                 ...recorded,
               ]);
               setHistory(series);
-              // Drift is a different failure from missing candles, and a more
-              // serious one: it means the trade ledger can't account for the
-              // balance you actually hold, so the reconstruction is built on
-              // holdings that were never right. Say so rather than presenting a
-              // confident line.
-              const driftPct = Math.round(res.ledgerDrift * 100);
               Alert.alert(
-                driftPct >= 2 ? 'History rebuilt — but check it' : 'History rebuilt',
+                'History rebuilt',
                 driftPct >= 2
-                  ? `Rebuilt ${res.points.length} points, but the reconstruction came out ${driftPct}% away from your current balance. That usually means some trades are missing from your saved history, so older values may be overstated.`
+                  ? `Rebuilt ${res.points.length} points (about ${driftPct}% overstated, as you approved).`
                   : res.partial
                     ? `Rebuilt ${res.points.length} points. Some coins had no price history, so parts are estimated — try again later for a more exact result.`
                     : `Rebuilt ${res.points.length} points from your trade history.`,
