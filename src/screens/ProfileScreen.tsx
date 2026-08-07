@@ -576,7 +576,7 @@ export function ProfileScreen() {
                     text: noAds ? 'Reset' : 'Watch & reset',
                     onPress: async () => {
                       // Graceful fallback: reset even if no ad is available to show.
-                      const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
+                      const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true, confirm: false });
                       if (blocked) return; // duplicate trigger while an ad is up — ignore
                       if (!granted) Alert.alert('Not reset', "The video didn't finish, so nothing was reset.");
                     },
