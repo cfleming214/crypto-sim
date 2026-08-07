@@ -181,10 +181,6 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
               </Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, color: colors.ink3 }}>Slippage (max)</Text>
-              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>0.10%</Text>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={{ fontSize: 13, color: colors.ink3 }}>Fee</Text>
               <Text style={{ fontWeight: '600', fontSize: 13, color: colors.up }}>Free</Text>
             </View>

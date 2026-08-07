@@ -93,6 +93,12 @@ const schema = a.schema({
     units: a.float().required(),
     price: a.float().required(),
     xpEarned: a.integer(),
+    // Legacy. No longer written by any client or function: the simulator never
+    // actually charged slippage (buys filled at `amount / price`, sells at
+    // `units * price`), so the field only ever carried a cosmetic 0.001 that the
+    // trade ticket rendered as a fee we didn't take (CRYP-64). Kept nullable so
+    // existing rows stay readable; dropping it would be a schema change and an
+    // amplify_outputs resync for no gain.
     slippage: a.float(),
     // Original client trade time (ms epoch). The row's createdAt is the cloud
     // write time, which is wrong for trades bulk-saved on sign-up adoption;

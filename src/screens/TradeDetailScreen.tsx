@@ -55,7 +55,6 @@ export function TradeDetailScreen() {
   const isBuy = trade.side === 'buy';
   const sideVerb = isBuy ? 'Bought' : 'Sold';
   const priceFmt = trade.price < 0.01 ? trade.price.toFixed(8) : trade.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const slippagePct = (trade.slippage * 100).toFixed(2);
   const unitsFmt = trade.units < 1 ? trade.units.toFixed(6) : trade.units.toFixed(4);
 
   const receipt: Array<[string, string, boolean]> = [
@@ -64,7 +63,6 @@ export function TradeDetailScreen() {
     [isBuy ? 'Spent' : 'Received', `$${trade.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, false],
     [isBuy ? 'Received' : 'Sold',  `${unitsFmt} ${trade.symbol}`, false],
     ['Price',      `$${priceFmt}`, false],
-    ['Slippage',   `${slippagePct}%`, false],
     ['XP earned',  `+${trade.xpEarned} XP`, true],
     ['Time',       relTime(trade.timestamp), false],
   ];

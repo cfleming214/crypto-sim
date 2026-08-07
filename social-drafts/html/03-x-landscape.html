@@ -1,0 +1,130 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+
+@font-face{font-family:'InterLocal';font-weight:400;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf')}
+@font-face{font-family:'InterLocal';font-weight:600;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf')}
+@font-face{font-family:'InterLocal';font-weight:700;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf')}
+@font-face{font-family:'InterLocal';font-weight:800;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/800ExtraBold/Inter_800ExtraBold.ttf')}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1600px;height:900px;overflow:hidden}
+body{
+  background:#0A0A0B;
+  font-family:'InterLocal',-apple-system,'SF Pro Display',system-ui,sans-serif;
+  color:#F5F4EF;
+  -webkit-font-smoothing:antialiased;
+}
+/* Ambient brand glow — keeps the flat dark background from reading as empty. */
+body::before{content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(90% 60% at 12% 0%, #34D3991F 0%, transparent 60%),
+    radial-gradient(80% 55% at 100% 100%, #22D3EE1A 0%, transparent 62%);}
+body::after{content:'';position:absolute;inset:0;opacity:.35;
+  background-image:linear-gradient(#25252A 1px,transparent 1px),linear-gradient(90deg,#25252A 1px,transparent 1px);
+  background-size:53.333333333333336px 53.333333333333336px;
+  -webkit-mask-image:radial-gradient(70% 60% at 50% 40%,#000 0%,transparent 78%);}
+.pad{position:relative;z-index:1;width:100%;height:100%;padding:60px;display:flex}
+.col{flex-direction:column}
+.row{flex-direction:row}
+.center{align-items:center;text-align:center;justify-content:center}
+.grow{flex:1}
+.between{justify-content:space-between;align-items:center;display:flex;width:100%}
+.mt{margin-top:36.66666666666667px}.mt2{margin-top:15px}.mt3{margin-top:21.666666666666668px}
+
+.lockup{display:flex;align-items:center;gap:15px}
+.mark{width:71.66666666666667px;height:71.66666666666667px;border-radius:16.666666666666668px;display:block}
+.word{font-size:31.666666666666668px;font-weight:700;letter-spacing:-0.02em}
+
+h1{font-size:73.33333333333334px;line-height:1.03;font-weight:800;
+   letter-spacing:-0.035em;margin-top:23.333333333333336px;
+   background:linear-gradient(105deg,#F5F4EF 30%,#34D399 78%,#22D3EE 100%);
+   -webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.sub{font-size:28.333333333333336px;line-height:1.38;color:#88868A;margin-top:21.666666666666668px;max-width:100%;font-weight:400}
+.center .sub{margin-left:auto;margin-right:auto}
+
+.footer{margin-top:33.333333333333336px;width:100%}
+.center .footer{margin-top:43.333333333333336px}
+.cta{display:inline-block;font-size:25px;font-weight:700;color:#0A0A0B;
+  background:linear-gradient(100deg,#34D399,#22D3EE);
+  padding:16.666666666666668px 31.666666666666668px;border-radius:999px;letter-spacing:-0.01em}
+.disc{margin-top:16.666666666666668px;font-size:17.5px;color:#6E6D72;letter-spacing:0.01em;font-weight:600}
+
+.spark{margin-top:33.333333333333336px;opacity:.95}
+.chip{display:inline-block;font-size:20px;font-weight:700;padding:8.333333333333334px 16.666666666666668px;border-radius:999px}
+.chip.up{color:#2BF06A;background:#2BF06A1F}
+.tick{font-size:16.666666666666668px;font-weight:700;letter-spacing:.14em;color:#88868A;text-transform:uppercase}
+
+.chartcard,.statcard,.board{background:#141416;border:1px solid #25252A;border-radius:28.333333333333336px;padding:33.333333333333336px}
+.chartcard{margin-top:43.333333333333336px}
+.price{font-size:43.333333333333336px;font-weight:800;letter-spacing:-0.025em;margin-top:5px;font-variant-numeric:tabular-nums}
+.note{margin-top:18.333333333333336px;font-size:17.5px;color:#6E6D72}
+.big{font-size:76.66666666666667px;font-weight:800;letter-spacing:-0.035em;margin-top:8.333333333333334px;font-variant-numeric:tabular-nums}
+.med{font-size:28.333333333333336px;font-weight:700;margin-top:5px}
+.rowsplit{display:flex;gap:28.333333333333336px;margin-top:28.333333333333336px;border-top:1px solid #25252A;padding-top:23.333333333333336px}
+
+.split{gap:53.333333333333336px}
+.left{flex:1.05;justify-content:center}
+.right{flex:1;justify-content:center;display:flex}
+.statcard{width:100%}
+
+.board{margin-top:38.333333333333336px;padding:10px 15px}
+.brow{display:flex;align-items:center;gap:18.333333333333336px;padding:21.666666666666668px 18.333333333333336px;border-bottom:1px solid #25252A}
+.brow:last-child{border-bottom:none}
+.brow.me{background:#34D39914;border-radius:16.666666666666668px}
+.rank{font-size:25px;font-weight:800;color:#88868A;width:36.66666666666667px;font-variant-numeric:tabular-nums}
+.who{font-size:26.666666666666668px;font-weight:700;flex:1}
+.league{font-size:20px;font-weight:600;color:#88868A}
+.pct{font-size:26.666666666666668px;font-weight:800;width:116.66666666666667px;text-align:right;font-variant-numeric:tabular-nums}
+.pct.up{color:#2BF06A}
+
+.seal{width:250px;height:250px;border-radius:50%;margin:43.333333333333336px auto 8.333333333333334px;
+  display:flex;align-items:center;justify-content:center;
+  background:conic-gradient(from 200deg,#34D399,#22D3EE,#34D399);padding:4.166666666666667px}
+.sealinner{width:100%;height:100%;border-radius:50%;background:#111113;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.sealnum{font-size:86.66666666666667px;font-weight:800;letter-spacing:-0.04em;
+  background:linear-gradient(120deg,#34D399,#22D3EE);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sealtxt{font-size:19.166666666666668px;font-weight:700;letter-spacing:.2em;color:#88868A}
+
+/* --- Per-format overrides. Must stay LAST: these share specificity with the
+       base rules above, so they only win by source order. --- */
+
+
+</style></head><body><div class="pad row split">
+        <div class="col left">
+          
+<div class="lockup">
+  <img class="mark" src="file:///Users/christopherfleming/Desktop/projects/crypto-sim/assets/app-icon-1024.png" alt=""/>
+  <div class="word">CryptoComp</div>
+</div>
+          <div class="grow"></div>
+          <h1>Everyone starts<br/>with $100K.</h1>
+          <p class="sub">In practice money. Free tournaments on live crypto markets — equal bankroll, pure skill.</p>
+          <div class="grow"></div>
+          
+<div class="footer">
+  <div class="cta">Free on the App Store</div>
+  <div class="disc">Simulated trading · No real money · 17+</div>
+</div>
+        </div>
+        <div class="col right">
+          <div class="statcard">
+            <div class="tick">YOUR BANKROLL</div>
+            <div class="big">$100,000</div>
+            <div class="chip up mt2">Practice money</div>
+            <div class="mt3"><svg width="560" height="190" viewBox="0 0 560 190" fill="none">
+    <defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polygon points="0,190 0.0,177.7 29.5,190.0 58.9,168.5 88.4,180.8 117.9,156.3 147.4,162.4 176.8,134.8 206.3,147.1 235.8,119.5 265.3,128.7 294.7,101.1 324.2,113.4 353.7,85.8 383.2,73.5 412.6,88.9 442.1,55.2 471.6,36.8 501.1,49.0 530.5,15.3 560.0,0.0 560,190" fill="url(#fill)"/>
+    <polyline points="0.0,177.7 29.5,190.0 58.9,168.5 88.4,180.8 117.9,156.3 147.4,162.4 176.8,134.8 206.3,147.1 235.8,119.5 265.3,128.7 294.7,101.1 324.2,113.4 353.7,85.8 383.2,73.5 412.6,88.9 442.1,55.2 471.6,36.8 501.1,49.0 530.5,15.3 560.0,0.0" stroke="#22D3EE" stroke-width="3"
+      stroke-linecap="round" stroke-linejoin="round"/>
+  </svg></div>
+            <div class="rowsplit">
+              <div><div class="tick">CONTESTS</div><div class="med">Free</div></div>
+              <div><div class="tick">COINS</div><div class="med">240+</div></div>
+              <div><div class="tick">RISK</div><div class="med">$0</div></div>
+            </div>
+          </div>
+        </div>
+      </div></body></html>

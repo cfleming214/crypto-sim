@@ -439,7 +439,7 @@ function applySeasonTierReward(
     const tierTrade: Trade = {
       id: `SSN-${now}-${Math.round(cash)}`,
       symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: cash,
-      units: 0, price: 0, timestamp: now, xpEarned: 0, slippage: 0, kind: 'reward',
+      units: 0, price: 0, timestamp: now, xpEarned: 0, kind: 'reward',
     };
     const newCash = state.cash + cash;
     const holdingsValue = state.holdings.reduce((sum, h) => {
@@ -512,7 +512,7 @@ function reducer(state: AppState, action: Action): AppState {
             : [...newState.holdings, { symbol: order.symbol, units, avgCost: coin.price }];
           const trade: Trade = {
             id: order.id, symbol: order.symbol, side: 'buy', amount: order.amount,
-            units, price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0,
+            units, price: coin.price, timestamp: Date.now(), xpEarned: 25,
           };
           newState = {
             ...newState,
@@ -534,7 +534,7 @@ function reducer(state: AppState, action: Action): AppState {
             const trade: Trade = {
               id: order.id, symbol: order.symbol, side: 'sell', amount: proceeds,
               units: unitsToSell, price: coin.price, timestamp: Date.now(),
-              xpEarned, slippage: 0, realizedPnl: pnl,
+              xpEarned, realizedPnl: pnl,
             };
             newState = {
               ...newState,
@@ -563,7 +563,7 @@ function reducer(state: AppState, action: Action): AppState {
         const trade: Trade = {
           id: `STP-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: sym, side: 'sell', amount: proceeds, units: h.units,
-          price: coin.price, timestamp: Date.now(), xpEarned, slippage: 0, realizedPnl: pnl,
+          price: coin.price, timestamp: Date.now(), xpEarned, realizedPnl: pnl,
         };
         const nextStops = { ...newState.stopLosses }; delete nextStops[sym];
         newState = {
@@ -592,7 +592,7 @@ function reducer(state: AppState, action: Action): AppState {
         const trade: Trade = {
           id: `BYS-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: sym, side: 'buy', amount: bs.amount, units,
-          price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0,
+          price: coin.price, timestamp: Date.now(), xpEarned: 25,
         };
         const nextBuys = { ...newState.buyStops }; delete nextBuys[sym];
         newState = {
@@ -814,7 +814,7 @@ function reducer(state: AppState, action: Action): AppState {
       const trade: Trade = {
         id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         symbol: action.symbol, side: 'buy', amount: action.amount,
-        units, price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+        units, price: coin.price, timestamp: Date.now(), xpEarned: 25,
       };
       const newCash = state.cash - action.amount;
       const newBankroll = newCash + holdings.reduce((s, h) => {
@@ -853,7 +853,7 @@ function reducer(state: AppState, action: Action): AppState {
         id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         symbol: action.symbol, side: 'sell', amount: proceeds,
         units: unitsToSell, price: coin.price, timestamp: Date.now(),
-        xpEarned: sellXpEarned, slippage: 0.001, realizedPnl: pnl,
+        xpEarned: sellXpEarned, realizedPnl: pnl,
       };
       const newCashSell = state.cash + proceeds;
       const newBankrollSell = newCashSell + holdings.reduce((s, h) => {
@@ -951,7 +951,7 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'sell', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+          timestamp: Date.now(), xpEarned: 10,
           realizedPnl: rbSold ? realizedPnl(rbSold.avgCost, line.units, line.price) : 0, kind: 'rebalance',
         });
       }
@@ -972,7 +972,7 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'buy', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 25, slippage: 0.001, kind: 'rebalance',
+          timestamp: Date.now(), xpEarned: 25, kind: 'rebalance',
         });
       }
 
@@ -1015,7 +1015,7 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'sell', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
+          timestamp: Date.now(), xpEarned: 10,
           realizedPnl: cpSold ? realizedPnl(cpSold.avgCost, line.units, line.price) : 0,
         });
       }
@@ -1035,7 +1035,7 @@ function reducer(state: AppState, action: Action): AppState {
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'buy', amount: line.amount,
           units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+          timestamp: Date.now(), xpEarned: 25,
         });
       }
 
@@ -1209,7 +1209,7 @@ function reducer(state: AppState, action: Action): AppState {
         id: `RWD-${Date.now()}`,
         symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: res.cash,
         units: 0, price: 0, timestamp: Date.now(),
-        xpEarned: res.xp, slippage: 0, kind: 'reward',
+        xpEarned: res.xp, kind: 'reward',
       };
       const newCash = state.cash + res.cash;
       const holdingsValue = state.holdings.reduce((s, h) => {
@@ -1257,7 +1257,7 @@ function reducer(state: AppState, action: Action): AppState {
         id: `QST-${Date.now()}`,
         symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.cash,
         units: 0, price: 0, timestamp: Date.now(),
-        xpEarned: action.xp, slippage: 0, kind: 'reward',
+        xpEarned: action.xp, kind: 'reward',
       };
       const newCash = state.cash + action.cash;
       const holdingsValue = state.holdings.reduce((s, h) => {
@@ -1378,7 +1378,7 @@ function reducer(state: AppState, action: Action): AppState {
       const bonusTrade: Trade = {
         id: `RAD-${Date.now()}`,
         symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.amount,
-        units: 0, price: 0, timestamp: Date.now(), xpEarned: action.xp ?? 0, slippage: 0, kind: 'reward',
+        units: 0, price: 0, timestamp: Date.now(), xpEarned: action.xp ?? 0, kind: 'reward',
       };
       const newCash = state.cash + action.amount;
       const holdingsValue = state.holdings.reduce((s, h) => {
@@ -1452,7 +1452,7 @@ function reducer(state: AppState, action: Action): AppState {
       const bonusTrade: Trade = {
         id: `IAP-${Date.now()}`,
         symbol: CASH_EVENT_SYMBOL, side: 'buy', amount: action.amount,
-        units: 0, price: 0, timestamp: Date.now(), xpEarned: 0, slippage: 0, kind: 'reward',
+        units: 0, price: 0, timestamp: Date.now(), xpEarned: 0, kind: 'reward',
       };
       // Purchased/Premium money — preserve it on reset (see RESET_DEMO).
       const purchasedCash = { ...state.purchasedCash, [pid]: (state.purchasedCash[pid] ?? 0) + action.amount };

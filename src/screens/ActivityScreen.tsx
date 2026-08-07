@@ -98,9 +98,10 @@ export function ActivityScreen() {
   const weekBuyCost = week7.filter(t => t.side === 'buy' && !isReward(t)).reduce((s, t) => s + t.amount, 0);
   const totalPnl = weekSellProceeds - weekBuyCost;
 
-  // Win rate over closed positions. This used to fall back to the sign of
-  // `slippage` (unrelated to profit) and to the CURRENT holding's avg cost, so
-  // fully-closed positions always read as losses.
+  // Win rate over closed positions. This used to fall back to the sign of a
+  // per-trade `slippage` field (unrelated to profit, and since removed) and to
+  // the CURRENT holding's avg cost, so fully-closed positions always read as
+  // losses.
   const { rate: winRate, decided: decidedSells } = winRateFromTrades(state.trades);
 
   return (

@@ -152,7 +152,6 @@ export const handler = async (): Promise<void> => {
           units: fill.units,
           price: p,
           xpEarned: fill.xpEarned,
-          slippage: 0,
           timestamp: Date.now(),
           createdAt: nowIso,
           updatedAt: nowIso,

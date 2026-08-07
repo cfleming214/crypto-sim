@@ -142,7 +142,6 @@ async function loadUserTrades(client: any): Promise<import('../store/types').Tra
         ? t.timestamp
         : (t.createdAt ? new Date(t.createdAt).getTime() : Date.now()),
       xpEarned:  t.xpEarned ?? 0,
-      slippage:  t.slippage ?? 0,
     }));
     // Collapse duplicate starter-seed trades. A historical race (seeding before
     // the cloud profile loaded) could write one 'SEED-' trade per login; they're
@@ -982,7 +981,6 @@ export async function saveTrade(trade: Trade): Promise<void> {
       units:     trade.units,
       price:     trade.price,
       xpEarned:  trade.xpEarned,
-      slippage:  trade.slippage,
       timestamp: trade.timestamp,
     });
   } catch (e) {

@@ -1,0 +1,119 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+
+@font-face{font-family:'InterLocal';font-weight:400;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf')}
+@font-face{font-family:'InterLocal';font-weight:600;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf')}
+@font-face{font-family:'InterLocal';font-weight:700;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf')}
+@font-face{font-family:'InterLocal';font-weight:800;src:url('file:///Users/christopherfleming/Desktop/projects/crypto-sim/node_modules/@expo-google-fonts/inter/800ExtraBold/Inter_800ExtraBold.ttf')}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden}
+body{
+  background:#0A0A0B;
+  font-family:'InterLocal',-apple-system,'SF Pro Display',system-ui,sans-serif;
+  color:#F5F4EF;
+  -webkit-font-smoothing:antialiased;
+}
+/* Ambient brand glow — keeps the flat dark background from reading as empty. */
+body::before{content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(90% 60% at 12% 0%, #34D3991F 0%, transparent 60%),
+    radial-gradient(80% 55% at 100% 100%, #22D3EE1A 0%, transparent 62%);}
+body::after{content:'';position:absolute;inset:0;opacity:.35;
+  background-image:linear-gradient(#25252A 1px,transparent 1px),linear-gradient(90deg,#25252A 1px,transparent 1px);
+  background-size:64px 64px;
+  -webkit-mask-image:radial-gradient(70% 60% at 50% 40%,#000 0%,transparent 78%);}
+.pad{position:relative;z-index:1;width:100%;height:100%;padding:72px;display:flex}
+.col{flex-direction:column}
+.row{flex-direction:row}
+.center{align-items:center;text-align:center;justify-content:center}
+.grow{flex:1}
+.between{justify-content:space-between;align-items:center;display:flex;width:100%}
+.mt{margin-top:44px}.mt2{margin-top:18px}.mt3{margin-top:26px}
+
+.lockup{display:flex;align-items:center;gap:18px}
+.mark{width:86px;height:86px;border-radius:20px;display:block}
+.word{font-size:38px;font-weight:700;letter-spacing:-0.02em}
+
+h1{font-size:96px;line-height:1.03;font-weight:800;
+   letter-spacing:-0.035em;margin-top:28px;
+   background:linear-gradient(105deg,#F5F4EF 30%,#34D399 78%,#22D3EE 100%);
+   -webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.sub{font-size:34px;line-height:1.38;color:#88868A;margin-top:26px;max-width:86%;font-weight:400}
+.center .sub{margin-left:auto;margin-right:auto}
+
+.footer{margin-top:40px;width:100%}
+.center .footer{margin-top:52px}
+.cta{display:inline-block;font-size:30px;font-weight:700;color:#0A0A0B;
+  background:linear-gradient(100deg,#34D399,#22D3EE);
+  padding:20px 38px;border-radius:999px;letter-spacing:-0.01em}
+.disc{margin-top:20px;font-size:21px;color:#6E6D72;letter-spacing:0.01em;font-weight:600}
+
+.spark{margin-top:40px;opacity:.95}
+.chip{display:inline-block;font-size:24px;font-weight:700;padding:10px 20px;border-radius:999px}
+.chip.up{color:#2BF06A;background:#2BF06A1F}
+.tick{font-size:20px;font-weight:700;letter-spacing:.14em;color:#88868A;text-transform:uppercase}
+
+.chartcard,.statcard,.board{background:#141416;border:1px solid #25252A;border-radius:34px;padding:40px}
+.chartcard{margin-top:52px}
+.price{font-size:52px;font-weight:800;letter-spacing:-0.025em;margin-top:6px;font-variant-numeric:tabular-nums}
+.note{margin-top:22px;font-size:21px;color:#6E6D72}
+.big{font-size:92px;font-weight:800;letter-spacing:-0.035em;margin-top:10px;font-variant-numeric:tabular-nums}
+.med{font-size:34px;font-weight:700;margin-top:6px}
+.rowsplit{display:flex;gap:34px;margin-top:34px;border-top:1px solid #25252A;padding-top:28px}
+
+.split{gap:64px}
+.left{flex:1.05;justify-content:center}
+.right{flex:1;justify-content:center;display:flex}
+.statcard{width:100%}
+
+.board{margin-top:46px;padding:12px 18px}
+.brow{display:flex;align-items:center;gap:22px;padding:26px 22px;border-bottom:1px solid #25252A}
+.brow:last-child{border-bottom:none}
+.brow.me{background:#34D39914;border-radius:20px}
+.rank{font-size:30px;font-weight:800;color:#88868A;width:44px;font-variant-numeric:tabular-nums}
+.who{font-size:32px;font-weight:700;flex:1}
+.league{font-size:24px;font-weight:600;color:#88868A}
+.pct{font-size:32px;font-weight:800;width:140px;text-align:right;font-variant-numeric:tabular-nums}
+.pct.up{color:#2BF06A}
+
+.seal{width:300px;height:300px;border-radius:50%;margin:52px auto 10px;
+  display:flex;align-items:center;justify-content:center;
+  background:conic-gradient(from 200deg,#34D399,#22D3EE,#34D399);padding:5px}
+.sealinner{width:100%;height:100%;border-radius:50%;background:#111113;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.sealnum{font-size:104px;font-weight:800;letter-spacing:-0.04em;
+  background:linear-gradient(120deg,#34D399,#22D3EE);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sealtxt{font-size:23px;font-weight:700;letter-spacing:.2em;color:#88868A}
+
+/* --- Per-format overrides. Must stay LAST: these share specificity with the
+       base rules above, so they only win by source order. --- */
+
+/* Story safe area. Instagram and TikTok lay their own chrome over roughly the
+   top 12% and bottom 17% of a 9:16 story — which was covering the CTA and the
+   disclaimer. Keep every element inside the readable band. */
+.pad{padding-top:215px;padding-bottom:330px}
+
+</style></head><body><div class="pad col">
+        
+<div class="lockup">
+  <img class="mark" src="file:///Users/christopherfleming/Desktop/projects/crypto-sim/assets/app-icon-1024.png" alt=""/>
+  <div class="word">CryptoComp</div>
+</div>
+        <div class="grow"></div>
+        <h1>Real prices.<br/>Practice money.</h1>
+        <p class="sub">Learn the market on live data — without putting a cent at risk.</p>
+        <div class="chartcard">
+          <div class="row between">
+            <div><div class="tick">BTC / USD</div><div class="price">$67,412.80</div></div>
+            <div class="chip up">▲ 4.21%</div>
+          </div>
+          <div class="mt2"><svg width="840" height="300" viewBox="0 0 840 300" fill="none"><rect x="28.5" y="178.7236363636364" width="3" height="77.28000000000002" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="13.2" y="196.36363636363637" width="33.6" height="42.00000000000001" fill="#2BF06A" rx="4"/><rect x="88.5" y="194.6727272727273" width="3" height="55.2" fill="#B5322E" opacity="0.55" rx="1.5"/><rect x="73.2" y="207.27272727272728" width="33.6" height="30" fill="#B5322E" rx="4"/><rect x="148.5" y="166.76181818181817" width="3" height="93.84000000000002" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="133.2" y="188.1818181818182" width="33.6" height="51.00000000000001" fill="#2BF06A" rx="4"/><rect x="208.5" y="182.7109090909091" width="3" height="71.76" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="193.2" y="199.0909090909091" width="33.6" height="39" fill="#2BF06A" rx="4"/><rect x="268.5" y="150.81272727272724" width="3" height="115.92000000000002" fill="#B5322E" opacity="0.55" rx="1.5"/><rect x="253.2" y="177.27272727272725" width="33.6" height="63.00000000000001" fill="#B5322E" rx="4"/><rect x="328.5" y="158.78727272727272" width="3" height="104.88000000000001" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="313.2" y="182.72727272727272" width="33.6" height="57" fill="#2BF06A" rx="4"/><rect x="388.5" y="144.32181818181817" width="3" height="60.720000000000006" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="373.2" y="158.1818181818182" width="33.6" height="33" fill="#2BF06A" rx="4"/><rect x="448.5" y="138.85090909090908" width="3" height="132.48000000000002" fill="#B5322E" opacity="0.55" rx="1.5"/><rect x="433.2" y="169.0909090909091" width="33.6" height="72" fill="#B5322E" rx="4"/><rect x="508.5" y="124.38545454545454" width="3" height="88.32000000000001" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="493.2" y="144.54545454545453" width="33.6" height="48" fill="#2BF06A" rx="4"/><rect x="568.5" y="136.34727272727272" width="3" height="71.76" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="553.2" y="152.72727272727272" width="33.6" height="39" fill="#2BF06A" rx="4"/><rect x="628.5" y="100.46181818181819" width="3" height="121.44000000000001" fill="#B5322E" opacity="0.55" rx="1.5"/><rect x="613.2" y="128.1818181818182" width="33.6" height="66" fill="#B5322E" rx="4"/><rect x="688.5" y="116.41090909090909" width="3" height="99.36" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="673.2" y="139.0909090909091" width="33.6" height="54" fill="#2BF06A" rx="4"/><rect x="748.5" y="101.94545454545457" width="3" height="55.2" fill="#2BF06A" opacity="0.55" rx="1.5"/><rect x="733.2" y="114.54545454545456" width="33.6" height="30" fill="#2BF06A" rx="4"/><rect x="808.5" y="85.99636363636363" width="3" height="77.28000000000002" fill="#B5322E" opacity="0.55" rx="1.5"/><rect x="793.2" y="103.63636363636363" width="33.6" height="42.00000000000001" fill="#B5322E" rx="4"/></svg></div>
+          <div class="note">Live market data · positions are simulated</div>
+        </div>
+        
+<div class="footer">
+  <div class="cta">Free on the App Store</div>
+  <div class="disc">Simulated trading · No real money · 17+</div>
+</div>
+        <div class="grow"></div>
+      </div></body></html>

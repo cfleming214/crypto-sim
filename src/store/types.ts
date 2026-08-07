@@ -26,7 +26,6 @@ export interface Trade {
   price: number;
   timestamp: number;
   xpEarned: number;
-  slippage: number;
   // 'reward' = a cash-injection event (e.g. daily-reward bonus), recorded with
   // symbol 'USD' (the CASH_EVENT_SYMBOL sentinel), units 0, amount = bonus. It
   // is not a coin trade; ledger replay treats symbol 'USD' as a pure cash delta.
