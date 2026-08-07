@@ -2,6 +2,7 @@ import { Alert } from 'react-native';
 import type { AppDispatch } from '../store/AppContext';
 import { showRewarded, type AdPlacement } from './adManager';
 import { isNoAds } from './purchases';
+import { noteFallbackGrant } from './adBudget';
 
 // The catalog of things a rewarded ad can grant. EVERY reward is virtual — it can
 // only dispatch actions that touch play-money / passes / cosmetics, never cash,
@@ -104,7 +105,13 @@ export async function watchForReward(
   const { earned, shown, blocked } = await showRewarded(placement, { lane: 'A', surface: opts.surface ?? 'rewarded' });
   if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
-  if (granted) reward.grant(dispatch);
+  if (granted) {
+    reward.grant(dispatch);
+    // A no-fill fallback grant still consumes the rewarded budget — same
+    // cooldown and daily ceiling as a watched ad, or offline taps become an
+    // infinite reward faucet (CRYP-60).
+    if (!shown) void noteFallbackGrant();
+  }
   return { granted, shown };
 }
 
@@ -126,6 +133,9 @@ export async function watchForBonusXp(
   const { earned, shown, blocked } = await showRewarded('rewardedBonusXp', { lane: 'A', surface: opts.surface ?? 'rewarded-xp' });
   if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
-  if (granted) dispatch({ type: 'ADD_XP', amount: xp });
+  if (granted) {
+    dispatch({ type: 'ADD_XP', amount: xp });
+    if (!shown) void noteFallbackGrant();   // see watchForReward — same faucet
+  }
   return { granted, shown };
 }

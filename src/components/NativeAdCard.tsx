@@ -28,11 +28,24 @@ try {
   // native module absent — NativeAdCard renders null
 }
 
+// A loaded native ad, reused across remounts of the SAME placement.
+//
+// Without this, an ad inside a FlatList cell requested a FRESH ad on every
+// remount — and FlatList windowing unmounts offscreen cells, so simply
+// scrolling the News feed up and down farmed a new request + impression per
+// pass. That's textbook artificial impression inflation (CRYP-60). Cached ads
+// are keyed by an explicit cacheKey, live for CACHE_TTL_MS, and are NOT
+// destroyed on unmount (the cache owns their lifecycle; the replacement path
+// destroys the old one). Placements that mount once per screen (Markets rows)
+// pass no cacheKey and keep the original request-per-mount behaviour.
+const adCache = new Map<string, { ad: any; at: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 // variant 'card' = standalone bordered card (news feed); 'row' = seamless list
 // row to sit inside a noPad Card among CardSections (markets / live-trades).
 // `unitId` overrides the ad unit (e.g. the News feed passes its own dedicated
 // unit); defaults to AD_UNITS.native, then Google's TestIds.
-export function NativeAdCard({ variant = 'card', unitId }: { variant?: 'card' | 'row'; unitId?: string }) {
+export function NativeAdCard({ variant = 'card', unitId, cacheKey }: { variant?: 'card' | 'row'; unitId?: string; cacheKey?: string }) {
   const { colors } = useTheme();
   const { noAds } = useEntitlements();
   const [ad, setAd] = useState<any>(null);
@@ -43,10 +56,26 @@ export function NativeAdCard({ variant = 'card', unitId }: { variant?: 'card' | 
     let cancelled = false;
     const realUnit = unitId ?? AD_UNITS.native; // undefined in test mode → TestIds
     const resolvedUnit = realUnit ?? TestIds?.NATIVE;
+
+    // Remount of a cached placement: reuse the live ad, no new request.
+    if (cacheKey) {
+      const hit = adCache.get(cacheKey);
+      if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+        setAd(hit.ad);
+        return; // no cleanup — the cache owns this ad
+      }
+    }
+
     NativeAd.createForAdRequest(resolvedUnit, { requestNonPersonalizedAdsOnly: false })
       .then((a: any) => {
         loaded = a;
         if (cancelled) { a.destroy?.(); return; }
+        if (cacheKey) {
+          // Replace (and destroy) any expired predecessor, then hand ownership
+          // to the cache — the unmount cleanup below must not destroy it.
+          adCache.get(cacheKey)?.ad?.destroy?.();
+          adCache.set(cacheKey, { ad: a, at: Date.now() });
+        }
         setAd(a);
         // Surface what content the unit served (answers "what kind of ad is it").
         console.log('[ads] native loaded — content:', JSON.stringify({
@@ -61,8 +90,13 @@ export function NativeAdCard({ variant = 'card', unitId }: { variant?: 'card' | 
         }));
       })
       .catch((e: any) => console.warn('[ads] native failed to load:', e?.code ?? '', e?.message ?? e));
-    return () => { cancelled = true; loaded?.destroy?.(); };
-  }, [noAds, unitId]);
+    return () => {
+      cancelled = true;
+      // Cached ads belong to the cache; destroying one on unmount would hand the
+      // next remount a dead object.
+      if (!cacheKey) loaded?.destroy?.();
+    };
+  }, [noAds, unitId, cacheKey]);
 
   if (!NativeAdView || !ad || noAds) return null;
 

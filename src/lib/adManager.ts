@@ -198,13 +198,20 @@ function runRewardedUnit(
 //   3. If that also has no ad, return shown=false so the caller's graceful
 //      fallback (grantOnUnavailable) can decide.
 // Returns { earned, shown, blocked } — shown=false only when NEITHER format had an
-// ad; blocked=true means another ad was already presenting (a duplicate trigger),
-// which callers must treat as "do nothing" (no grant, no fallback, no alert).
+// ad; blocked=true means the ad may not run right now (another ad already
+// presenting, or denied by policy/budget in canShowAd) — callers must treat it
+// as "do nothing" (no grant, no fallback, no alert).
 // (earned=false, shown=true) means the user dismissed an ad early — a real decline.
 export async function showRewarded(placement: AdPlacement, ctx: AdContext): Promise<{ earned: boolean; shown: boolean; blocked?: boolean }> {
   if (!canShowAd(placement, ctx)) {
     console.warn(`[ads] rewarded blocked by canShowAd: ${placement} lane=${ctx.lane} surface=${ctx.surface}`);
-    return { earned: false, shown: false };
+    // blocked, NOT a bare shown:false. A bare shown:false reads as "no ad
+    // inventory" and triggers the callers' grantOnUnavailable fallback — which
+    // would turn every policy denial (daily cap, cooldown, money surface) into
+    // a FREE grant: hit the 20/day rewarded cap and every further tap hands out
+    // the reward with no ad at all (CRYP-60). Callers treat blocked as
+    // "do nothing".
+    return { earned: false, shown: false, blocked: true };
   }
   if (adPresenting) {
     console.warn('[ads] rewarded ignored — an ad is already presenting');
