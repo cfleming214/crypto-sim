@@ -51,6 +51,13 @@ async function fetchPrices(geckoId: string, days: number, headers: Record<string
     if (!res.ok) { console.error('tick-ohlc http', geckoId, res.status); return null; }
     const json = await res.json();
     const prices: Array<[number, number]> = Array.isArray(json?.prices) ? json.prices : [];
+    // A 200 with (near-)empty prices is NOT success — it's how CoinGecko shapes
+    // unauthenticated requests from datacenter IPs (the whole fiveMin walk
+    // 2026-08-06 was 65 silent skips exactly here). Log status + body head so
+    // the next such failure is evidence instead of a mystery.
+    if (prices.length < 2) {
+      console.warn('tick-ohlc empty-200', geckoId, res.status, JSON.stringify(json).slice(0, 160));
+    }
     return prices;
   }
   console.warn('tick-ohlc gave up after 429s', geckoId);
