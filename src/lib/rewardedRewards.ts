@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import type { AppDispatch } from '../store/AppContext';
 import { showRewarded, type AdPlacement } from './adManager';
 import { isNoAds } from './purchases';
@@ -51,6 +52,31 @@ export const REWARDED_REWARDS: Partial<Record<AdPlacement, RewardedReward>> = {
   // never anything cash-linked.
 };
 
+// Ask before an ad opens.
+//
+// A rewarded ad must be an explicit, informed opt-in — AdMob's rewarded policy
+// requires the user to choose it knowing what they get. Most call sites already
+// wrap the CTA in their own dialog ("Watch & earn a pass"), but some fired an ad
+// straight off a tap, so the first thing the user saw was a full-screen video
+// they never agreed to (CRYP-59).
+//
+// Defaults to ON: a new call site gets the prompt unless it deliberately opts
+// out, which is the safe direction for a policy requirement. Sites that already
+// confirm pass `confirm: false` so nobody is asked twice.
+function confirmWatch(label: string): Promise<boolean> {
+  return new Promise(resolve => {
+    Alert.alert(
+      'Watch a short video?',
+      `${label}.\n\nA full-screen ad will play. You can close it, but the reward is only given if it finishes.`,
+      [
+        { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Watch', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
+
 // Show a rewarded ad and grant the virtual reward. Lane is always 'A' — rewarded
 // ads never run in Lane B (adManager enforces this too).
 //
@@ -65,12 +91,16 @@ export const REWARDED_REWARDS: Partial<Record<AdPlacement, RewardedReward>> = {
 export async function watchForReward(
   placement: AdPlacement,
   dispatch: AppDispatch,
-  opts: { surface?: string; grantOnUnavailable?: boolean } = {},
-): Promise<{ granted: boolean; shown: boolean; blocked?: boolean }> {
+  opts: { surface?: string; grantOnUnavailable?: boolean; confirm?: boolean } = {},
+): Promise<{ granted: boolean; shown: boolean; blocked?: boolean; declined?: boolean }> {
   const reward = REWARDED_REWARDS[placement];
   if (!reward) return { granted: false, shown: false };
   // No-Ads / Premium: never show an ad — grant the (virtual) reward directly.
+  // Deliberately BEFORE the confirm: there's no ad to consent to.
   if (isNoAds()) { reward.grant(dispatch); return { granted: true, shown: false }; }
+  if (opts.confirm !== false && !(await confirmWatch(reward.label))) {
+    return { granted: false, shown: false, declined: true };
+  }
   const { earned, shown, blocked } = await showRewarded(placement, { lane: 'A', surface: opts.surface ?? 'rewarded' });
   if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);
@@ -84,11 +114,15 @@ export async function watchForReward(
 export async function watchForBonusXp(
   dispatch: AppDispatch,
   xp: number,
-  opts: { surface?: string; grantOnUnavailable?: boolean } = {},
-): Promise<{ granted: boolean; shown: boolean; blocked?: boolean }> {
+  opts: { surface?: string; grantOnUnavailable?: boolean; confirm?: boolean; label?: string } = {},
+): Promise<{ granted: boolean; shown: boolean; blocked?: boolean; declined?: boolean }> {
   if (!(xp > 0)) return { granted: false, shown: false };
   // No-Ads / Premium: grant the XP directly, no ad.
   if (isNoAds()) { dispatch({ type: 'ADD_XP', amount: xp }); return { granted: true, shown: false }; }
+  const label = opts.label ?? `Watch to earn ${xp.toLocaleString()} bonus XP`;
+  if (opts.confirm !== false && !(await confirmWatch(label))) {
+    return { granted: false, shown: false, declined: true };
+  }
   const { earned, shown, blocked } = await showRewarded('rewardedBonusXp', { lane: 'A', surface: opts.surface ?? 'rewarded-xp' });
   if (blocked) return { granted: false, shown: false, blocked: true }; // duplicate trigger — do nothing
   const granted = earned || (!!opts.grantOnUnavailable && !shown);

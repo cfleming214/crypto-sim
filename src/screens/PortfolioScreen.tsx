@@ -569,7 +569,7 @@ export function PortfolioScreen() {
             // Rewarded ad grants the reset (registry dispatches RESET_DEMO). Graceful
             // fallback: if AdMob has no ad to show, reset anyway so the user isn't
             // blocked; only withhold when an ad was shown but dismissed early.
-            const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true });
+            const { granted, blocked } = await watchForReward('rewardedReset', dispatch, { grantOnUnavailable: true, confirm: false });
             if (blocked) return; // a duplicate trigger while an ad is already up — ignore
             if (!granted) Alert.alert('Not reset', "The video didn't finish, so your portfolio wasn't reset.");
           },
@@ -747,8 +747,10 @@ export function PortfolioScreen() {
   // ad was shown but dismissed early).
   const handleBalanceBoost = async () => {
     if (!isPractice) return; // practice portfolios only (main + offline)
-    const { granted, blocked } = await watchForReward('rewardedBalanceBoost', dispatch, { grantOnUnavailable: true });
-    if (blocked) return; // a duplicate trigger while an ad is already up — ignore
+    // No confirm: false here — this button fired an ad straight off the tap, so
+    // it keeps the default prompt from watchForReward (CRYP-59).
+    const { granted, blocked, declined } = await watchForReward('rewardedBalanceBoost', dispatch, { grantOnUnavailable: true });
+    if (blocked || declined) return; // duplicate trigger, or the user said "Not now"
     if (granted) Alert.alert('Balance boosted 🎉', '$50,000 was added to your tradeable balance.');
     else Alert.alert('No bonus added', "The video didn't finish, so nothing was added.");
   };
@@ -809,8 +811,12 @@ export function PortfolioScreen() {
     const today = todayKey(Date.now());
     if (state.activePortfolioId !== 'main' || state.lastClaimDay !== today || tripleDoneDay === today) return;
     const bonusXp = dailyXp(state.user.streak); // XP today's claim granted
-    const { granted, blocked } = await watchForBonusXp(dispatch, bonusXp * 2, { grantOnUnavailable: true });
-    if (blocked) return; // a duplicate trigger while an ad is already up — ignore
+    // Same as the balance boost: keeps the default confirm prompt.
+    const { granted, blocked, declined } = await watchForBonusXp(dispatch, bonusXp * 2, {
+      grantOnUnavailable: true,
+      label: `Watch to triple today's daily bonus (+${(bonusXp * 2).toLocaleString()} XP)`,
+    });
+    if (blocked || declined) return; // duplicate trigger, or the user said "Not now"
     if (granted) {
       setTripleDoneDay(today);
       AsyncStorage.setItem(XP_TRIPLE_KEY, today).catch(() => {});
