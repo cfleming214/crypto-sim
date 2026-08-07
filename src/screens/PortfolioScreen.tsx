@@ -21,7 +21,7 @@ import { useApp } from '../store/AppContext';
 import { STARTING_CASH } from '../constants/featureFlags';
 import { watchForReward, watchForBonusXp } from '../lib/rewardedRewards';
 import { fetchLivePrices } from '../services/tokenCatalog';
-import { loadSnapshots, backfillGap, despikeSeries, clearSnapshots, appendSnapshot, mergeSnapshots, type EquityPoint } from '../services/equitySnapshots';
+import { loadSnapshots, backfillGap, despikeSeries, clearSnapshots, appendSnapshot, mergeSnapshots, getHistoryEpoch, setHistoryEpoch, clearHistoryEpoch, type EquityPoint } from '../services/equitySnapshots';
 import { computePortfolioHistory } from '../services/portfolioHistory';
 import { saveEquityHistory } from '../services/portfolioService';
 import { applyDailyClaim, canClaim, nextClaimAt, todayKey, dailyXp } from '../services/gamification';
@@ -598,9 +598,16 @@ export function PortfolioScreen() {
           style: 'destructive',
           onPress: async () => {
             await clearSnapshots(pid);
+            // Record WHEN history was reset. Clearing the snapshots alone didn't
+            // make a reset stick: Rebuild history doesn't read snapshots, it
+            // reverse-replays the trade ledger — which reset deliberately leaves
+            // alone — so one rebuild resurrected the whole pre-reset curve
+            // (CRYP-66). Rebuild now clamps to this instead.
+            const resetAt = Date.now();
+            await setHistoryEpoch(pid, resetAt);
             // Seed a single baseline point at the current equity so the chart
             // isn't empty; the 60s capture grows it fresh from here.
-            const series = await appendSnapshot(pid, { t: Date.now(), v: totalEquity });
+            const series = await appendSnapshot(pid, { t: resetAt, v: totalEquity });
             setHistory(series);
             // Overwrite the CLOUD backup too. Every signed-in launch merges
             // UserProfile.equityHistoryJson back into the local store, so a
@@ -641,6 +648,26 @@ export function PortfolioScreen() {
         {
           text: 'Rebuild',
           onPress: async () => {
+            // Honour a previous "Reset graph". Clamping forever would make deep
+            // history unrecoverable, so when an epoch exists the user chooses —
+            // and the option that discards their reset is opt-in, never silent.
+            const pidEpoch = await getHistoryEpoch(pid);
+            let clampFrom = pidEpoch;
+            if (pidEpoch) {
+              const choice = await new Promise<'since' | 'full' | null>(resolve => {
+                Alert.alert(
+                  'Rebuild how far back?',
+                  `You reset this graph on ${new Date(pidEpoch).toLocaleDateString()}. Rebuilding the full history will bring back the values from before that reset.`,
+                  [
+                    { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+                    { text: 'Full history', style: 'destructive', onPress: () => resolve('full') },
+                    { text: 'Since reset', onPress: () => resolve('since') },
+                  ],
+                );
+              });
+              if (!choice) return;
+              if (choice === 'full') { await clearHistoryEpoch(pid); clampFrom = null; }
+            }
             setRebuilding(true);
             try {
               // TWO passes at different resolutions.
@@ -733,12 +760,16 @@ export function PortfolioScreen() {
               const fineRecent = recorded.length >= 2
                 ? []
                 : fine.points.filter(p => p.t >= keepFrom);
-              const series = await mergeSnapshots(pid, [
+              const rebuilt = [
                 ...coarse.points.filter(p => p.t < fineFrom),
                 ...fine.points.filter(p => p.t >= fineFrom && p.t < keepFrom),
                 ...fineRecent,
                 ...recorded,
-              ]);
+              ];
+              const series = await mergeSnapshots(
+                pid,
+                clampFrom ? rebuilt.filter(p => p.t >= clampFrom) : rebuilt,
+              );
               setHistory(series);
               Alert.alert(
                 'History rebuilt',
