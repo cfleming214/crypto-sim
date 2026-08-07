@@ -12,6 +12,7 @@ import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } fr
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, weeklyPassTopUp, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
+import { SLIPPAGE_RATE, buyFillPrice, sellFillPrice } from '../constants/trading';
 import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, clearHistoryEpoch, setHistoryEpoch, backfillGap } from '../services/equitySnapshots';
 import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
 import { portfolioValue } from '../services/portfolioValue';
@@ -503,16 +504,19 @@ function reducer(state: AppState, action: Action): AppState {
 
         // Execute the order
         if (order.side === 'buy' && newState.cash >= order.amount) {
-          const units = order.amount / coin.price;
+          // A triggered limit order executes as a market order, so it crosses
+          // the spread like any other fill.
+          const fill = buyFillPrice(coin.price);
+          const units = order.amount / fill;
           const existing = newState.holdings.find(h => h.symbol === order.symbol);
           const holdings = existing
             ? newState.holdings.map(h => h.symbol === order.symbol
                 ? { ...h, units: h.units + units, avgCost: (h.avgCost * h.units + order.amount) / (h.units + units) }
                 : h)
-            : [...newState.holdings, { symbol: order.symbol, units, avgCost: coin.price }];
+            : [...newState.holdings, { symbol: order.symbol, units, avgCost: fill }];
           const trade: Trade = {
             id: order.id, symbol: order.symbol, side: 'buy', amount: order.amount,
-            units, price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0,
+            units, price: fill, timestamp: Date.now(), xpEarned: 25, slippage: SLIPPAGE_RATE,
           };
           newState = {
             ...newState,
@@ -524,17 +528,20 @@ function reducer(state: AppState, action: Action): AppState {
         } else if (order.side === 'sell') {
           const h = newState.holdings.find(h => h.symbol === order.symbol);
           if (h) {
+            // Size at MARKET (that's what the order amount means, and what
+            // "sell all" is quoted against); the haircut lands on proceeds.
+            const sellFill = sellFillPrice(coin.price);
             const unitsToSell = Math.min(order.amount / coin.price, h.units);
-            const proceeds = unitsToSell * coin.price;
-            const pnl = realizedPnl(h.avgCost, unitsToSell, coin.price);
+            const proceeds = unitsToSell * sellFill;
+            const pnl = realizedPnl(h.avgCost, unitsToSell, sellFill);
             const xpEarned = sellXp(pnl, proceeds);
             const holdings = unitsToSell >= h.units
               ? newState.holdings.filter(x => x.symbol !== order.symbol)
               : newState.holdings.map(x => x.symbol === order.symbol ? { ...x, units: x.units - unitsToSell } : x);
             const trade: Trade = {
               id: order.id, symbol: order.symbol, side: 'sell', amount: proceeds,
-              units: unitsToSell, price: coin.price, timestamp: Date.now(),
-              xpEarned, slippage: 0, realizedPnl: pnl,
+              units: unitsToSell, price: sellFill, timestamp: Date.now(),
+              xpEarned, slippage: SLIPPAGE_RATE, realizedPnl: pnl,
             };
             newState = {
               ...newState,
@@ -557,13 +564,14 @@ function reducer(state: AppState, action: Action): AppState {
         const h = newState.holdings.find(x => x.symbol === sym);
         if (!coin || !h || !(pct > 0)) continue;
         if (coin.price > h.avgCost * (1 - pct / 100)) continue;
-        const proceeds = h.units * coin.price;
-        const pnl = realizedPnl(h.avgCost, h.units, coin.price);
+        const stopFill = sellFillPrice(coin.price);
+        const proceeds = h.units * stopFill;
+        const pnl = realizedPnl(h.avgCost, h.units, stopFill);
         const xpEarned = sellXp(pnl, proceeds);
         const trade: Trade = {
           id: `STP-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: sym, side: 'sell', amount: proceeds, units: h.units,
-          price: coin.price, timestamp: Date.now(), xpEarned, slippage: 0, realizedPnl: pnl,
+          price: stopFill, timestamp: Date.now(), xpEarned, slippage: SLIPPAGE_RATE, realizedPnl: pnl,
         };
         const nextStops = { ...newState.stopLosses }; delete nextStops[sym];
         newState = {
@@ -582,17 +590,18 @@ function reducer(state: AppState, action: Action): AppState {
       for (const [sym, bs] of Object.entries(newState.buyStops ?? {})) {
         const coin = newState.coins.find(c => c.symbol === sym);
         if (!coin || sym === 'USDC' || coin.price > bs.price || newState.cash < bs.amount) continue;
-        const units = bs.amount / coin.price;
+        const bsFill = buyFillPrice(coin.price);
+        const units = bs.amount / bsFill;
         const existing = newState.holdings.find(x => x.symbol === sym);
         const holdings = existing
           ? newState.holdings.map(x => x.symbol === sym
               ? { ...x, units: x.units + units, avgCost: (x.avgCost * x.units + bs.amount) / (x.units + units) }
               : x)
-          : [...newState.holdings, { symbol: sym, units, avgCost: coin.price }];
+          : [...newState.holdings, { symbol: sym, units, avgCost: bsFill }];
         const trade: Trade = {
           id: `BYS-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: sym, side: 'buy', amount: bs.amount, units,
-          price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0,
+          price: bsFill, timestamp: Date.now(), xpEarned: 25, slippage: SLIPPAGE_RATE,
         };
         const nextBuys = { ...newState.buyStops }; delete nextBuys[sym];
         newState = {
@@ -802,7 +811,12 @@ function reducer(state: AppState, action: Action): AppState {
       const coins = activeCoins(state);
       const coin = coins.find(c => c.symbol === action.symbol);
       if (!coin || state.cash < action.amount) return state;
-      const units = action.amount / coin.price;
+      // Cross the spread: you spend exactly `action.amount`, but each unit
+      // costs a little more than mid, so you receive slightly fewer units.
+      // avgCost is the FILL price, so cost basis and realized P&L are honest
+      // without special-casing anywhere downstream.
+      const fill = buyFillPrice(coin.price);
+      const units = action.amount / fill;
       const existing = state.holdings.find(h => h.symbol === action.symbol);
       const holdings = existing
         ? state.holdings.map(h =>
@@ -810,11 +824,11 @@ function reducer(state: AppState, action: Action): AppState {
               ? { ...h, units: h.units + units, avgCost: (h.avgCost * h.units + action.amount) / (h.units + units) }
               : h
           )
-        : [...state.holdings, { symbol: action.symbol, units, avgCost: coin.price }];
+        : [...state.holdings, { symbol: action.symbol, units, avgCost: fill }];
       const trade: Trade = {
         id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         symbol: action.symbol, side: 'buy', amount: action.amount,
-        units, price: coin.price, timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+        units, price: fill, timestamp: Date.now(), xpEarned: 25, slippage: SLIPPAGE_RATE,
       };
       const newCash = state.cash - action.amount;
       const newBankroll = newCash + holdings.reduce((s, h) => {
@@ -842,9 +856,13 @@ function reducer(state: AppState, action: Action): AppState {
       const coin = coins.find(c => c.symbol === action.symbol);
       const holding = state.holdings.find(h => h.symbol === action.symbol);
       if (!coin || !holding) return state;
+      // Size at MARKET so "sell all" still clears the position exactly (the
+      // position-value figure the user is sizing against is quoted at mid);
+      // the haircut lands on the proceeds instead.
+      const sellFill = sellFillPrice(coin.price);
       const unitsToSell = Math.min(action.amount / coin.price, holding.units);
-      const proceeds = unitsToSell * coin.price;
-      const pnl = realizedPnl(holding.avgCost, unitsToSell, coin.price);
+      const proceeds = unitsToSell * sellFill;
+      const pnl = realizedPnl(holding.avgCost, unitsToSell, sellFill);
       const sellXpEarned = sellXp(pnl, proceeds);
       const holdings = unitsToSell >= holding.units
         ? state.holdings.filter(h => h.symbol !== action.symbol)
@@ -852,8 +870,8 @@ function reducer(state: AppState, action: Action): AppState {
       const trade: Trade = {
         id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         symbol: action.symbol, side: 'sell', amount: proceeds,
-        units: unitsToSell, price: coin.price, timestamp: Date.now(),
-        xpEarned: sellXpEarned, slippage: 0.001, realizedPnl: pnl,
+        units: unitsToSell, price: sellFill, timestamp: Date.now(),
+        xpEarned: sellXpEarned, slippage: SLIPPAGE_RATE, realizedPnl: pnl,
       };
       const newCashSell = state.cash + proceeds;
       const newBankrollSell = newCashSell + holdings.reduce((s, h) => {
@@ -946,33 +964,39 @@ function reducer(state: AppState, action: Action): AppState {
         newHoldings = newHoldings
           .map(x => (x.symbol === line.symbol ? { ...x, units: x.units - line.units } : x))
           .filter(x => x.units > 0.000001);
-        newCash += line.amount;
+        // The plan fixes the units to sell; the spread reduces what they fetch.
+        const rbSellFill = sellFillPrice(line.price);
+        const rbProceeds = line.units * rbSellFill;
+        newCash += rbProceeds;
         newTrades.unshift({
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-          symbol: line.symbol, side: 'sell', amount: line.amount,
-          units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
-          realizedPnl: rbSold ? realizedPnl(rbSold.avgCost, line.units, line.price) : 0, kind: 'rebalance',
+          symbol: line.symbol, side: 'sell', amount: rbProceeds,
+          units: line.units, price: rbSellFill,
+          timestamp: Date.now(), xpEarned: 10, slippage: SLIPPAGE_RATE,
+          realizedPnl: rbSold ? realizedPnl(rbSold.avgCost, line.units, rbSellFill) : 0, kind: 'rebalance',
         });
       }
 
       for (const line of plan.lines) {
         if (line.side !== 'buy') continue;
         if (newCash < line.amount) continue; // skip if proceeds didn't cover it
+        // The plan fixes the cash to spend; the spread reduces units received.
+        const rbBuyFill = buyFillPrice(line.price);
+        const rbUnits = line.amount / rbBuyFill;
         const existing = newHoldings.find(x => x.symbol === line.symbol);
         newHoldings = existing
           ? newHoldings.map(x =>
               x.symbol === line.symbol
-                ? { ...x, units: x.units + line.units, avgCost: (x.avgCost * x.units + line.amount) / (x.units + line.units) }
+                ? { ...x, units: x.units + rbUnits, avgCost: (x.avgCost * x.units + line.amount) / (x.units + rbUnits) }
                 : x,
             )
-          : [...newHoldings, { symbol: line.symbol, units: line.units, avgCost: line.price }];
+          : [...newHoldings, { symbol: line.symbol, units: rbUnits, avgCost: rbBuyFill }];
         newCash -= line.amount;
         newTrades.unshift({
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'buy', amount: line.amount,
-          units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 25, slippage: 0.001, kind: 'rebalance',
+          units: rbUnits, price: rbBuyFill,
+          timestamp: Date.now(), xpEarned: 25, slippage: SLIPPAGE_RATE, kind: 'rebalance',
         });
       }
 
@@ -1010,32 +1034,36 @@ function reducer(state: AppState, action: Action): AppState {
         newHoldings = newHoldings
           .map(x => (x.symbol === line.symbol ? { ...x, units: x.units - line.units } : x))
           .filter(x => x.units > 0.000001);
-        newCash += line.amount;
+        const cpSellFill = sellFillPrice(line.price);
+        const cpProceeds = line.units * cpSellFill;
+        newCash += cpProceeds;
         newTrades.unshift({
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-          symbol: line.symbol, side: 'sell', amount: line.amount,
-          units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 10, slippage: 0.001,
-          realizedPnl: cpSold ? realizedPnl(cpSold.avgCost, line.units, line.price) : 0,
+          symbol: line.symbol, side: 'sell', amount: cpProceeds,
+          units: line.units, price: cpSellFill,
+          timestamp: Date.now(), xpEarned: 10, slippage: SLIPPAGE_RATE,
+          realizedPnl: cpSold ? realizedPnl(cpSold.avgCost, line.units, cpSellFill) : 0,
         });
       }
       for (const line of plan.lines) {
         if (line.side !== 'buy') continue;
         if (newCash < line.amount) continue;
+        const cpBuyFill = buyFillPrice(line.price);
+        const cpUnits = line.amount / cpBuyFill;
         const existing = newHoldings.find(x => x.symbol === line.symbol);
         newHoldings = existing
           ? newHoldings.map(x =>
               x.symbol === line.symbol
-                ? { ...x, units: x.units + line.units, avgCost: (x.avgCost * x.units + line.amount) / (x.units + line.units) }
+                ? { ...x, units: x.units + cpUnits, avgCost: (x.avgCost * x.units + line.amount) / (x.units + cpUnits) }
                 : x,
             )
-          : [...newHoldings, { symbol: line.symbol, units: line.units, avgCost: line.price }];
+          : [...newHoldings, { symbol: line.symbol, units: cpUnits, avgCost: cpBuyFill }];
         newCash -= line.amount;
         newTrades.unshift({
           id: `SIM-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
           symbol: line.symbol, side: 'buy', amount: line.amount,
-          units: line.units, price: line.price,
-          timestamp: Date.now(), xpEarned: 25, slippage: 0.001,
+          units: cpUnits, price: cpBuyFill,
+          timestamp: Date.now(), xpEarned: 25, slippage: SLIPPAGE_RATE,
         });
       }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, TouchableOpacity, Modal, ScrollView, Alert, TextInput, Share, Linking } from 'react-native';
 import { Text } from '../components/ui/Text';
+import { SLIPPAGE_RATE, buyFillPrice, sellFillPrice } from '../constants/trading';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useCoachmark } from '../components/coachmarks/CoachmarkProvider';
@@ -180,12 +181,23 @@ function OrderModal({ visible, side, symbol, onClose, onConfirm }: {
                 ${coin.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
               </Text>
             </View>
+            {/* The fill price is what you actually pay/receive: market orders
+                cross the spread, so a buy fills above mid and a sell below. Both
+                the rate and the price come from the same constant the reducer
+                charges, so the ticket can't drift from the engine again. */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, color: colors.ink3 }}>Slippage (max)</Text>
-              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>0.10%</Text>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>Est. fill price</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                ${(side === 'sell' ? sellFillPrice(coin.price) : buyFillPrice(coin.price))
+                  .toLocaleString('en-US', { maximumFractionDigits: 2 })}
+              </Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, color: colors.ink3 }}>Fee</Text>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>Slippage</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: colors.ink }}>{(SLIPPAGE_RATE * 100).toFixed(2)}%</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 13, color: colors.ink3 }}>Commission</Text>
               <Text style={{ fontWeight: '600', fontSize: 13, color: colors.up }}>Free</Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
