@@ -12,7 +12,7 @@ import { saveReplayEntry, subscribeToReplayLeaderboard, fetchReplayContests } fr
 import { fetchTokenCatalog, fetchLivePrices } from '../services/tokenCatalog';
 import { applyDailyClaim, sellXp, realizedPnl, weeklyPassTopUp, PREDICTION_XP, PREDICTION_STREAK_XP, CASH_EVENT_SYMBOL, assignLeague, leagueRank, type PredictionOutcome } from '../services/gamification';
 import { planRebalance, planCopyAllocation } from '../services/rebalance';
-import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, backfillGap } from '../services/equitySnapshots';
+import { appendSnapshot, loadSnapshots, mergeSnapshots, downsampleForCloud, clearSnapshots, clearHistoryEpoch, setHistoryEpoch, backfillGap } from '../services/equitySnapshots';
 import { STARTING_CASH, MAX_OFFLINE_PORTFOLIOS } from '../constants/featureFlags';
 import { portfolioValue } from '../services/portfolioValue';
 import { SEASON_TIERS, seasonTierReached, type SeasonRewardKind } from '../data/season';
@@ -2192,6 +2192,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const v = stateRef.current.cash; // post-reset baseline (STARTING_CASH + purchased)
     (async () => {
       await clearSnapshots(pid);
+      // A demo reset is also a "history starts now" event, so it sets the epoch
+      // the same way Reset graph does — otherwise a later Rebuild history would
+      // reconstruct across the reset boundary (CRYP-66).
+      await setHistoryEpoch(pid, resetAt);
       const series = await appendSnapshot(pid, { t: resetAt, v });
       if (pid === 'main' && authRef.current === 'authenticated') flushEquityToCloud(series); // cloud backup is main-only
     })();
@@ -2313,6 +2317,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // previous user's recorded balance history. Safe to wipe — a returning
       // user's cloud backup (equityHistoryJson) re-seeds it on next sign-in.
       clearSnapshots('main').catch(() => {});
+      // The epoch is keyed "main" for the same reason, so it must go too —
+      // otherwise the NEXT user to sign in inherits this user's reset date and
+      // their Rebuild history gets silently truncated to it (CRYP-66).
+      clearHistoryEpoch('main').catch(() => {});
       // Reset the price-trigger sync gates so the NEXT user to sign in hydrates
       // their own cloud alerts/orders (the hydrate ref is "once per session") and
       // doesn't inherit the previous user's mirrored ids.

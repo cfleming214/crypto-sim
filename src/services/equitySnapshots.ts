@@ -27,6 +27,9 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 const KEY = (portfolioId: string) => `equitySnapshots.v1:${portfolioId}`;
+// The moment the user last said "start my history here" (Reset graph). Stored
+// separately from the series so clearing one doesn't imply clearing the other.
+const EPOCH_KEY = (portfolioId: string) => `equityHistoryEpoch.v1:${portfolioId}`;
 
 // Keep fine resolution only for the last 3h — that's all the Live (15m) and 1H
 // windows ever read at full fidelity. Anything we keep beyond that is purely for
@@ -162,6 +165,49 @@ export async function clearSnapshots(portfolioId: string): Promise<void> {
   } catch {
     // Ignore — a failed clear just leaves the old series, which the reset's
     // fresh seed point will sit alongside until the next successful write.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// History epoch.
+//
+// Clearing the snapshots is not enough to make "Reset graph" stick, because
+// Rebuild history doesn't read snapshots at all — it reverse-replays the TRADE
+// ledger against candle history, and reset deliberately leaves trades alone. So
+// a reset followed by a rebuild resurrected the whole pre-reset curve (CRYP-66).
+//
+// Recording WHEN the user reset lets rebuild clamp its reconstruction to that
+// point: it fills in detail since the reset instead of undoing it. Kept in its
+// own key so a snapshot wipe (which happens for other reasons) never implies
+// the user asked for a new epoch.
+// ---------------------------------------------------------------------------
+
+/** The reset timestamp for this portfolio, or null if history was never reset. */
+export async function getHistoryEpoch(portfolioId: string): Promise<number | null> {
+  try {
+    const raw = await AsyncStorage.getItem(EPOCH_KEY(portfolioId));
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Mark "my history starts now". Called by Reset graph. */
+export async function setHistoryEpoch(portfolioId: string, t: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(EPOCH_KEY(portfolioId), String(t));
+  } catch {
+    // Ignore — worst case the reset behaves as it did before this change.
+  }
+}
+
+/** Forget the epoch, so rebuild may reach the full ledger again. */
+export async function clearHistoryEpoch(portfolioId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(EPOCH_KEY(portfolioId));
+  } catch {
+    // Ignore — the epoch simply persists until the next successful write.
   }
 }
 
