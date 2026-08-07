@@ -1,6 +1,7 @@
 import { isMoneySurface, type ContestLane } from './contestLane';
 import { AD_UNITS } from '../constants/adUnits';
 import { isNoAds } from './purchases';
+import { checkAdBudget, noteAdShown } from './adBudget';
 
 // Central in-app ad-firing gatekeeper. ALL interstitial/rewarded ads go through
 // here — call sites never touch the SDK directly — so the compliance rules live
@@ -79,14 +80,20 @@ export function canShowAd(placement: AdPlacement, ctx: AdContext, now: number = 
     if (placement !== 'bannerPassive' && placement !== 'resultsExit') return false;
   }
 
-  // Rewarded ads are opt-in (the user tapped "watch"), so no frequency cap.
-  if (isRewarded(placement)) return true;
+  // Rewarded ads are opt-in, so they carry no per-session FREQUENCY cap — but
+  // they do share the per-day budget and a cooldown. Opt-in stops ad spam being
+  // a UX problem; it doesn't stop it being an invalid-traffic problem, and an
+  // uncapped device is an AdMob account risk (CRYP-58).
+  if (isRewarded(placement)) return checkAdBudget(true, now).ok;
 
   // Passive banners are always allowed (subject to the lane rule above).
   if (placement === 'bannerPassive') return true;
 
   // Interstitial frequency caps.
   if (isInterstitial(placement)) {
+    // Daily budget first: the session caps below reset on relaunch, so they
+    // alone can't bound a day.
+    if (!checkAdBudget(false, now).ok) return false;
     if (sessionInterstitialCount >= MAX_PER_SESSION) return false;
     if (now - lastInterstitialAt < MIN_GAP_MS) return false;
     if (actionsSinceInterstitial < MIN_ACTIONS_BETWEEN) return false;
@@ -128,6 +135,7 @@ export async function showInterstitial(placement: AdPlacement, ctx: AdContext): 
           lastInterstitialAt = Date.now();
           sessionInterstitialCount += 1;
           actionsSinceInterstitial = 0;
+          void noteAdShown(false);   // presented -> counts against the day
           try { ad.show(); } catch { cleanup(); finish(); }
         }));
         subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => { cleanup(); finish(); }));
@@ -214,7 +222,9 @@ export async function showRewarded(placement: AdPlacement, ctx: AdContext): Prom
     // 1) Rewarded first.
     console.log(`[ads] rewarded loading: ${placement} unit=${AD_UNITS.rewarded ? 'REAL' : 'TEST'}`);
     const r = await runRewardedUnit(RewardedAd, RewardedAdEventType, AdEventType, AD_UNITS.rewarded ?? TestIds.REWARDED, 'rewarded');
-    if (r.shown) return r; // shown (earned or dismissed) — don't chain
+    // Only a PRESENTED ad counts. A no-fill costs the user nothing and creates
+    // no impression, so charging it would penalise them for AdMob's inventory.
+    if (r.shown) { void noteAdShown(true); return r; }   // shown (earned or dismissed) — don't chain
 
     // 2) No rewarded fill → try a rewarded interstitial.
     if (RewardedInterstitialAd) {
@@ -223,6 +233,7 @@ export async function showRewarded(placement: AdPlacement, ctx: AdContext): Prom
         RewardedInterstitialAd, RewardedAdEventType, AdEventType,
         AD_UNITS.rewardedInterstitial ?? TestIds.REWARDED_INTERSTITIAL, 'rewarded-interstitial',
       );
+      if (ri.shown) void noteAdShown(true);
       return ri; // if still !shown, caller's grantOnUnavailable handles the graceful fallback
     }
     return r; // { earned:false, shown:false }

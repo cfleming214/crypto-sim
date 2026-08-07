@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { hydrateAdBudget } from './adBudget';
 
 // Google Mobile Ads (AdMob) initialization. Call once at app start.
 //
@@ -16,6 +17,9 @@ let started = false;
 export async function initAds(): Promise<void> {
   if (started) return;
   started = true;
+  // Load the persisted per-day ad budget BEFORE any gate can run, so a relaunch
+  // resumes the day's counts instead of starting from zero (CRYP-58).
+  try { await hydrateAdBudget(); } catch { /* falls back to a fresh day */ }
   try {
     // iOS ATT prompt before init so the SDK picks up the consent state.
     if (Platform.OS === 'ios') {
