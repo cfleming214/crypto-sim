@@ -31,6 +31,7 @@ import { refreshStatus } from '../services/stripeService';
 import { PAYOUTS_ENABLED, STARTING_CASH, CONTEST_CASH_PRIZES, DEFAULT_PRIZE_XP, PREMIUM_OFFLINE_PORTFOLIOS_PER_MONTH } from '../constants/featureFlags';
 import { watchForReward } from '../lib/rewardedRewards';
 import { isAdTestMode, setAdTestMode, isAdTestModeForcedByEnv } from '../lib/adTestMode';
+import { getAdTestDeviceId } from '../lib/adTestDevice';
 import { restore as restorePurchases, useEntitlements, usePurchasesReady } from '../lib/purchases';
 import { PurchaseModal } from '../components/PurchaseModal';
 import { OfflinePortfolioChooser, type OfflineGrantSource } from '../components/OfflinePortfolioChooser';
@@ -594,6 +595,26 @@ export function ProfileScreen() {
                 const next = !isAdTestMode();
                 setAdTestMode(next);
                 Alert.alert(`Test ads ${next ? 'ON' : 'OFF'}`, `Newly loaded ads will use ${next ? 'TEST' : 'REAL'} units.`);
+              },
+            },
+            {
+              text: 'AdMob test device ID',
+              onPress: async () => {
+                const { id, reason } = await getAdTestDeviceId();
+                if (!id) {
+                  Alert.alert('Test device ID unavailable', reason ?? 'Could not derive the ID on this device.');
+                  return;
+                }
+                // Share rather than a clipboard dep: the sheet offers Copy, and
+                // an Alert on iOS can't be selected from at all.
+                Alert.alert(
+                  'AdMob test device ID',
+                  `${id}\n\nAdd this in AdMob → Settings → Test devices so live units serve TEST ads here. It changes on reinstall.`,
+                  [
+                    { text: 'Done', style: 'cancel' },
+                    { text: 'Share / copy', onPress: () => { Share.share({ message: id }).catch(() => {}); } },
+                  ],
+                );
               },
             },
             {
