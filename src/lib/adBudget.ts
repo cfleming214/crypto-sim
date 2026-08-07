@@ -97,6 +97,18 @@ export async function noteAdShown(rewarded: boolean, now: number = Date.now()): 
   try { await AsyncStorage.setItem(KEY, JSON.stringify(b)); } catch { /* memory mirror still holds */ }
 }
 
+/**
+ * A reward granted WITHOUT an ad (the graceful no-fill fallback). It creates no
+ * impression, so it isn't invalid traffic — but it hands out the same reward,
+ * so it must consume the same budget. Without this, airplane mode was an
+ * infinite reward faucet: no ad -> no noteAdShown -> no cooldown, no daily
+ * count -> tap forever (CRYP-60). Charged as a rewarded event: cooldown and
+ * the per-day ceilings apply exactly as if the ad had played.
+ */
+export async function noteFallbackGrant(now: number = Date.now()): Promise<void> {
+  return noteAdShown(true, now);
+}
+
 /** Test/diagnostic view of the live counters. */
 export function adBudgetSnapshot(now: number = Date.now()): Readonly<Budget> {
   return { ...current(now) };

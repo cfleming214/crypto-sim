@@ -170,7 +170,7 @@ export function NewsScreen() {
             keyExtractor={item => (item.kind === 'ad' ? item.id : item.article.id)}
             renderItem={({ item }) => (
               item.kind === 'ad'
-                ? <NativeAdCard unitId={AD_UNITS.nativeNews} />
+                ? <NativeAdCard unitId={AD_UNITS.nativeNews} cacheKey={`news-${item.id}`} />
                 : <NewsCard article={item.article} onPress={() => nav.navigate('NewsDetail', { article: item.article })} />
             )}
             contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 12 }}
